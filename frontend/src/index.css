@@ -1012,6 +1012,18 @@ h4.sec{
   font-weight:500;font-size:17px;line-height:1.25;text-transform:capitalize;
   letter-spacing:-.012em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:2px;
 }
+.today-row .sub{font-size:12.5px;color:var(--label-2);margin-top:1px}
+
+/* --- home: progress ring around today's badge, and the KPI ring tiles --- */
+.ring-badge{width:100%;height:100%;border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;background:var(--tint,var(--acc))}
+.tile .ringwrap{margin-bottom:8px}
+.tile.k-green{background:linear-gradient(140deg, color-mix(in srgb, var(--green) 24%, var(--glass-bg)), var(--glass-bg) 72%)}
+.tile.k-violet{background:linear-gradient(140deg, color-mix(in srgb, var(--purple) 22%, var(--glass-bg)), var(--glass-bg) 72%)}
+.tile.k-blue{background:linear-gradient(140deg, color-mix(in srgb, var(--blue) 22%, var(--glass-bg)), var(--glass-bg) 72%)}
+.tile.k-orange{background:linear-gradient(140deg, color-mix(in srgb, var(--orange) 24%, var(--glass-bg)), var(--glass-bg) 72%)}
+
+/* --- utility: a vertical stack of cards inside one .cols column --- */
+.col{display:flex;flex-direction:column;gap:12px}
 
 /* --------------------------------------------------- desktop (≥1000px) --- */
 .cols{display:block}

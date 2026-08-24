@@ -13,6 +13,24 @@ import Icon from '../components/Icon.jsx'
 import { Button } from '../components/ui.jsx'
 import { glyphOf } from '../lib/glyphs.js'
 
+// A ring only ever encodes a real fraction (this week's workouts done/planned) — the KPI
+// tiles below reuse it at pct=1 purely as a colored frame around their icon, never a
+// fabricated "progress toward an undefined goal".
+function Ring({ size, stroke, pct, color, children }) {
+  const r = (size - stroke) / 2, c = 2 * Math.PI * r
+  const off = c * (1 - Math.max(0, Math.min(1, pct)))
+  return (
+    <div style={{ position: 'relative', width: size, height: size, flex: 'none' }}>
+      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
+        <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="var(--glass-border)" strokeWidth={stroke} />
+        <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke={color} strokeWidth={stroke} strokeLinecap="round"
+          strokeDasharray={c} strokeDashoffset={off} transform={`rotate(-90 ${size / 2} ${size / 2})`} />
+      </svg>
+      <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{children}</div>
+    </div>
+  )
+}
+
 // Home = what to do now + a quick glance. Deep charts & history live in Stats.
 export default function Home() {
   const nav = useNavigate()
@@ -67,26 +85,45 @@ export default function Home() {
       </div>
       <div className="week">{strip}</div>
       <div className="today-row" onClick={onToday}>
-        <div className="row" style={{ gap: 9, minWidth: 0 }}>
-          <span className="lrow-i" style={{ background: S.active ? 'var(--orange)' : routine ? 'var(--acc)' : 'var(--surface-3)' }}>
-            <Icon name={S.active ? 'timer' : routine ? glyphOf(routine.emoji) : 'moon'} />
-          </span>
+        <div className="row" style={{ gap: 12, minWidth: 0 }}>
+          {plannedPerWeek > 0
+            ? <Ring size={56} stroke={6} pct={wThisWeek / plannedPerWeek} color={S.active ? 'var(--orange)' : 'var(--acc)'}>
+                <span className="ring-badge" style={{ width: 40, height: 40, fontSize: 18, '--tint': S.active ? 'var(--orange)' : routine ? 'var(--acc)' : 'var(--surface-3)' }}>
+                  <Icon name={S.active ? 'timer' : routine ? glyphOf(routine.emoji) : 'moon'} />
+                </span>
+              </Ring>
+            : <span className="lrow-i" style={{ width: 40, height: 40, borderRadius: '50%', fontSize: 18, background: S.active ? 'var(--orange)' : routine ? 'var(--acc)' : 'var(--surface-3)' }}>
+                <Icon name={S.active ? 'timer' : routine ? glyphOf(routine.emoji) : 'moon'} />
+              </span>}
           <div style={{ minWidth: 0 }}>
             <div className="lbl2">{t('Today')}</div>
             <div className="ttl">{S.active ? t('{0} — in progress', S.active.name) : routine ? routine.name : t('Rest day')}{todayOvr && routine ? ' · ' + t('rescheduled') : ''}</div>
+            {plannedPerWeek > 0 && <div className="sub">{t('{0}/{1} this week', wThisWeek, plannedPerWeek)}</div>}
           </div>
         </div>
-        {S.active ? <span className="tag" style={{ color: 'var(--orange)', background: 'color-mix(in srgb,var(--orange) 16%,transparent)' }}>{t('Resume')}</span>
-          : routine ? <span className="tag acc">{t('Start')}</span>
+        {S.active ? <span className="btn primary sm" style={{ backgroundColor: 'var(--orange)' }}>{t('Resume')}</span>
+          : routine ? <span className="btn primary sm">{t('Start')}</span>
           : <Icon name="plus" className="chev" />}
       </div>
     </div>
 
     {hasHistory && <div className="tiles">
-      <div className="tile"><div className="l"><Icon name="dumbbell" />{t('This week')}</div><div className="v">{wThisWeek}{plannedPerWeek ? '/' + plannedPerWeek : ''}</div></div>
-      <div className="tile"><div className="l"><Icon name="clipboard" />{t('Sets')}</div><div className="v">{setsThisWeek}</div></div>
-      <div className="tile"><div className="l"><Icon name="clock" />{t('Minutes')}</div><div className="v">{minsThisWeek}</div></div>
-      <div className="tile tappable" onClick={() => calendarSheet()}><div className="l"><Icon name="flame" />{t('Streak')}</div><div className="v">{streakWeeks(S)}</div></div>
+      <div className="tile k-green">
+        <div className="ringwrap"><Ring size={34} stroke={4} pct={plannedPerWeek ? wThisWeek / plannedPerWeek : 1} color="var(--green)"><Icon name="dumbbell" style={{ fontSize: 14 }} /></Ring></div>
+        <div className="v">{wThisWeek}{plannedPerWeek ? '/' + plannedPerWeek : ''}</div><div className="l">{t('This week')}</div>
+      </div>
+      <div className="tile k-violet">
+        <div className="ringwrap"><Ring size={34} stroke={4} pct={1} color="var(--purple)"><Icon name="clipboard" style={{ fontSize: 14 }} /></Ring></div>
+        <div className="v">{setsThisWeek}</div><div className="l">{t('Sets')}</div>
+      </div>
+      <div className="tile k-blue">
+        <div className="ringwrap"><Ring size={34} stroke={4} pct={1} color="var(--blue)"><Icon name="clock" style={{ fontSize: 14 }} /></Ring></div>
+        <div className="v">{minsThisWeek}</div><div className="l">{t('Minutes')}</div>
+      </div>
+      <div className="tile k-orange tappable" onClick={() => calendarSheet()}>
+        <div className="ringwrap"><Ring size={34} stroke={4} pct={1} color="var(--orange)"><Icon name="flame" style={{ fontSize: 14 }} /></Ring></div>
+        <div className="v">{streakWeeks(S)}</div><div className="l">{t('Streak')}</div>
+      </div>
     </div>}
 
     {!S.routines.length && !S.active && (
@@ -101,48 +138,56 @@ export default function Home() {
       </div>
     )}
 
-    <div className="card">
-      <div className="row between" style={{ marginBottom: 6 }}>
-        <h2 style={{ margin: 0 }}>{t('Body weight')}</h2>
-        <div className="row" style={{ gap: 8 }}>
-          <Button size="sm" icon="target" style={S.targetW ? { color: 'var(--yellow)' } : undefined} onClick={goalSheet}>{S.targetW ? fmtNum(S.targetW) : t('Goal')}</Button>
-          <Button size="sm" icon="plus" onClick={() => bwSheet()}>{t('Log')}</Button>
-        </div>
-      </div>
-      {bw ? <>
-        <div className="row" style={{ gap: 8, alignItems: 'baseline' }}>
-          <div className="big">{fmtNum(bw.w)} <span className="muted" style={{ fontSize: '1rem' }}>{S.unit}</span></div>
-          {/* only when it actually moved — an unchanged weight used to read as "− 0" */}
-          {!!delta && (
-            <span className="small row" style={{ gap: 2, fontWeight: 500, color: bwDeltaColor(delta, bw.w) }}>
-              <Icon name={delta > 0 ? 'arrowUp' : 'arrowDown'} style={{ fontSize: 12 }} />
-              {fmtNum(Math.abs(delta))}
-            </span>
-          )}
-          <span className="dim small" style={{ marginLeft: 'auto' }}>{fmtDate(bw.d, true)}</span>
-        </div>
-        {S.targetW && (
-          <div className="small row" style={{ color: 'var(--yellow)', marginTop: 4, gap: 5 }}>
-            <Icon name="target" style={{ fontSize: 13 }} />
-            <span>{t('Goal')} {fmtNum(S.targetW)} {S.unit} · {Math.abs(S.targetW - bw.w) < 0.05 ? t('reached!') : t(S.targetW > bw.w ? '{0} to gain' : '{0} to lose', fmtNum(Math.abs(S.targetW - bw.w)) + ' ' + S.unit)}</span>
+    {(() => {
+      const weightCard = <div className="card">
+        <div className="row between" style={{ marginBottom: 6 }}>
+          <h2 style={{ margin: 0 }}>{t('Body weight')}</h2>
+          <div className="row" style={{ gap: 8 }}>
+            <Button size="sm" icon="target" style={S.targetW ? { color: 'var(--yellow)' } : undefined} onClick={goalSheet}>{S.targetW ? fmtNum(S.targetW) : t('Goal')}</Button>
+            <Button size="sm" icon="plus" onClick={() => bwSheet()}>{t('Log')}</Button>
           </div>
-        )}
-        <div className="chart" style={{ marginTop: 8 }}><LineChart points={bwPoints} h={130} unit={S.unit} goal={S.targetW} /></div>
-      </> : <div className="muted small">{t("No entries yet — log your weight to start the curve. It's also asked before every workout.")}</div>}
-    </div>
-
-    {hasHistory && <div className="card tappable" style={{ cursor: 'pointer' }} onClick={() => nav('/stats')}>
-      <div className="row between" style={{ marginBottom: 4 }}>
-        <h2 style={{ margin: 0 }}>{t('This week’s balance')}</h2>
-        <Icon name="chevronRight" className="chev" style={{ fontSize: 15 }} />
+        </div>
+        {bw ? <>
+          <div className="row" style={{ gap: 8, alignItems: 'baseline' }}>
+            <div className="big">{fmtNum(bw.w)} <span className="muted" style={{ fontSize: '1rem' }}>{S.unit}</span></div>
+            {/* only when it actually moved — an unchanged weight used to read as "− 0" */}
+            {!!delta && (
+              <span className="small row" style={{ gap: 2, fontWeight: 500, color: bwDeltaColor(delta, bw.w) }}>
+                <Icon name={delta > 0 ? 'arrowUp' : 'arrowDown'} style={{ fontSize: 12 }} />
+                {fmtNum(Math.abs(delta))}
+              </span>
+            )}
+            <span className="dim small" style={{ marginLeft: 'auto' }}>{fmtDate(bw.d, true)}</span>
+          </div>
+          {S.targetW && (
+            <div className="small row" style={{ color: 'var(--yellow)', marginTop: 4, gap: 5 }}>
+              <Icon name="target" style={{ fontSize: 13 }} />
+              <span>{t('Goal')} {fmtNum(S.targetW)} {S.unit} · {Math.abs(S.targetW - bw.w) < 0.05 ? t('reached!') : t(S.targetW > bw.w ? '{0} to gain' : '{0} to lose', fmtNum(Math.abs(S.targetW - bw.w)) + ' ' + S.unit)}</span>
+            </div>
+          )}
+          <div className="chart" style={{ marginTop: 8 }}><LineChart points={bwPoints} h={130} unit={S.unit} goal={S.targetW} /></div>
+        </> : <div className="muted small">{t("No entries yet — log your weight to start the curve. It's also asked before every workout.")}</div>}
       </div>
-      <BodyMap load={weekLoad} body={S.body} />
-      <BodyMapLegend />
-    </div>}
 
-    {hasHistory && <div className="card">
-      <h2>{t('Activity')}</h2>
-      <Heatmap S={S} onDay={iso => calendarSheet(iso)} />
-    </div>}
+      if (!hasHistory) return weightCard
+
+      return <div className="cols">
+        {weightCard}
+        <div className="col">
+          <div className="card tappable" style={{ cursor: 'pointer' }} onClick={() => nav('/stats')}>
+            <div className="row between" style={{ marginBottom: 4 }}>
+              <h2 style={{ margin: 0 }}>{t('This week’s balance')}</h2>
+              <Icon name="chevronRight" className="chev" style={{ fontSize: 15 }} />
+            </div>
+            <BodyMap load={weekLoad} body={S.body} />
+            <BodyMapLegend />
+          </div>
+          <div className="card">
+            <h2>{t('Activity')}</h2>
+            <Heatmap S={S} onDay={iso => calendarSheet(iso)} />
+          </div>
+        </div>
+      </div>
+    })()}
   </div>
 }
