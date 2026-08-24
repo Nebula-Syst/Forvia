@@ -8,12 +8,17 @@
       on nearly every element, which flattens hierarchy — when everything shouts,
       position is the only cue left. Here weight carries meaning: 600 for a title,
       400 for its content, and size does the rest.
-   2. A NEUTRAL SURFACE RAMP. Cards are near-neutral greys a few points apart, not
-      saturated blue-greys. Colour is spent only on the accent and on status.
-   3. HAIRLINES, NOT BORDERS. Separators are sub-pixel and inset past the icon
-      rail, so a list reads as one object instead of a stack of outlined boxes.
-   4. MOTION THAT ACKNOWLEDGES, NOT ANIMATES. Presses scale ~2%, transitions run
-      140–220ms on an ease-out curve. Nothing bounces or slides for decoration.
+   2. GLASS SURFACES. Cards, sheets and controls sit on a translucent, blurred
+      layer (--glass-*) instead of a flat fill — light passes through and shows
+      what's underneath, tokenized once so dark/light/every accent stay in sync.
+   3. HAIRLINES BECOME THIN BORDERS ON GLASS. A blurred surface needs a crisp
+      edge to read as one object rather than a smear — --glass-border does that
+      job where hairline separators used to.
+   4. MOTION THAT ACKNOWLEDGES, MOSTLY. Presses still scale a few percent on
+      140–220ms ease-out; entrances (sheets, dialogs) run a touch slower
+      (--slow, 340ms) so the glass has time to read as depth, not a swap.
+      Nothing animates purely for decoration, and prefers-reduced-motion turns
+      all of it off.
    ========================================================================== */
 
 /* ---------------------------------------------------------------- tokens -- */
@@ -55,7 +60,17 @@
 
   /* motion */
   --ease:cubic-bezier(.32,.72,0,1);
-  --fast:140ms; --med:220ms;
+  --fast:140ms; --med:220ms; --slow:340ms;
+
+  /* glass — translucent surfaces, layered over the neutral ramp above */
+  --glass-blur:20px; --glass-sat:160%;
+  --glass-bg:   color-mix(in srgb, var(--surface) 62%, transparent);
+  --glass-bg-2: color-mix(in srgb, var(--surface-2) 68%, transparent);
+  --glass-border: color-mix(in srgb, var(--label) 12%, transparent);
+  --glass-sheen: linear-gradient(155deg, color-mix(in srgb, #fff 14%, transparent), transparent 40%);
+  --shadow-sm: 0 2px 8px -2px rgba(0,0,0,.25);
+  --shadow-md: 0 10px 30px -8px rgba(0,0,0,.4);
+  --shadow-lg: 0 20px 60px -12px rgba(0,0,0,.5);
 
   --sab:env(safe-area-inset-bottom,0px);
   --sat:env(safe-area-inset-top,0px);
@@ -81,6 +96,14 @@
   --purple:#af52de; --mint:#00c7be; --brown:#a2845e; --grey:#8e8e93;
   --acc-2:#248a3d;
   --on-acc:#ffffff;
+
+  --glass-bg:   color-mix(in srgb, var(--surface) 72%, transparent);
+  --glass-bg-2: color-mix(in srgb, var(--surface-2) 78%, transparent);
+  --glass-border: color-mix(in srgb, #fff 55%, var(--sep));
+  --glass-sheen: linear-gradient(155deg, color-mix(in srgb, #fff 55%, transparent), transparent 40%);
+  --shadow-sm: 0 2px 8px -2px rgba(0,0,0,.10);
+  --shadow-md: 0 10px 30px -8px rgba(0,0,0,.16);
+  --shadow-lg: 0 20px 60px -12px rgba(0,0,0,.22);
 }
 
 /* accents — Apple's system colours, so a recolour never looks off-system */
@@ -200,8 +223,13 @@ h4.sec{
 
 /* ----------------------------------------------------------------- card -- */
 .card{
-  background:var(--surface);border-radius:var(--r-card);
+  background:var(--glass-bg);background-image:var(--glass-sheen);
+  backdrop-filter:saturate(var(--glass-sat)) blur(var(--glass-blur));
+  -webkit-backdrop-filter:saturate(var(--glass-sat)) blur(var(--glass-blur));
+  border:1px solid var(--glass-border);box-shadow:var(--shadow-sm);
+  border-radius:var(--r-card);
   padding:16px;margin-bottom:12px;
+  transition:box-shadow var(--med) var(--ease),transform var(--med) var(--ease);
 }
 .card .big{font-size:30px;font-weight:600;letter-spacing:-.026em;line-height:1.1}
 
@@ -211,7 +239,13 @@ h4.sec{
   font-size:13px;font-weight:400;color:var(--label-2);
   letter-spacing:-.004em;padding:0 4px 7px;display:block;
 }
-.sect-b{background:var(--surface);border-radius:var(--r-card);overflow:hidden}
+.sect-b{
+  background:var(--glass-bg);background-image:var(--glass-sheen);
+  backdrop-filter:saturate(var(--glass-sat)) blur(var(--glass-blur));
+  -webkit-backdrop-filter:saturate(var(--glass-sat)) blur(var(--glass-blur));
+  border:1px solid var(--glass-border);box-shadow:var(--shadow-sm);
+  border-radius:var(--r-card);overflow:hidden;
+}
 .sect-f{font-size:13px;color:var(--label-2);padding:7px 4px 0;line-height:1.38}
 
 .lrow{
@@ -255,17 +289,19 @@ h4.sec{
 .btn{
   display:inline-flex;align-items:center;justify-content:center;gap:7px;width:100%;
   padding:14px 18px;border-radius:var(--r);font-size:17px;font-weight:600;
-  letter-spacing:-.012em;background:var(--surface-2);color:var(--label);
-  transition:transform var(--fast) var(--ease),background var(--fast),opacity var(--fast);
+  letter-spacing:-.012em;color:var(--label);
+  background:var(--glass-bg-2);background-image:var(--glass-sheen);
+  border:1px solid var(--glass-border);
+  transition:transform var(--fast) var(--ease),background var(--fast),opacity var(--fast),box-shadow var(--fast);
 }
 .btn .icn{font-size:19px}
 .btn:active{transform:scale(.975)}
-.btn.primary{background:var(--acc);color:var(--on-acc)}
+.btn.primary{background:var(--acc);background-image:var(--glass-sheen);color:var(--on-acc);border-color:transparent;box-shadow:var(--shadow-sm)}
 .btn.primary:active{background:var(--acc-2)}
-.btn.tinted{background:var(--acc-soft);color:var(--acc)}
-.btn.danger{background:color-mix(in srgb,var(--red) 15%,transparent);color:var(--red)}
-.btn.ghost,.btn.plain{background:none;color:var(--acc);font-weight:400}
-.btn.ghost:active,.btn.plain:active{background:var(--surface-2)}
+.btn.tinted{background:color-mix(in srgb, var(--acc-soft) 80%, var(--glass-bg-2));background-image:var(--glass-sheen);color:var(--acc);border-color:var(--acc-line)}
+.btn.danger{background:color-mix(in srgb,var(--red) 15%,transparent);color:var(--red);border-color:color-mix(in srgb,var(--red) 30%,transparent)}
+.btn.ghost,.btn.plain{background:none;background-image:none;color:var(--acc);font-weight:400;border-color:transparent}
+.btn.ghost:active,.btn.plain:active{background:var(--glass-bg-2)}
 .btn.sm{padding:8px 14px;width:auto;font-size:15px;border-radius:var(--r-sm);gap:5px}
 .btn.sm .icn{font-size:16px}
 .btn.xs{padding:5px 10px;width:auto;font-size:13px;border-radius:7px;gap:4px}
@@ -277,7 +313,8 @@ h4.sec{
   display:flex;justify-content:space-around;align-items:flex-end;
   padding:7px 6px calc(6px + var(--sab));
   background:color-mix(in srgb,var(--bg-el) 72%,transparent);
-  backdrop-filter:saturate(180%) blur(24px);-webkit-backdrop-filter:saturate(180%) blur(24px);
+  backdrop-filter:saturate(var(--glass-sat)) blur(var(--glass-blur));
+  -webkit-backdrop-filter:saturate(var(--glass-sat)) blur(var(--glass-blur));
   border-top:var(--hair) solid var(--sep-op);
 }
 :root[data-theme="light"] #tabbar{background:rgba(249,249,251,.78)}
@@ -339,11 +376,15 @@ h4.sec{
 /* ----------------------------------------------------------------- list -- */
 .list{display:flex;flex-direction:column;gap:8px}
 .item{
-  display:flex;align-items:center;gap:12px;background:var(--surface);
+  display:flex;align-items:center;gap:12px;
+  background:var(--glass-bg);
+  backdrop-filter:saturate(var(--glass-sat)) blur(var(--glass-blur));
+  -webkit-backdrop-filter:saturate(var(--glass-sat)) blur(var(--glass-blur));
+  border:1px solid var(--glass-border);
   border-radius:var(--r-card);padding:10px 12px;min-height:60px;
-  transition:background var(--fast);text-align:left;width:100%;
+  transition:background var(--fast),transform var(--fast) var(--ease);text-align:left;width:100%;
 }
-.item:active{background:var(--surface-2)}
+.item:active{background:var(--glass-bg-2);transform:scale(.99)}
 .thumb{width:50px;height:50px;border-radius:9px;object-fit:cover;background:#fff;flex:none}
 .thumb-x{
   display:flex;align-items:center;justify-content:center;font-size:21px;
@@ -367,23 +408,24 @@ h4.sec{
 }
 .chips::-webkit-scrollbar{display:none}
 .chip{
-  flex:none;padding:6px 13px;border-radius:99px;background:var(--surface);
+  flex:none;padding:6px 13px;border-radius:99px;
+  background:var(--glass-bg-2);border:1px solid var(--glass-border);
   font-size:14px;font-weight:400;color:var(--label);text-transform:capitalize;
-  letter-spacing:-.006em;transition:background var(--fast),color var(--fast);
+  letter-spacing:-.006em;transition:background var(--fast),color var(--fast),transform var(--fast) var(--ease);
 }
-.chip:active{background:var(--surface-2)}
-.chip.on{background:var(--acc);color:var(--on-acc);font-weight:500}
+.chip:active{background:var(--surface-2);transform:scale(.96)}
+.chip.on{background:var(--acc);color:var(--on-acc);font-weight:500;border-color:transparent}
 
 /* =========================== CONTROLS ==================================== */
 
 /* --- text field --- */
 .field,.input{
-  width:100%;background:var(--surface);border:none;border-radius:var(--r);
+  width:100%;background:var(--glass-bg-2);border:1px solid var(--glass-border);border-radius:var(--r);
   padding:13px 15px;font-size:17px;letter-spacing:-.012em;outline:none;
-  transition:box-shadow var(--fast);
+  transition:box-shadow var(--fast),border-color var(--fast);
 }
 .field::placeholder,.input::placeholder{color:var(--label-3)}
-.field:focus,.input:focus{box-shadow:inset 0 0 0 2px var(--acc)}
+.field:focus,.input:focus{box-shadow:inset 0 0 0 2px var(--acc);border-color:transparent}
 .field.area,textarea.input{min-height:92px;resize:vertical;line-height:1.42}
 .exnote{
   background:var(--surface);border-radius:var(--r);padding:13px 15px;
@@ -419,8 +461,8 @@ h4.sec{
   transition:background var(--med) var(--ease);
 }
 .sw .knob{
-  width:27px;height:27px;border-radius:50%;background:#fff;
-  box-shadow:0 3px 8px rgba(0,0,0,.15),0 1px 1px rgba(0,0,0,.16);
+  width:27px;height:27px;border-radius:50%;background:#fff;background-image:var(--glass-sheen);
+  box-shadow:var(--shadow-sm),0 1px 1px rgba(0,0,0,.16);
   transition:transform var(--med) var(--ease),width var(--fast) var(--ease);
 }
 .sw.on{background:var(--acc)}
@@ -444,8 +486,8 @@ h4.sec{
   position:absolute;z-index:0;top:2px;bottom:2px;left:2px;
   width:calc((100% - 4px)/var(--n));
   transform:translateX(calc(100% * var(--i)));
-  background:var(--surface);border-radius:7px;
-  box-shadow:0 3px 8px rgba(0,0,0,.12),0 1px 1px rgba(0,0,0,.06);
+  background:var(--surface);background-image:var(--glass-sheen);border-radius:7px;
+  box-shadow:var(--shadow-sm),0 1px 1px rgba(0,0,0,.06);
   transition:transform var(--med) var(--ease);
 }
 :root[data-theme="light"] .seg-sel{background:#fff}
@@ -475,15 +517,16 @@ h4.sec{
 .stp-w{display:flex;flex-direction:column;gap:6px;min-width:0}
 .stp-l{font-size:13px;color:var(--label-2);text-align:center}
 .stp{
-  display:flex;align-items:center;background:var(--surface-2);
+  display:flex;align-items:center;
+  background:var(--glass-bg-2);border:1px solid var(--glass-border);
   border-radius:10px;overflow:hidden;min-width:0;
 }
 .stp button{
   width:40px;height:44px;flex:none;color:var(--label);font-size:16px;
   display:flex;align-items:center;justify-content:center;
-  transition:background var(--fast);--icon-stroke:2.2;
+  transition:background var(--fast),transform var(--fast) var(--ease);--icon-stroke:2.2;
 }
-.stp button:active{background:var(--surface-3)}
+.stp button:active{background:var(--acc-soft);color:var(--acc);transform:scale(.88)}
 .stp .val{
   flex:1;min-width:0;display:flex;align-items:baseline;justify-content:center;gap:3px;padding:0 2px;
 }
@@ -503,10 +546,10 @@ h4.sec{
 }
 .sld-fill{display:block;height:100%;background:var(--acc);border-radius:99px}
 .sld-knob{
-  position:absolute;width:26px;height:26px;border-radius:50%;background:#fff;
+  position:absolute;width:26px;height:26px;border-radius:50%;background:#fff;background-image:var(--glass-sheen);
   transform:translateX(-50%);
-  box-shadow:0 4px 10px rgba(0,0,0,.22),0 1px 2px rgba(0,0,0,.16);
-  transition:transform var(--fast) var(--ease);
+  box-shadow:var(--shadow-md),0 1px 2px rgba(0,0,0,.16);
+  transition:transform var(--fast) var(--ease),box-shadow var(--fast) var(--ease);
 }
 .sld.dragging .sld-knob{transform:translateX(-50%) scale(1.14)}
 
@@ -514,11 +557,11 @@ h4.sec{
 .chk,.ck{
   width:30px;height:30px;border-radius:50%;flex:none;
   display:flex;align-items:center;justify-content:center;
-  background:none;box-shadow:inset 0 0 0 1.8px var(--label-4);color:transparent;
-  transition:background var(--fast),box-shadow var(--fast),color var(--fast),transform var(--fast);
+  background:var(--glass-bg-2);box-shadow:inset 0 0 0 1.8px var(--label-4);color:transparent;
+  transition:background var(--fast),box-shadow var(--fast),color var(--fast),transform var(--fast) var(--ease);
 }
 .chk .icn{font-size:16px;--icon-stroke:2.6}
-.chk.on{background:var(--acc);box-shadow:none;color:var(--on-acc)}
+.chk.on{background:var(--acc);background-image:var(--glass-sheen);box-shadow:none;color:var(--on-acc)}
 .chk:active,.ck:active{transform:scale(.9)}
 .ck svg{
   width:16px;height:16px;stroke:transparent;fill:none;stroke-width:2.6;
@@ -613,17 +656,19 @@ h4.sec{
   position:fixed;left:12px;right:12px;bottom:calc(88px + var(--sab));z-index:60;
   /* nearly opaque: the set rows underneath were reading through the old 82% and made the
      clock hard to pick out mid-set. The blur stays, so it still sits above the page. */
-  background:color-mix(in srgb,var(--surface) 97%,transparent);
-  backdrop-filter:saturate(180%) blur(24px);-webkit-backdrop-filter:saturate(180%) blur(24px);
+  background:color-mix(in srgb,var(--surface) 97%,transparent);background-image:var(--glass-sheen);
+  backdrop-filter:saturate(var(--glass-sat)) blur(var(--glass-blur));
+  -webkit-backdrop-filter:saturate(var(--glass-sat)) blur(var(--glass-blur));
+  border:1px solid var(--glass-border);
   border-radius:var(--r-lg);padding:12px 14px;
   display:flex;align-items:center;gap:12px;
-  box-shadow:0 12px 34px -8px rgba(0,0,0,.55);
+  box-shadow:var(--shadow-lg);
   animation:slideup var(--med) var(--ease);
 }
 @keyframes slideup{from{transform:translateY(16px);opacity:0}to{transform:none;opacity:1}}
 #timer .t{font-size:26px;font-weight:600;letter-spacing:-.026em;font-variant-numeric:tabular-nums;min-width:66px}
 #timer .bar{flex:1;height:4px;background:var(--surface-3);border-radius:99px;overflow:hidden}
-#timer .bar i{display:block;height:100%;background:var(--acc);transition:width 1s linear}
+#timer .bar i{display:block;height:100%;background:var(--acc);transition:width 1s var(--ease)}
 /* rest variant: −15/+15/Skip and the clock won't share one line on a phone, so the clock and
    bar take the top row and the controls take their own. The work timer keeps a single row —
    it only ever has two buttons. */
@@ -651,24 +696,31 @@ h4.sec{
   touch-action:none;overscroll-behavior:none;
 }
 .sheet{
-  position:absolute;left:0;right:0;bottom:0;background:var(--bg-el);
+  position:absolute;left:0;right:0;bottom:0;
+  background:var(--glass-bg);background-image:var(--glass-sheen);
+  backdrop-filter:saturate(var(--glass-sat)) blur(var(--glass-blur));
+  -webkit-backdrop-filter:saturate(var(--glass-sat)) blur(var(--glass-blur));
+  border-top:1px solid var(--glass-border);
   border-radius:var(--r-xl) var(--r-xl) 0 0;
   padding:8px 18px calc(20px + var(--sab));
   max-height:90vh;overflow-y:auto;-webkit-overflow-scrolling:touch;
-  animation:sheetup .34s var(--ease);
+  animation:sheetup var(--slow) var(--ease);
   overscroll-behavior:contain;touch-action:pan-y;will-change:transform;
 }
-:root[data-theme="light"] .sheet{background:var(--bg)}
 @keyframes sheetup{from{transform:translateY(100%)}to{transform:none}}
 .sheet .grab{width:36px;height:5px;border-radius:99px;background:var(--label-4);margin:6px auto 14px}
 .sheet h3{font-size:20px;font-weight:600;letter-spacing:-.021em;margin-bottom:14px}
 .center{
   position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);
-  width:min(84vw,300px);background:var(--bg-el);border-radius:var(--r-lg);padding:20px;
-  box-shadow:0 20px 60px -12px rgba(0,0,0,.5);
-  animation:pop .28s var(--ease);
+  width:min(84vw,300px);
+  background:var(--glass-bg);background-image:var(--glass-sheen);
+  backdrop-filter:saturate(var(--glass-sat)) blur(var(--glass-blur));
+  -webkit-backdrop-filter:saturate(var(--glass-sat)) blur(var(--glass-blur));
+  border:1px solid var(--glass-border);
+  border-radius:var(--r-lg);padding:20px;
+  box-shadow:var(--shadow-lg);
+  animation:pop var(--slow) var(--ease);
 }
-:root[data-theme="light"] .center{background:#fff}
 @keyframes pop{from{transform:translate(-50%,-50%) scale(.94);opacity:0}to{transform:translate(-50%,-50%) scale(1);opacity:1}}
 
 /* --- RIR/RPE conversion table (effort help sheet) ---
@@ -676,7 +728,12 @@ h4.sec{
    tabular columns you can read straight down, and the words take whatever is left. Built out
    of the same grouped-list parts as the rest of the app (surface fill, inset hairlines) rather
    than a real <table>, so it inherits the card look and wraps properly on a narrow phone. */
-.efftbl{background:var(--surface);border-radius:var(--r-lg);overflow:hidden;margin:14px 0 12px}
+.efftbl{
+  background:var(--glass-bg);border:1px solid var(--glass-border);
+  backdrop-filter:saturate(var(--glass-sat)) blur(var(--glass-blur));
+  -webkit-backdrop-filter:saturate(var(--glass-sat)) blur(var(--glass-blur));
+  border-radius:var(--r-lg);overflow:hidden;margin:14px 0 12px;
+}
 .efftbl .r{display:flex;align-items:center;gap:10px;padding:10px 14px;position:relative}
 .efftbl .r+.r::before{
   content:'';position:absolute;left:14px;right:0;top:0;height:var(--hair);background:var(--sep);
@@ -700,9 +757,12 @@ h4.sec{
 /* --- glyph picker (replaces the emoji grid) --- */
 .glyph-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:9px}
 .glyph-cell{
-  aspect-ratio:1;border-radius:13px;background:var(--surface);
+  aspect-ratio:1;border-radius:13px;
+  background:var(--glass-bg);border:1px solid var(--glass-border);
+  backdrop-filter:saturate(var(--glass-sat)) blur(var(--glass-blur));
+  -webkit-backdrop-filter:saturate(var(--glass-sat)) blur(var(--glass-blur));
   display:flex;align-items:center;justify-content:center;font-size:24px;
-  color:var(--label);transition:background var(--fast),color var(--fast),transform var(--fast);
+  color:var(--label);transition:background var(--fast),color var(--fast),transform var(--fast) var(--ease);
 }
 .glyph-cell:active{transform:scale(.92)}
 .glyph-cell.on{background:var(--acc);color:var(--on-acc)}
@@ -750,12 +810,15 @@ h4.sec{
 .hm-days span{height:11px;font-size:10px;color:var(--label-2);line-height:11px}
 .hm-grid{display:flex;gap:3px}
 .hm-col{display:flex;flex-direction:column;gap:3px}
-.hm-c{width:11px;height:11px;border-radius:3px;background:var(--surface-2);flex:none}
+.hm-c{width:11px;height:11px;border-radius:3px;background:var(--surface-2);flex:none;transition:filter var(--fast) var(--ease)}
 .hm-c.l1{background:color-mix(in srgb,var(--acc) 30%,var(--surface-2))}
 .hm-c.l2{background:color-mix(in srgb,var(--acc) 55%,var(--surface-2))}
 .hm-c.l3{background:color-mix(in srgb,var(--acc) 78%,var(--surface-2))}
 .hm-c.l4{background:var(--acc)}
 .hm-c.today{box-shadow:0 0 0 1.5px var(--acc)}
+@media (hover:hover){
+  .hm-c.l1:hover,.hm-c.l2:hover,.hm-c.l3:hover,.hm-c.l4:hover{filter:drop-shadow(0 0 4px var(--acc))}
+}
 .hm-c.future{opacity:.3}
 .hm-legend{
   display:flex;align-items:center;gap:4px;justify-content:flex-end;margin-top:9px;
@@ -775,11 +838,12 @@ h4.sec{
 .bm-v{flex:1;min-width:0;height:auto;max-height:min(46vh,340px)}
 .bm-ph{height:200px}                       /* holds the space while the geometry loads */
 .bm-sil{fill:color-mix(in srgb,var(--label) 18%,var(--surface))}
-.bm-m{fill:var(--bm-base);transition:fill var(--med) var(--ease)}
+.bm-m{fill:var(--bm-base);transition:fill var(--med) var(--ease),filter var(--med) var(--ease)}
 .bm-m.l1{fill:color-mix(in srgb,var(--acc) 32%,var(--bm-base))}
 .bm-m.l2{fill:color-mix(in srgb,var(--acc) 56%,var(--bm-base))}
-.bm-m.l3{fill:color-mix(in srgb,var(--acc) 78%,var(--bm-base))}
-.bm-m.l4{fill:var(--acc)}
+.bm-m.l3{fill:color-mix(in srgb,var(--acc) 78%,var(--bm-base));filter:drop-shadow(0 0 3px color-mix(in srgb,var(--acc) 45%,transparent))}
+.bm-m.l4{fill:var(--acc);filter:drop-shadow(0 0 6px color-mix(in srgb,var(--acc) 60%,transparent))}
+@media (hover:hover){ .bm-m:hover{filter:drop-shadow(0 0 5px var(--acc))} }
 /* Fatigue view: attention ramp - fatigued muscles highlighted (owner tweak 2026-08-06) */
 .hm-fatigue .bm-m.l4{fill:var(--red)}
 .hm-fatigue .bm-m.l3{fill:var(--orange)}
@@ -812,7 +876,13 @@ h4.sec{
 
 /* --- stat tiles --- */
 .tiles{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px}
-.tile{background:var(--surface);border-radius:var(--r-card);padding:14px}
+.tile{
+  background:var(--glass-bg);border:1px solid var(--glass-border);
+  backdrop-filter:saturate(var(--glass-sat)) blur(var(--glass-blur));
+  -webkit-backdrop-filter:saturate(var(--glass-sat)) blur(var(--glass-blur));
+  border-radius:var(--r-card);padding:14px;
+  transition:background var(--fast),transform var(--fast) var(--ease);
+}
 .tile .l{
   color:var(--label-2);font-size:13px;font-weight:400;letter-spacing:-.004em;
   text-transform:none;display:flex;align-items:center;gap:5px;
@@ -834,9 +904,11 @@ h4.sec{
   position:fixed;left:50%;transform:translateX(-50%) translateY(6px);
   bottom:calc(96px + var(--sab));z-index:200;
   background:color-mix(in srgb,var(--surface-2) 88%,transparent);
-  backdrop-filter:saturate(180%) blur(20px);-webkit-backdrop-filter:saturate(180%) blur(20px);
+  backdrop-filter:saturate(var(--glass-sat)) blur(var(--glass-blur));
+  -webkit-backdrop-filter:saturate(var(--glass-sat)) blur(var(--glass-blur));
+  border:1px solid var(--glass-border);
   border-radius:99px;padding:11px 20px;font-size:15px;font-weight:500;
-  box-shadow:0 10px 30px -6px rgba(0,0,0,.5);
+  box-shadow:var(--shadow-md);
   opacity:0;pointer-events:none;transition:opacity var(--med),transform var(--med) var(--ease);
   max-width:88vw;text-align:center;
 }
@@ -855,11 +927,11 @@ h4.sec{
 .cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:5px;margin-top:10px}
 .cal-h{text-align:center;font-size:11px;color:var(--label-3);font-weight:500;text-transform:uppercase;padding:2px 0}
 .cal-d{
-  aspect-ratio:1;border-radius:10px;background:var(--surface);
+  aspect-ratio:1;border-radius:10px;background:var(--glass-bg-2);
   display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;
-  font-weight:400;font-size:15px;color:var(--label);transition:background var(--fast);
+  font-weight:400;font-size:15px;color:var(--label);transition:background var(--fast),transform var(--fast) var(--ease);
 }
-.cal-d:active{background:var(--surface-2)}
+.cal-d:active{background:var(--surface-2);transform:scale(.94)}
 .cal-d.has{background:var(--acc-soft);color:var(--acc)}
 .cal-d.today{box-shadow:inset 0 0 0 1.8px var(--acc)}
 .cal-d i{width:5px;height:5px;border-radius:50%;background:transparent}
@@ -871,9 +943,18 @@ h4.sec{
 
 /* --- accent swatches --- */
 .swatches{display:flex;gap:12px;flex-wrap:wrap}
-.swatch{width:32px;height:32px;border-radius:50%;flex:none;position:relative;transition:transform var(--fast)}
+.swatch{
+  width:32px;height:32px;border-radius:50%;flex:none;position:relative;
+  background-image:var(--glass-sheen);box-shadow:var(--shadow-sm);
+  transition:transform var(--fast) var(--ease),box-shadow var(--med) var(--ease);
+}
 .swatch:active{transform:scale(.9)}
-.swatch.on::after{content:'';position:absolute;inset:-4px;border-radius:50%;box-shadow:0 0 0 2px var(--label)}
+.swatch.on{transform:scale(1.08)}
+.swatch.on::after{
+  content:'';position:absolute;inset:-5px;border-radius:50%;
+  box-shadow:0 0 0 2px var(--label),0 0 12px -1px var(--label-2);
+  transition:box-shadow var(--med) var(--ease);
+}
 
 /* --- supersets --- */
 .ss-label{
@@ -896,10 +977,12 @@ h4.sec{
 /* --- home: today's session row --- */
 .today-row{
   display:flex;align-items:center;justify-content:space-between;gap:10px;
-  margin-top:12px;padding:12px 14px;border-radius:var(--r);background:var(--surface-2);
-  transition:background var(--fast);width:100%;text-align:left;
+  margin-top:12px;padding:12px 14px;border-radius:var(--r);
+  background:color-mix(in srgb, var(--acc-soft) 55%, var(--glass-bg-2));
+  border:1px solid var(--acc-line);
+  transition:background var(--fast),transform var(--fast) var(--ease);width:100%;text-align:left;
 }
-.today-row:active{background:var(--surface-3)}
+.today-row:active{background:var(--acc-soft);transform:scale(.99)}
 .today-row .lbl2{font-size:11px;font-weight:500;letter-spacing:.03em;text-transform:uppercase;color:var(--label-3)}
 .today-row .ttl{
   font-weight:500;font-size:17px;line-height:1.25;text-transform:capitalize;
