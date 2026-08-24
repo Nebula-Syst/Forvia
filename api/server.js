@@ -1,20 +1,14 @@
-/* opengym-api — passkey (WebAuthn) auth + per-user state storage for openGym
+/* opengym-api — username/password auth + per-user state storage for openGym
    No framework, JSON-file storage, signed session cookies.               */
 import http from 'node:http';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
-import {
-  generateRegistrationOptions, verifyRegistrationResponse,
-  generateAuthenticationOptions, verifyAuthenticationResponse
-} from '@simplewebauthn/server';
 import webpush from 'web-push';
 
 const PORT = +(process.env.PORT || 3000);
 const DATA = process.env.DATA_DIR || '/data';
-const RP_ID = process.env.RP_ID || 'localhost';
 const ORIGIN = process.env.ORIGIN || 'http://localhost:8080';
-const RP_NAME = process.env.RP_NAME || 'openGym';
 // Admin dashboard (issue): admins are matched by uid; INVITE_ONLY gates new signups behind a
 // code the admin generates. Both default off so a fresh self-hosted instance stays open.
 const ADMIN_UIDS = (process.env.ADMIN_UIDS || '').split(',').map(s => s.trim()).filter(Boolean);
@@ -41,17 +35,15 @@ if (!fs.existsSync(secretFile)) fs.writeFileSync(secretFile, crypto.randomBytes(
 const SECRET = fs.readFileSync(secretFile, 'utf8').trim();
 
 const dbFile = path.join(DATA, 'db.json');
-let db = { users: [], creds: [], subs: [], invites: [] };
+let db = { users: [], subs: [], invites: [] };
 try { db = JSON.parse(fs.readFileSync(dbFile, 'utf8')); } catch {}
 db.subs = db.subs || [];
 db.invites = db.invites || [];
 const isAdmin = user => !!user && (user.admin === true || ADMIN_UIDS.includes(user.id));
 // The shape sent to the client for "who am I" — never the password hash/salt, just enough to
-// know a password exists and what username to prefill when changing it.
+// know what username to prefill when changing it.
 const publicUser = user => ({
-  id: user.id, name: user.name, admin: isAdmin(user),
-  hasPassword: !!user.pwd, username: user.pwd?.username || null,
-  hasPasskey: db.creds.some(c => c.userId === user.id)
+  id: user.id, name: user.name, admin: isAdmin(user), username: user.pwd?.username || null
 });
 function saveDb() { atomicWrite(dbFile, JSON.stringify(db, null, 2)); }
 function atomicWrite(file, content) {
@@ -214,7 +206,7 @@ function sessionCookie(user) {
 }
 const clearCookie = `gymsid=; Path=/; Max-Age=0; HttpOnly;${SECURE} SameSite=Lax`;
 
-/* ---------- password login (opt-in, alongside passkeys) ---------- */
+/* ---------- password login ---------- */
 // scrypt, not bcrypt: Node ships it, so password login doesn't add a third dependency to a
 // project that advertises having only two. 64-byte derived key, per-user random salt.
 function hashPassword(password) {
@@ -231,21 +223,6 @@ const findByUsername = name => {
   const norm = String(name || '').trim().toLowerCase();
   return norm ? db.users.find(u => u.pwd?.username?.toLowerCase() === norm) : null;
 };
-
-/* ---------- challenge store (in-memory, 5 min TTL) ---------- */
-const challenges = new Map(); // cid -> {challenge, name?, uid?, exp}
-function putChallenge(data) {
-  const cid = crypto.randomBytes(16).toString('base64url');
-  challenges.set(cid, { ...data, exp: Date.now() + 5 * 60000 });
-  return cid;
-}
-function takeChallenge(cid) {
-  const c = challenges.get(cid);
-  challenges.delete(cid);
-  if (!c || c.exp < Date.now()) return null;
-  return c;
-}
-setInterval(() => { for (const [k, v] of challenges) if (v.exp < Date.now()) challenges.delete(k); }, 60000).unref();
 
 /* ---------- helpers ---------- */
 function json(res, code, obj, extraHeaders) {
@@ -268,8 +245,6 @@ function readBody(req) {
     req.on('error', reject);
   });
 }
-const b64uToBuf = s => Buffer.from(s, 'base64url');
-
 /* ---------- live presence (in-memory) ---------- */
 // Clients heartbeat /api/activity while a workout is on screen; the admin dashboard reads who's
 // live. Purely ephemeral — never persisted. Expires shortly after the last ping.
@@ -387,84 +362,7 @@ const routes = {
     json(res, 200, { user: publicUser(user) });
   },
 
-  'POST /api/register/options': async (req, res) => {
-    const body = await readBody(req);
-    const name = String(body.name || '').trim().slice(0, 40);
-    if (!name) return json(res, 400, { error: 'name required' });
-    const code = String(body.code || '').trim().toUpperCase();
-    if (INVITE_ONLY && !db.invites.some(i => i.code === code && !i.usedBy && !i.revoked)) {
-      // The rejected code itself is never recorded — a near-miss guess in the log is a liability.
-      audit(req, 'auth.register.denied', { ok: false, name, msg: 'invite-rejected' });
-      return json(res, 403, { error: 'a valid invite code is required' });
-    }
-    const uid = crypto.randomBytes(12).toString('base64url');
-    const options = await generateRegistrationOptions({
-      rpName: RP_NAME, rpID: RP_ID,
-      userID: Buffer.from(uid), userName: name, userDisplayName: name,
-      attestationType: 'none',
-      authenticatorSelection: { residentKey: 'required', userVerification: 'preferred' },
-      excludeCredentials: []
-    });
-    const cid = putChallenge({ challenge: options.challenge, name, uid, code });
-    json(res, 200, { cid, options });
-  },
-
-  'POST /api/register/verify': async (req, res) => {
-    const body = await readBody(req);
-    const c = takeChallenge(body.cid);
-    if (!c || !c.uid) {
-      audit(req, 'auth.register.fail', { ok: false, msg: 'challenge-expired' });
-      return json(res, 400, { error: 'challenge expired — try again' });
-    }
-    let verification;
-    try {
-      verification = await verifyRegistrationResponse({
-        response: body.credential,
-        expectedChallenge: c.challenge,
-        expectedOrigin: ORIGIN,
-        expectedRPID: RP_ID,
-        requireUserVerification: false
-      });
-    } catch (e) {
-      // e.message can echo attacker-supplied response fields, so only the reason code is kept.
-      audit(req, 'auth.register.fail', { ok: false, name: c.name, msg: 'verify-error' });
-      return json(res, 400, { error: 'verification failed: ' + e.message });
-    }
-    if (!verification.verified) {
-      audit(req, 'auth.register.fail', { ok: false, name: c.name, msg: 'not-verified' });
-      return json(res, 400, { error: 'not verified' });
-    }
-    const { credential } = verification.registrationInfo;
-    if (db.creds.find(x => x.id === credential.id)) {
-      audit(req, 'auth.register.fail', { ok: false, name: c.name, msg: 'credential-exists' });
-      return json(res, 409, { error: 'credential already registered' });
-    }
-    // Re-check the invite at the last moment (it may have been used/revoked since options), then burn it.
-    let invite = null;
-    if (INVITE_ONLY) {
-      invite = db.invites.find(i => i.code === c.code && !i.usedBy && !i.revoked);
-      if (!invite) {
-        audit(req, 'auth.register.fail', { ok: false, name: c.name, msg: 'invite-invalid' });
-        return json(res, 403, { error: 'invite code is no longer valid — ask for a new one' });
-      }
-    }
-    const user = { id: c.uid, name: c.name, created: new Date().toISOString() };
-    if (invite) { user.invitedBy = invite.code; invite.usedBy = user.id; invite.usedAt = user.created; }
-    db.users.push(user);
-    db.creds.push({
-      id: credential.id, userId: user.id,
-      publicKey: Buffer.from(credential.publicKey).toString('base64url'),
-      counter: credential.counter || 0,
-      transports: body.credential?.response?.transports || []
-    });
-    saveDb();
-    audit(req, 'auth.register.ok', { user, msg: invite ? invite.code : null });
-    json(res, 200, { user: publicUser(user) }, { 'Set-Cookie': sessionCookie(user) });
-  },
-
-  // Password-only signup — no passkey involved. Same invite gate as passkey registration, same
-  // shape of user record, just with .pwd instead of a db.creds entry.
-  'POST /api/register/password': async (req, res) => {
+  'POST /api/register': async (req, res) => {
     const body = await readBody(req);
     const name = String(body.name || '').trim().slice(0, 40);
     const username = String(body.username || '').trim();
@@ -487,83 +385,24 @@ const routes = {
     if (invite) { user.invitedBy = invite.code; invite.usedBy = user.id; invite.usedAt = user.created; }
     db.users.push(user);
     saveDb();
-    audit(req, 'auth.password.register.ok', { user, msg: invite ? invite.code : null });
+    audit(req, 'auth.register.ok', { user, msg: invite ? invite.code : null });
     json(res, 200, { user: publicUser(user) }, { 'Set-Cookie': sessionCookie(user) });
   },
 
-  'POST /api/login/options': async (req, res) => {
-    const options = await generateAuthenticationOptions({
-      rpID: RP_ID, userVerification: 'preferred', allowCredentials: []
-    });
-    const cid = putChallenge({ challenge: options.challenge });
-    json(res, 200, { cid, options });
-  },
-
-  'POST /api/login/verify': async (req, res) => {
+  'POST /api/login': async (req, res) => {
     const body = await readBody(req);
-    const c = takeChallenge(body.cid);
-    if (!c) {
-      audit(req, 'auth.login.fail', { ok: false, msg: 'challenge-expired' });
-      return json(res, 400, { error: 'challenge expired — try again' });
-    }
-    const cred = db.creds.find(x => x.id === body.credential?.id);
-    if (!cred) {
-      // No credential id goes in the log: it is a stable handle for one passkey, and recording it
-      // would let an admin correlate an unknown device across attempts. Nothing here identifies
-      // the caller beyond the timestamp (and the network, if AUDIT_IP is on).
-      audit(req, 'auth.login.fail', { ok: false, msg: 'unknown-credential' });
-      return json(res, 404, { error: 'unknown passkey — create a profile first' });
-    }
-    let verification;
-    try {
-      verification = await verifyAuthenticationResponse({
-        response: body.credential,
-        expectedChallenge: c.challenge,
-        expectedOrigin: ORIGIN,
-        expectedRPID: RP_ID,
-        requireUserVerification: false,
-        credential: {
-          id: cred.id,
-          publicKey: b64uToBuf(cred.publicKey),
-          counter: cred.counter,
-          transports: cred.transports
-        }
-      });
-    } catch (e) {
-      audit(req, 'auth.login.fail', { ok: false, user: db.users.find(u => u.id === cred.userId), uid: cred.userId, msg: 'verify-error' });
-      return json(res, 400, { error: 'verification failed: ' + e.message });
-    }
-    if (!verification.verified) {
-      audit(req, 'auth.login.fail', { ok: false, user: db.users.find(u => u.id === cred.userId), uid: cred.userId, msg: 'not-verified' });
-      return json(res, 400, { error: 'not verified' });
-    }
-    cred.counter = verification.authenticationInfo.newCounter;
-    saveDb();
-    const user = db.users.find(u => u.id === cred.userId);
-    if (!user) {
-      audit(req, 'auth.login.fail', { ok: false, uid: cred.userId, msg: 'user-missing' });
-      return json(res, 500, { error: 'user missing' });
-    }
-    if (user.disabled) {
-      audit(req, 'auth.login.fail', { ok: false, user, msg: 'account-disabled' });
-      return json(res, 403, { error: 'this account has been disabled' });
-    }
+    const user = findByUsername(body.username);
+    // Same generic error either way — a username is guessable, so "no such user" vs "wrong
+    // password" would let an attacker enumerate accounts.
+    const fail = msg => { audit(req, 'auth.login.fail', { ok: false, uid: user?.id, msg }); return json(res, 401, { error: 'incorrect username or password' }) }
+    if (!user || !verifyPassword(String(body.password || ''), user.pwd.salt, user.pwd.hash)) return fail(user ? 'bad-password' : 'unknown-username');
+    if (user.disabled) { audit(req, 'auth.login.fail', { ok: false, user, msg: 'account-disabled' }); return json(res, 403, { error: 'this account has been disabled' }) }
     audit(req, 'auth.login.ok', { user });
     json(res, 200, { user: publicUser(user) }, { 'Set-Cookie': sessionCookie(user) });
   },
 
-  'POST /api/login/password': async (req, res) => {
-    const body = await readBody(req);
-    const user = findByUsername(body.username);
-    // Same generic error either way — unlike the passkey routes, a username is guessable, so
-    // "no such user" vs "wrong password" would let an attacker enumerate accounts.
-    const fail = msg => { audit(req, 'auth.password.login.fail', { ok: false, uid: user?.id, msg }); return json(res, 401, { error: 'incorrect username or password' }) }
-    if (!user || !verifyPassword(String(body.password || ''), user.pwd.salt, user.pwd.hash)) return fail(user ? 'bad-password' : 'unknown-username');
-    if (user.disabled) { audit(req, 'auth.password.login.fail', { ok: false, user, msg: 'account-disabled' }); return json(res, 403, { error: 'this account has been disabled' }) }
-    audit(req, 'auth.password.login.ok', { user });
-    json(res, 200, { user: publicUser(user) }, { 'Set-Cookie': sessionCookie(user) });
-  },
-
+  // Change username/password for the signed-in account. No "remove" route: with password as the
+  // only way in, deleting it would lock the account out — this only ever replaces it.
   'POST /api/password/set': async (req, res) => {
     const user = readSession(req);
     if (!user) return json(res, 401, { error: 'not signed in' });
@@ -577,15 +416,6 @@ const routes = {
     user.pwd = { username, ...hashPassword(password) };
     saveDb();
     audit(req, 'auth.password.set', { user });
-    json(res, 200, { user: publicUser(user) });
-  },
-
-  'POST /api/password/remove': async (req, res) => {
-    const user = readSession(req);
-    if (!user) return json(res, 401, { error: 'not signed in' });
-    delete user.pwd;
-    saveDb();
-    audit(req, 'auth.password.remove', { user });
     json(res, 200, { user: publicUser(user) });
   },
 
@@ -758,9 +588,9 @@ const routes = {
     const body = await readBody(req);
     let code;
     // 16 hex chars = 64 bits, up from 8 chars / 32 bits. The app has no rate limiting by design
-    // (that's the reverse proxy's job) and /api/register/options tells a caller whether a code is
-    // good, so the code itself has to be the thing that isn't worth guessing. Codes already in
-    // db.json keep working — validation is an exact string compare, never a length or format check.
+    // (that's the reverse proxy's job) and /api/register tells a caller whether a code is good, so
+    // the code itself has to be the thing that isn't worth guessing. Codes already in db.json keep
+    // working — validation is an exact string compare, never a length or format check.
     do { code = crypto.randomBytes(8).toString('hex').toUpperCase(); } while (db.invites.some(i => i.code === code));
     const invite = { code, note: String(body.note || '').slice(0, 60), createdBy: admin.id, created: new Date().toISOString() };
     db.invites.push(invite);
@@ -828,4 +658,4 @@ http.createServer(async (req, res) => {
     console.error(key, e);
     if (!res.headersSent) json(res, 500, { error: 'server error' });
   }
-}).listen(PORT, () => console.log(`gym-api on :${PORT} (rpID=${RP_ID}, origin=${ORIGIN})`));
+}).listen(PORT, () => console.log(`gym-api on :${PORT} (origin=${ORIGIN})`));
