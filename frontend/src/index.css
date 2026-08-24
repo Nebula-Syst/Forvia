@@ -54,7 +54,7 @@
   --acc-line: color-mix(in srgb, var(--acc) 38%, transparent);
 
   /* geometry */
-  --r-sm:8px; --r:12px; --r-lg:16px; --r-xl:22px; --r-card:14px;
+  --r-sm:10px; --r:14px; --r-lg:20px; --r-xl:28px; --r-card:18px;
   --pad:16px;
   --icon-stroke:1.7;
 
@@ -63,17 +63,21 @@
   --fast:140ms; --med:220ms; --slow:340ms;
 
   /* glass — translucent surfaces, layered over the neutral ramp above */
-  --glass-blur:20px; --glass-sat:160%;
-  --glass-bg:   color-mix(in srgb, var(--surface) 62%, transparent);
-  --glass-bg-2: color-mix(in srgb, var(--surface-2) 68%, transparent);
-  --glass-border: color-mix(in srgb, var(--label) 12%, transparent);
-  --glass-sheen: linear-gradient(155deg, color-mix(in srgb, #fff 14%, transparent), transparent 40%);
-  --shadow-sm: 0 2px 8px -2px rgba(0,0,0,.25);
-  --shadow-md: 0 10px 30px -8px rgba(0,0,0,.4);
-  --shadow-lg: 0 20px 60px -12px rgba(0,0,0,.5);
+  --glass-blur:26px; --glass-sat:180%;
+  --glass-bg:   color-mix(in srgb, var(--surface) 56%, transparent);
+  --glass-bg-2: color-mix(in srgb, var(--surface-2) 64%, transparent);
+  --glass-border: color-mix(in srgb, var(--label) 20%, transparent);
+  --glass-highlight: rgba(255,255,255,.16);
+  --glass-sheen: linear-gradient(155deg, color-mix(in srgb, #fff 16%, transparent), transparent 45%);
+  --shadow-sm: 0 2px 8px -2px rgba(0,0,0,.25), inset 0 1px 0 var(--glass-highlight);
+  --shadow-md: 0 10px 30px -8px rgba(0,0,0,.4), inset 0 1px 0 var(--glass-highlight);
+  --shadow-lg: 0 20px 60px -12px rgba(0,0,0,.5), inset 0 1px 0 var(--glass-highlight);
 
   --sab:env(safe-area-inset-bottom,0px);
   --sat:env(safe-area-inset-top,0px);
+
+  /* ambient background glow strength — dark can take saturated colour */
+  --glow-1:38%; --glow-2:26%; --glow-3:24%; --glow-4:16%;
 }
 
 :root[data-theme="light"] {
@@ -97,13 +101,16 @@
   --acc-2:#248a3d;
   --on-acc:#ffffff;
 
-  --glass-bg:   color-mix(in srgb, var(--surface) 72%, transparent);
-  --glass-bg-2: color-mix(in srgb, var(--surface-2) 78%, transparent);
-  --glass-border: color-mix(in srgb, #fff 55%, var(--sep));
-  --glass-sheen: linear-gradient(155deg, color-mix(in srgb, #fff 55%, transparent), transparent 40%);
-  --shadow-sm: 0 2px 8px -2px rgba(0,0,0,.10);
-  --shadow-md: 0 10px 30px -8px rgba(0,0,0,.16);
-  --shadow-lg: 0 20px 60px -12px rgba(0,0,0,.22);
+  --glass-bg:   color-mix(in srgb, var(--surface) 66%, transparent);
+  --glass-bg-2: color-mix(in srgb, var(--surface-2) 74%, transparent);
+  --glass-border: color-mix(in srgb, #fff 60%, var(--sep));
+  --glass-highlight: rgba(255,255,255,.85);
+  --glass-sheen: linear-gradient(155deg, color-mix(in srgb, #fff 60%, transparent), transparent 45%);
+  --shadow-sm: 0 2px 8px -2px rgba(0,0,0,.10), inset 0 1px 0 var(--glass-highlight);
+  --shadow-md: 0 10px 30px -8px rgba(0,0,0,.16), inset 0 1px 0 var(--glass-highlight);
+  --shadow-lg: 0 20px 60px -12px rgba(0,0,0,.22), inset 0 1px 0 var(--glass-highlight);
+
+  --glow-1:22%; --glow-2:15%; --glow-3:14%; --glow-4:9%;
 }
 
 /* accents — Apple's system colours, so a recolour never looks off-system */
@@ -134,8 +141,20 @@ html{
   font-size:16px;background:var(--bg);overscroll-behavior:none;overflow-x:clip;
   -webkit-text-size-adjust:100%;
 }
+/* Ambient glow, fixed to the viewport — without it there's nothing behind the glass
+   surfaces for their blur to pick up, so backdrop-filter on a flat --bg reads as flat.
+   Three soft accent blobs, asymmetric so it doesn't feel centered/mechanical. Opacity
+   is tuned per theme: dark can take saturated colour, light needs it much fainter or
+   the page reads tinted instead of neutral-with-glass-on-top. */
 body{
-  background:var(--bg);color:var(--label);
+  background:
+    radial-gradient(1400px 1000px at 8% -5%, color-mix(in srgb, var(--acc) var(--glow-1), transparent), transparent 62%),
+    radial-gradient(1300px 950px at 96% 14%, color-mix(in srgb, var(--acc) var(--glow-2), transparent), transparent 64%),
+    radial-gradient(1500px 1100px at 40% 105%, color-mix(in srgb, var(--acc) var(--glow-3), transparent), transparent 60%),
+    radial-gradient(1200px 900px at 100% 100%, color-mix(in srgb, var(--acc) var(--glow-4), transparent), transparent 60%),
+    var(--bg);
+  background-attachment:fixed;
+  color:var(--label);
   font-family:-apple-system,BlinkMacSystemFont,'SF Pro Text','SF Pro Display','Segoe UI',Roboto,system-ui,sans-serif;
   font-size:17px;line-height:1.29;letter-spacing:-.01em;
   min-height:100vh;overscroll-behavior-y:none;overflow-x:clip;
@@ -195,9 +214,13 @@ body.resting #app{padding-bottom:calc(250px + var(--sab))}
 #app.vfade{animation:viewfade var(--med) var(--ease)}
 
 /* large title, the way a nav bar does it */
-.hdr{display:flex;align-items:flex-end;justify-content:space-between;gap:12px;margin:8px 0 18px}
-.hdr h1{font-size:34px;line-height:1.06;font-weight:700;letter-spacing:-.028em}
-.hdr .sub{color:var(--label-2);font-size:15px;letter-spacing:-.006em;margin-top:4px}
+.hdr{display:flex;align-items:flex-end;justify-content:space-between;gap:12px;margin:8px 0 20px}
+.hdr h1{
+  font-size:40px;line-height:1.03;font-weight:800;letter-spacing:-.032em;
+  background:linear-gradient(120deg, var(--label), color-mix(in srgb, var(--label) 45%, var(--acc)));
+  -webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;color:var(--label);
+}
+.hdr .sub{color:var(--label-2);font-size:15px;font-weight:500;letter-spacing:-.006em;margin-top:5px}
 
 .iconbtn{
   width:36px;height:36px;border-radius:50%;flex:none;
@@ -209,12 +232,12 @@ body.resting #app{padding-bottom:calc(250px + var(--sab))}
 .iconbtn.on-ss{background:var(--acc-soft);color:var(--acc)}
 
 h4.sec{
-  font-size:13px;font-weight:400;letter-spacing:-.004em;color:var(--label-2);
-  text-transform:none;margin:22px 0 8px;padding:0 4px;
+  font-size:11.5px;font-weight:700;letter-spacing:.07em;color:var(--label-3);
+  text-transform:uppercase;margin:22px 0 8px;padding:0 4px;
 }
 .card h2{
-  font-size:13px;font-weight:400;letter-spacing:-.004em;color:var(--label-2);
-  text-transform:none;margin:0 0 12px;
+  font-size:11.5px;font-weight:700;letter-spacing:.07em;color:var(--label-3);
+  text-transform:uppercase;margin:0 0 12px;
 }
 .divider{height:var(--hair);background:var(--sep);margin:14px 0;border:0}
 .grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
@@ -236,8 +259,8 @@ h4.sec{
 /* ------------------------------------------------------ inset group list -- */
 .sect{margin-bottom:22px}
 .sect-t{
-  font-size:13px;font-weight:400;color:var(--label-2);
-  letter-spacing:-.004em;padding:0 4px 7px;display:block;
+  font-size:11.5px;font-weight:700;color:var(--label-3);
+  letter-spacing:.07em;text-transform:uppercase;padding:0 4px 8px;display:block;
 }
 .sect-b{
   background:var(--glass-bg);background-image:var(--glass-sheen);
@@ -380,9 +403,9 @@ h4.sec{
   background:var(--glass-bg);
   backdrop-filter:saturate(var(--glass-sat)) blur(var(--glass-blur));
   -webkit-backdrop-filter:saturate(var(--glass-sat)) blur(var(--glass-blur));
-  border:1px solid var(--glass-border);
+  border:1px solid var(--glass-border);box-shadow:var(--shadow-sm);
   border-radius:var(--r-card);padding:10px 12px;min-height:60px;
-  transition:background var(--fast),transform var(--fast) var(--ease);text-align:left;width:100%;
+  transition:background var(--fast),transform var(--fast) var(--ease),box-shadow var(--fast);text-align:left;width:100%;
 }
 .item:active{background:var(--glass-bg-2);transform:scale(.99)}
 .thumb{width:50px;height:50px;border-radius:9px;object-fit:cover;background:#fff;flex:none}
@@ -409,7 +432,7 @@ h4.sec{
 .chips::-webkit-scrollbar{display:none}
 .chip{
   flex:none;padding:6px 13px;border-radius:99px;
-  background:var(--glass-bg-2);border:1px solid var(--glass-border);
+  background:var(--glass-bg-2);border:1px solid var(--glass-border);box-shadow:var(--shadow-sm);
   font-size:14px;font-weight:400;color:var(--label);text-transform:capitalize;
   letter-spacing:-.006em;transition:background var(--fast),color var(--fast),transform var(--fast) var(--ease);
 }
@@ -421,6 +444,7 @@ h4.sec{
 /* --- text field --- */
 .field,.input{
   width:100%;background:var(--glass-bg-2);border:1px solid var(--glass-border);border-radius:var(--r);
+  box-shadow:var(--shadow-sm);
   padding:13px 15px;font-size:17px;letter-spacing:-.012em;outline:none;
   transition:box-shadow var(--fast),border-color var(--fast);
 }
@@ -518,7 +542,7 @@ h4.sec{
 .stp-l{font-size:13px;color:var(--label-2);text-align:center}
 .stp{
   display:flex;align-items:center;
-  background:var(--glass-bg-2);border:1px solid var(--glass-border);
+  background:var(--glass-bg-2);border:1px solid var(--glass-border);box-shadow:var(--shadow-sm);
   border-radius:10px;overflow:hidden;min-width:0;
 }
 .stp button{
@@ -729,7 +753,7 @@ h4.sec{
    of the same grouped-list parts as the rest of the app (surface fill, inset hairlines) rather
    than a real <table>, so it inherits the card look and wraps properly on a narrow phone. */
 .efftbl{
-  background:var(--glass-bg);border:1px solid var(--glass-border);
+  background:var(--glass-bg);border:1px solid var(--glass-border);box-shadow:var(--shadow-sm);
   backdrop-filter:saturate(var(--glass-sat)) blur(var(--glass-blur));
   -webkit-backdrop-filter:saturate(var(--glass-sat)) blur(var(--glass-blur));
   border-radius:var(--r-lg);overflow:hidden;margin:14px 0 12px;
@@ -758,7 +782,7 @@ h4.sec{
 .glyph-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:9px}
 .glyph-cell{
   aspect-ratio:1;border-radius:13px;
-  background:var(--glass-bg);border:1px solid var(--glass-border);
+  background:var(--glass-bg);border:1px solid var(--glass-border);box-shadow:var(--shadow-sm);
   backdrop-filter:saturate(var(--glass-sat)) blur(var(--glass-blur));
   -webkit-backdrop-filter:saturate(var(--glass-sat)) blur(var(--glass-blur));
   display:flex;align-items:center;justify-content:center;font-size:24px;
@@ -877,7 +901,7 @@ h4.sec{
 /* --- stat tiles --- */
 .tiles{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px}
 .tile{
-  background:var(--glass-bg);border:1px solid var(--glass-border);
+  background:var(--glass-bg);border:1px solid var(--glass-border);box-shadow:var(--shadow-sm);
   backdrop-filter:saturate(var(--glass-sat)) blur(var(--glass-blur));
   -webkit-backdrop-filter:saturate(var(--glass-sat)) blur(var(--glass-blur));
   border-radius:var(--r-card);padding:14px;
@@ -979,7 +1003,7 @@ h4.sec{
   display:flex;align-items:center;justify-content:space-between;gap:10px;
   margin-top:12px;padding:12px 14px;border-radius:var(--r);
   background:color-mix(in srgb, var(--acc-soft) 55%, var(--glass-bg-2));
-  border:1px solid var(--acc-line);
+  border:1px solid var(--acc-line);box-shadow:var(--shadow-sm);
   transition:background var(--fast),transform var(--fast) var(--ease);width:100%;text-align:left;
 }
 .today-row:active{background:var(--acc-soft);transform:scale(.99)}
