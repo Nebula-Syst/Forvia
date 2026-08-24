@@ -175,6 +175,12 @@ export default function Settings() {
     {/* ---------- data: fill it, bring things over, back it up, wipe it ---------- */}
     <Section title={t('Data')}>
       <Row icon="sparkles" iconTint="var(--acc)" title={t('Load starter plan (PPL)')} accessory="chevron" onClick={loadStarterPlan} />
+      {!DEMO && <Row icon="flame" iconTint="var(--orange)" title={t('Load demo data')}
+        subtitle={t('12 weeks of example workouts & weigh-ins, to see the app filled in')}
+        accessory="chevron" onClick={() => confirmSheet({
+          title: t('Load demo data?'), message: t('Replaces your current plan, workouts and body weight with a 12-week example history.'),
+          confirmText: t('Load'), danger: true, onConfirm: () => { resetDemo(); nav('/home'); toast(t('Demo data loaded')) }
+        })} />}
       <Row icon="shuffle" iconTint="var(--teal)" title={t('Import from another app')}
         subtitle={t('FitNotes, Strong, Hevy — or body weight from Apple Health')}
         accessory="chevron" onClick={() => importRef.current.click()} />
