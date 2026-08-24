@@ -68,6 +68,15 @@ export default function Settings() {
     </div>
 
     {/* ---------- account (demo and mobile builds have nothing to sign in to) ---------- */}
+    {user && !DEMO && !MOBILE && (
+      <div className="card profile-hero" style={{ marginBottom: 16 }}>
+        <span className="avatar">{(user.name || '').trim().split(/\s+/).slice(0, 2).map(w => w[0]).join('').toUpperCase()}</span>
+        <div className="info">
+          <div className="name">{user.name}</div>
+          <div className="sub">{t('Signed in as {0} — data syncs to this profile.', user.username)}</div>
+        </div>
+      </div>
+    )}
     <Section title={MOBILE ? t('Your data') : DEMO ? t('Demo') : t('Account')}>
       {MOBILE ? <>
         <Row icon="lock" iconTint="var(--acc)" title={t('All data stays on this phone')} subtitle={t('No account, no cloud — back it up anytime with Export below.')} />
@@ -80,7 +89,6 @@ export default function Settings() {
         <Row icon="rocket" iconTint="var(--indigo)" title={t('Self-host openGym')} subtitle={t('Account sign-in, sync across your devices, your own data.')} accessory="chevron"
           onClick={() => window.open(REPO, '_blank', 'noopener')} />
       </> : user ? <>
-        <Row icon="personCircle" iconTint="var(--grey)" title={user.name} subtitle={t('Signed in as {0} — data syncs to this profile.', user.username)} />
         <Row icon="lock" iconTint="var(--teal)" title={t('Change username or password')} accessory="chevron" onClick={() => passwordManageSheet(user)} />
         {user.admin && <Row icon="wrench" iconTint="var(--indigo)" title={t('Admin dashboard')} accessory="chevron" onClick={() => nav('/admin')} />}
         <Row icon="signOut" iconTint="var(--red)" title={t('Sign out')} danger onClick={() => confirmSheet({ title: t('Sign out?'), message: t('Your data is synced to your profile first, then cleared from this device.'), confirmText: t('Sign out'), danger: true, onConfirm: () => { signOut(); nav('/home') } })} />

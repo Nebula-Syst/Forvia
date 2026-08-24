@@ -283,11 +283,26 @@ h4.sec{
 .lrow:has(.lrow-i)+.lrow:has(.lrow-i)::before{left:55px}
 .lrow.tap:active{background:var(--surface-2)}
 .lrow-i{
-  width:29px;height:29px;border-radius:7px;flex:none;font-size:18px;
+  width:32px;height:32px;border-radius:9px;flex:none;font-size:17px;
   display:flex;align-items:center;justify-content:center;
-  background:var(--tint,var(--acc));color:#fff;
+  background-image:var(--glass-sheen), linear-gradient(155deg, color-mix(in srgb, var(--tint,var(--acc)) 100%, #fff 22%), var(--tint,var(--acc)));
+  color:#fff;
+  box-shadow:0 3px 8px -2px color-mix(in srgb, var(--tint,var(--acc)) 55%, transparent), inset 0 1px 0 rgba(255,255,255,.3);
 }
 .lrow-m{flex:1;min-width:0;display:flex;flex-direction:column;gap:1px}
+
+/* --- profile hero (Settings' Account card, Admin) --- */
+.avatar{
+  width:52px;height:52px;border-radius:50%;flex:none;
+  display:flex;align-items:center;justify-content:center;
+  font-size:19px;font-weight:700;color:var(--on-acc);
+  background-image:var(--glass-sheen), linear-gradient(155deg, color-mix(in srgb, var(--acc) 100%, #fff 20%), var(--acc-2));
+  box-shadow:0 6px 16px -4px color-mix(in srgb, var(--acc) 50%, transparent), inset 0 1px 0 rgba(255,255,255,.35);
+}
+.profile-hero{display:flex;align-items:center;gap:14px}
+.profile-hero .info{min-width:0;flex:1}
+.profile-hero .name{font-size:19px;font-weight:700;letter-spacing:-.015em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.profile-hero .sub{font-size:13px;color:var(--label-2);margin-top:2px}
 .lrow-t{font-size:17px;letter-spacing:-.012em;line-height:1.25}
 .lrow-s{font-size:13px;color:var(--label-2);line-height:1.3}
 /* flex:none would let a long value ("Follow the routine (Linear progression)") run straight
