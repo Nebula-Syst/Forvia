@@ -251,7 +251,7 @@ h4.sec{
 .lrow{
   display:flex;align-items:center;gap:12px;width:100%;text-align:left;
   padding:11px 14px;min-height:46px;position:relative;color:var(--label);
-  background:none;
+  background:none;transition:background var(--fast);
 }
 /* hairline starts after the icon rail so the list reads as one object */
 .lrow+.lrow::before{
@@ -1014,4 +1014,26 @@ h4.sec{
   #timer.rest .head{flex:1;min-width:0}
   .exmedia img{height:380px}
   .hm-wrap{display:flex;flex-direction:column;align-items:center}
+}
+
+/* ------------------------------------------- pointer hover (mouse only) -- */
+/* Everything above reacts to touch via :active. A mouse never presses without
+   moving first, so on a desktop nothing gave feedback until the click landed.
+   Mirrors each :active treatment with a lighter lift instead of a press, gated
+   on (hover:hover) so a touchscreen's sticky-hover never triggers it. */
+@media (hover:hover){
+  .item:hover{background:var(--glass-bg-2);transform:translateY(-1px);box-shadow:var(--shadow-sm)}
+  .tile.tappable:hover{background:var(--glass-bg-2);transform:translateY(-1px);box-shadow:var(--shadow-sm)}
+  .today-row:hover{background:color-mix(in srgb, var(--acc-soft) 70%, var(--glass-bg-2));transform:translateY(-1px)}
+  .lrow.tap:hover{background:var(--surface-2)}
+  .cal-d:hover{background:var(--surface-2)}
+  .chip:not(.on):hover{background:var(--surface-2)}
+  .glyph-cell:hover{background:var(--glass-bg-2);transform:translateY(-1px)}
+  .swatch:hover{transform:scale(1.08)}
+  .stp button:hover{background:var(--acc-soft);color:var(--acc)}
+  .chk:hover,.ck:hover{box-shadow:inset 0 0 0 1.8px var(--label-2)}
+  .btn:not(:disabled):hover{transform:translateY(-1px);box-shadow:var(--shadow-sm)}
+  .btn.primary:not(:disabled):hover{box-shadow:var(--shadow-md)}
+  .btn.ghost:hover,.btn.plain:hover{background:var(--glass-bg-2)}
+  .item,.tile.tappable,.today-row,.lrow.tap,.chip,.glyph-cell,.cal-d,.swatch{cursor:pointer}
 }
