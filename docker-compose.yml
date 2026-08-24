@@ -35,7 +35,7 @@ services:
   # Passkey auth + per-user data (Node, no framework).
   # image: prebuilt (docker compose pull). build: from source (docker compose up --build).
   api:
-    image: registry.gitlab.com/duartesantos8/opengym/api:latest
+    image: ghcr.io/nebula-syst/opengym-api:latest
     build: ./api
     restart: unless-stopped
     env_file: .env
@@ -50,7 +50,7 @@ services:
   # Builds the React frontend (multi-stage) and serves it, proxying /api → api
   # and the exercise media from the shared volume. Single origin for passkeys.
   web:
-    image: registry.gitlab.com/duartesantos8/opengym/web:latest
+    image: ghcr.io/nebula-syst/opengym-web:latest
     build:
       context: .
       dockerfile: web/Dockerfile

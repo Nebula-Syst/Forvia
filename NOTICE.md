@@ -115,3 +115,9 @@ runtime.
 
 If you want to reuse the media — in openGym or anywhere else, commercially or not — **clear it with
 the rights holder first**, and keep any attribution that accompanies it intact.
+
+## This fork
+
+This repository is maintained by Nebula Systems as a fork of openGym by Duarte Santos
+(the original project above), distributed under the same AGPL v3.0 license. All copyright
+notices above remain unchanged and apply to the original work they describe.

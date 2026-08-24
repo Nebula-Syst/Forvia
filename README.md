@@ -19,10 +19,10 @@ No account on someone else's server, no subscription, no ads. Just `docker compo
 ![Docker](https://img.shields.io/badge/Docker-compose-2496ED?style=flat-square&logo=docker&logoColor=white)
 ![No tracking](https://img.shields.io/badge/telemetry-none-f472b6?style=flat-square)
 <br>
-[![Pipeline](https://gitlab.com/DuarteSantos8/opengym/badges/main/pipeline.svg?style=flat-square)](https://gitlab.com/DuarteSantos8/opengym/-/pipelines)
-![Last commit](https://img.shields.io/gitlab/last-commit/DuarteSantos8%2Fopengym?style=flat-square)
-[![Stars](https://img.shields.io/gitlab/stars/DuarteSantos8%2Fopengym?style=flat-square)](https://gitlab.com/DuarteSantos8/opengym/-/starrers)
-[![Issues](https://img.shields.io/gitlab/issues/open/DuarteSantos8%2Fopengym?style=flat-square)](https://gitlab.com/DuarteSantos8/opengym/-/issues)
+[![Build](https://img.shields.io/github/actions/workflow/status/Nebula-Syst/opengym/docker-publish.yml?branch=main&style=flat-square)](https://github.com/Nebula-Syst/opengym/actions)
+![Last commit](https://img.shields.io/github/last-commit/Nebula-Syst/opengym?style=flat-square)
+[![Stars](https://img.shields.io/github/stars/Nebula-Syst/opengym?style=flat-square)](https://github.com/Nebula-Syst/opengym/stargazers)
+[![Issues](https://img.shields.io/github/issues/Nebula-Syst/opengym?style=flat-square)](https://github.com/Nebula-Syst/opengym/issues)
 [![Discord](https://img.shields.io/badge/Discord-join-5865F2?style=flat-square&logo=discord&logoColor=white)](https://discord.gg/e62jY6fwVb)
 [![Buy Me A Coffee](https://img.shields.io/badge/Buy%20me%20a%20coffee-support-FFDD00?style=flat-square&logo=buymeacoffee&logoColor=black)](https://buymeacoffee.com/duartesantos)
 
@@ -42,11 +42,10 @@ No account on someone else's server, no subscription, no ads. Just `docker compo
 
 <div align="center">
 
-### [🌐 opengym.duarte-santos.ch](https://opengym.duarte-santos.ch) · [📦 Source on GitLab](https://gitlab.com/DuarteSantos8/opengym)
+### [📦 Source on GitHub](https://github.com/Nebula-Syst/opengym)
 
-Screenshots, docs and the APK download live on the site.<br>
-<sub>Want to poke at it first? The <a href="https://opengym.duarte-santos.ch/demo/">in-browser
-demo</a> is the real app with example data — no account, nothing to install.</sub>
+This is Nebula Systems' fork of openGym — same features, self-hosted login now required
+(no guest mode), and an ongoing visual redesign.
 
 </div>
 
@@ -95,8 +94,8 @@ as a home-screen app, passkey sign-in, offline support, sync across your phone a
 You need [Docker](https://docs.docker.com/get-docker/) with Compose.
 
 ```bash
-git clone https://gitlab.com/DuarteSantos8/opengym
-cd openGym
+git clone https://github.com/Nebula-Syst/opengym
+cd opengym
 cp .env.example .env
 docker compose pull   # grab prebuilt images (amd64 + arm64) — skip to build from source instead
 docker compose up -d
@@ -113,7 +112,7 @@ the exercise media (~140 MB) once.
 > openGym ships none of it: your instance downloads it from upstream. Reusing it yourself,
 > commercially or not, means clearing it with the rights holder — see [NOTICE.md](NOTICE.md).
  Prefer building the images yourself instead of pulling from
-GitLab's registry? Drop the `pull` step and run `docker compose up -d --build` — you don't need Node or
+GitHub's registry? Drop the `pull` step and run `docker compose up -d --build` — you don't need Node or
 a build step locally either way.
 
 > Want it reachable from your phone over the internet with passkeys? You'll need an HTTPS
@@ -126,10 +125,8 @@ no backend — everything stays on the phone, with native workout-day reminders 
 backups. Self-hosting gets you multi-device sync and profiles for friends & family; the
 mobile app is the install-and-done flavor.
 
-- **Android:** [**download the APK**](https://opengym.duarte-santos.ch) — or straight from
-  [GitLab's package registry](https://gitlab.com/DuarteSantos8/opengym/-/packages), where every
-  build sits next to its `.sha256` — and sideload it; openGym is deliberately not on the Play
-  Store. Or build it yourself: **[docs/MOBILE.md](docs/MOBILE.md)**.
+- **Android:** build the APK yourself — **[docs/MOBILE.md](docs/MOBILE.md)**. openGym is
+  deliberately not on the Play Store; this fork doesn't currently publish signed prebuilt APKs.
 - **iPhone:** Apple doesn't allow installing apps outside the App Store, so there is no iOS
   download. Self-host and add it to your home screen from Safari (it's a full PWA), or build
   the native app onto your own device from Xcode — see **[docs/MOBILE.md](docs/MOBILE.md)**.
@@ -224,21 +221,21 @@ in the Docker build.
 
 - **[Discord](https://discord.gg/e62jY6fwVb)** — release announcements, self-hosting help and
   the back-and-forth that would be a slow issue thread. Quickest way to get an answer.
-- **[Issues](https://gitlab.com/DuarteSantos8/opengym/-/issues)** — bugs, questions, self-hosting
+- **[Issues](https://github.com/Nebula-Syst/opengym/issues)** — bugs, questions, self-hosting
   help and ideas. There are no Discussions here, so it all lives in one tracker: label a question
   `question` and an idea `idea`, and it gets treated as one rather than as agreed-on work. Use
   an issue over the Discord for anything the next person should be able to find by searching.
 - **Login trouble?** Most of it is an `RP_ID`/`ORIGIN` mismatch — check
   [docs/SELF_HOSTING.md](docs/SELF_HOSTING.md) before opening an issue.
-- **Merge requests** — [open one on GitLab](https://gitlab.com/DuarteSantos8/opengym/-/merge_requests); see
+- **Pull requests** — [open one on GitHub](https://github.com/Nebula-Syst/opengym/pulls); see
   [CONTRIBUTING.md](CONTRIBUTING.md).
 
-> **On the GitHub repo:** `github.com/DuarteSantos8/openGym` is offline because the account was
-> suspended. **GitLab is the home of the project** — same history, same tags, same releases, and
-> the CI that builds the images and the APK runs there. (gitea.com/DuarteSantos/openGym was the
-> first stopgap and is now only a mirror.) Old GitHub issue and PR numbers in
-> [CHANGELOG.md](CHANGELOG.md) are kept as plain references; they don't map onto GitLab's
-> numbering.
+> **About this fork:** this repository is Nebula Systems' fork of
+> [openGym](https://gitlab.com/DuarteSantos8/opengym) by Duarte Santos, kept under the same
+> AGPL-3.0 license (see [NOTICE.md](NOTICE.md)). Login is required here (guest mode is off) and
+> the visual design is being reworked; the upstream project itself lives on GitLab. Issue and PR
+> numbers in [CHANGELOG.md](CHANGELOG.md) predating this fork refer to the upstream tracker, not
+> this one.
 
 ## Contributing
 

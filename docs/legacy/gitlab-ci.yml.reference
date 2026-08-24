@@ -1,4 +1,7 @@
-# openGym — GitLab CI/CD
+# DISABLED IN THIS FORK — kept as reference only, .yml renamed so GitLab won't pick it up.
+# This fork's CI lives in .github/workflows/ (GitHub Actions, publishes to ghcr.io).
+#
+# openGym — GitLab CI/CD (original, upstream)
 #
 # This is the pipeline that actually gates and ships the project. It replaces the
 # GitHub Actions workflows (.github/, dormant since the account suspension) and the
