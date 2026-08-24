@@ -22,6 +22,7 @@ import { nextPrescription, applyPrescription, policyFor, defaultIncrement, POLIC
 import { MOBILE, shareExport } from './lib/mobile.js'
 import { buildCompletedWorkout } from './lib/finish-workout.js'
 import { isWarmupRow } from './lib/workout-model.js'
+import { passwordLogin, setPassword, removePassword } from './lib/api.js'
 
 const S = () => useStore.getState().S
 const update = (...a) => useStore.getState().update(...a)
@@ -42,6 +43,76 @@ function ConfirmDialog({ title, message, confirmText, cancelText, danger, onConf
 // Themed replacement for window.confirm — callback-based (no blocking).
 export function confirmSheet(opts) {
   ui().openSheet(close => <ConfirmDialog {...opts} close={close} />, { kind: 'center' })
+}
+
+/* ============================ password login (alongside passkeys) ============================ */
+// Opened from two places — Login (no session yet) and Settings (already signed in) — so it lives
+// here rather than inline in either view, same reason bwSheet/calendarSheet do.
+function PasswordLoginForm({ close }) {
+  const [username, setUsername] = useState('')
+  const [pw, setPw] = useState('')
+  const [busy, setBusy] = useState(false)
+  const ref = useRef(null)
+  useEffect(() => { setTimeout(() => ref.current?.focus(), 250) }, [])
+  const go = async () => {
+    if (!username.trim() || !pw) { toast(t('Enter your username and password')); return }
+    setBusy(true)
+    try {
+      const u = await passwordLogin(username.trim(), pw)
+      useStore.getState().setUser(u); close()
+      await useStore.getState().pullState()
+      toast(t('Welcome back, {0}', u.name))
+    } catch (e) { toast(e.message || t('Sign-in failed')) }
+    finally { setBusy(false) }
+  }
+  return <>
+    <h3>{t('Sign in with password')}</h3>
+    <input ref={ref} className="input" placeholder={t('Username')} value={username} onChange={e => setUsername(e.target.value)} />
+    <div style={{ height: 10 }} />
+    <input className="input" type="password" placeholder={t('Password')} value={pw} onChange={e => setPw(e.target.value)}
+      onKeyDown={e => e.key === 'Enter' && go()} />
+    <div style={{ height: 12 }} />
+    <Button variant="primary" onClick={go} disabled={busy}>{t('Sign in')}</Button>
+  </>
+}
+export function passwordLoginSheet() {
+  ui().openSheet(close => <PasswordLoginForm close={close} />)
+}
+
+function PasswordManageForm({ user, close }) {
+  const [username, setUsername] = useState(user.username || '')
+  const [pw, setPw] = useState('')
+  const [busy, setBusy] = useState(false)
+  const has = user.hasPassword
+  const save = async () => {
+    if (username.trim().length < 3) { toast(t('Username must be at least 3 characters')); return }
+    if (pw.length < 8) { toast(t('Password must be at least 8 characters')); return }
+    setBusy(true)
+    try {
+      const u = await setPassword(username.trim(), pw)
+      useStore.getState().setUser(u); close()
+      toast(t(has ? 'Password updated' : 'Password login added'))
+    } catch (e) { toast(e.message || t('Could not save')) }
+    finally { setBusy(false) }
+  }
+  const doRemove = () => confirmSheet({
+    title: t('Remove password login?'), message: t('You’ll still be able to sign in with your passkey.'),
+    confirmText: t('Remove'), danger: true,
+    onConfirm: async () => { const u = await removePassword(); useStore.getState().setUser(u); toast(t('Password login removed')) }
+  })
+  return <>
+    <h3>{has ? t('Change password') : t('Add password login')}</h3>
+    <div className="muted small" style={{ marginBottom: 14 }}>{t('A backup way in, separate from your passkey.')}</div>
+    <input className="input" placeholder={t('Username')} value={username} onChange={e => setUsername(e.target.value)} />
+    <div style={{ height: 10 }} />
+    <input className="input" type="password" placeholder={t('New password (min 8 characters)')} value={pw} onChange={e => setPw(e.target.value)} />
+    <div style={{ height: 12 }} />
+    <Button variant="primary" onClick={save} disabled={busy}>{has ? t('Save changes') : t('Create')}</Button>
+    {has && <><div style={{ height: 8 }} /><Button variant="danger" onClick={() => { close(); doRemove() }}>{t('Remove password login')}</Button></>}
+  </>
+}
+export function passwordManageSheet(user) {
+  ui().openSheet(close => <PasswordManageForm user={user} close={close} />)
 }
 
 /* ============================ starter plan ============================ */

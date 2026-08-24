@@ -46,6 +46,12 @@ try { db = JSON.parse(fs.readFileSync(dbFile, 'utf8')); } catch {}
 db.subs = db.subs || [];
 db.invites = db.invites || [];
 const isAdmin = user => !!user && (user.admin === true || ADMIN_UIDS.includes(user.id));
+// The shape sent to the client for "who am I" — never the password hash/salt, just enough to
+// know a password exists and what username to prefill when changing it.
+const publicUser = user => ({
+  id: user.id, name: user.name, admin: isAdmin(user),
+  hasPassword: !!user.pwd, username: user.pwd?.username || null
+});
 function saveDb() { atomicWrite(dbFile, JSON.stringify(db, null, 2)); }
 function atomicWrite(file, content) {
   const tmp = file + '.tmp';
@@ -207,6 +213,24 @@ function sessionCookie(user) {
 }
 const clearCookie = `gymsid=; Path=/; Max-Age=0; HttpOnly;${SECURE} SameSite=Lax`;
 
+/* ---------- password login (opt-in, alongside passkeys) ---------- */
+// scrypt, not bcrypt: Node ships it, so password login doesn't add a third dependency to a
+// project that advertises having only two. 64-byte derived key, per-user random salt.
+function hashPassword(password) {
+  const salt = crypto.randomBytes(16).toString('hex');
+  const hash = crypto.scryptSync(password, salt, 64).toString('hex');
+  return { salt, hash };
+}
+function verifyPassword(password, salt, hash) {
+  const got = crypto.scryptSync(password, salt, 64);
+  const want = Buffer.from(hash, 'hex');
+  return got.length === want.length && crypto.timingSafeEqual(got, want);
+}
+const findByUsername = name => {
+  const norm = String(name || '').trim().toLowerCase();
+  return norm ? db.users.find(u => u.pwd?.username?.toLowerCase() === norm) : null;
+};
+
 /* ---------- challenge store (in-memory, 5 min TTL) ---------- */
 const challenges = new Map(); // cid -> {challenge, name?, uid?, exp}
 function putChallenge(data) {
@@ -359,7 +383,7 @@ const routes = {
   'GET /api/me': async (req, res) => {
     const user = readSession(req);
     if (!user) return json(res, 401, { error: 'not signed in' });
-    json(res, 200, { user: { id: user.id, name: user.name, admin: isAdmin(user) } });
+    json(res, 200, { user: publicUser(user) });
   },
 
   'POST /api/register/options': async (req, res) => {
@@ -434,7 +458,7 @@ const routes = {
     });
     saveDb();
     audit(req, 'auth.register.ok', { user, msg: invite ? invite.code : null });
-    json(res, 200, { user: { id: user.id, name: user.name, admin: isAdmin(user) } }, { 'Set-Cookie': sessionCookie(user) });
+    json(res, 200, { user: publicUser(user) }, { 'Set-Cookie': sessionCookie(user) });
   },
 
   'POST /api/login/options': async (req, res) => {
@@ -495,7 +519,44 @@ const routes = {
       return json(res, 403, { error: 'this account has been disabled' });
     }
     audit(req, 'auth.login.ok', { user });
-    json(res, 200, { user: { id: user.id, name: user.name, admin: isAdmin(user) } }, { 'Set-Cookie': sessionCookie(user) });
+    json(res, 200, { user: publicUser(user) }, { 'Set-Cookie': sessionCookie(user) });
+  },
+
+  'POST /api/login/password': async (req, res) => {
+    const body = await readBody(req);
+    const user = findByUsername(body.username);
+    // Same generic error either way — unlike the passkey routes, a username is guessable, so
+    // "no such user" vs "wrong password" would let an attacker enumerate accounts.
+    const fail = msg => { audit(req, 'auth.password.login.fail', { ok: false, uid: user?.id, msg }); return json(res, 401, { error: 'incorrect username or password' }) }
+    if (!user || !verifyPassword(String(body.password || ''), user.pwd.salt, user.pwd.hash)) return fail(user ? 'bad-password' : 'unknown-username');
+    if (user.disabled) { audit(req, 'auth.password.login.fail', { ok: false, user, msg: 'account-disabled' }); return json(res, 403, { error: 'this account has been disabled' }) }
+    audit(req, 'auth.password.login.ok', { user });
+    json(res, 200, { user: publicUser(user) }, { 'Set-Cookie': sessionCookie(user) });
+  },
+
+  'POST /api/password/set': async (req, res) => {
+    const user = readSession(req);
+    if (!user) return json(res, 401, { error: 'not signed in' });
+    const body = await readBody(req);
+    const username = String(body.username || '').trim();
+    const password = String(body.password || '');
+    if (username.length < 3) return json(res, 400, { error: 'username must be at least 3 characters' });
+    if (password.length < 8) return json(res, 400, { error: 'password must be at least 8 characters' });
+    const other = findByUsername(username);
+    if (other && other.id !== user.id) return json(res, 409, { error: 'that username is taken' });
+    user.pwd = { username, ...hashPassword(password) };
+    saveDb();
+    audit(req, 'auth.password.set', { user });
+    json(res, 200, { user: publicUser(user) });
+  },
+
+  'POST /api/password/remove': async (req, res) => {
+    const user = readSession(req);
+    if (!user) return json(res, 401, { error: 'not signed in' });
+    delete user.pwd;
+    saveDb();
+    audit(req, 'auth.password.remove', { user });
+    json(res, 200, { user: publicUser(user) });
   },
 
   // Reads the session purely so the sign-out can be recorded; the cookie is cleared either way.

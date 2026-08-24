@@ -5,6 +5,7 @@ import { hasData } from '../store/useStore.js'
 import { t } from '../lib/i18n.js'
 import { DEMO, REPO } from '../lib/demo.js'
 import { guestAllowed } from '../lib/guest.js'
+import { passwordLoginSheet } from '../sheets.jsx'
 import { useState, useRef, useEffect } from 'react'
 import Icon from '../components/Icon.jsx'
 import { Button } from '../components/ui.jsx'
@@ -83,14 +84,13 @@ export default function Login() {
         <Button variant="primary" icon="person" onClick={signIn}>{t('Sign in with passkey')}</Button>
         <div style={{ height: 10 }} />
         <Button icon="sparkles" onClick={() => useUI.getState().openSheet(close => <RegisterSheet close={close} />)}>{t('Create new profile')}</Button>
-        {canGuest && <div style={{ height: 10 }} />}
-      </> : <div className="card small muted" style={{ textAlign: 'left' }}>{canGuest
-        ? t("This browser doesn't support passkeys — you can still use openGym locally on this device.")
-        // Without passkeys and without the guest entrance there is no way in from this browser,
-        // so say that plainly instead of offering a local profile that cannot be created.
-        : t("This browser doesn't support passkeys, and this instance requires an account. Try a browser or device with passkey support.")}</div>}
+        <div style={{ height: 10 }} />
+      </> : <div className="card small muted" style={{ textAlign: 'left', marginBottom: 10 }}>
+        {t("This browser doesn't support passkeys — sign in with a password below, or on a device that does.")}</div>}
+      <Button variant="ghost" className="dim" onClick={() => passwordLoginSheet()}>{t('Sign in with password')}</Button>
+      {canGuest && <div style={{ height: 10 }} />}
       {canGuest && <Button variant="ghost" className="dim" onClick={() => setGuest(true)}>{t('Continue without account')}</Button>}
-      <div className="dim small" style={{ marginTop: 26, lineHeight: 1.5 }}>{t('Passkeys use {0} — no passwords.', BIO)}<br />{t('Each profile keeps its own plan, workouts & body weight.')}</div>
+      <div className="dim small" style={{ marginTop: 26, lineHeight: 1.5 }}>{t('Passkeys use {0} — no password to remember.', BIO)}<br />{t('Each profile keeps its own plan, workouts & body weight.')}</div>
     </div>
   )
 }

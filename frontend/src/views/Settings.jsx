@@ -10,7 +10,7 @@ import { wakeLockSupported } from '../lib/wakelock.js'
 import { t, LANGS, INSTR_LANGS } from '../lib/i18n.js'
 import { DEMO, REPO } from '../lib/demo.js'
 import { MOBILE, shareExport, syncReminder } from '../lib/mobile.js'
-import { loadStarterPlan, confirmSheet, importFromApp } from '../sheets.jsx'
+import { loadStarterPlan, confirmSheet, importFromApp, passwordLoginSheet, passwordManageSheet } from '../sheets.jsx'
 import Icon from '../components/Icon.jsx'
 import { Section, Row, SelectRow, Switch, Segmented, Button, TextField } from '../components/ui.jsx'
 
@@ -86,15 +86,21 @@ export default function Settings() {
           onClick={() => window.open(REPO, '_blank', 'noopener')} />
       </> : user ? <>
         <Row icon="personCircle" iconTint="var(--grey)" title={user.name} subtitle={t('Signed in with passkey — data syncs to this profile.')} />
+        <Row icon="lock" iconTint="var(--teal)" title={user.hasPassword ? t('Change password') : t('Add password login')}
+          subtitle={user.hasPassword ? t('Signed in as {0}', user.username) : t('A backup way in, separate from your passkey.')}
+          accessory="chevron" onClick={() => passwordManageSheet(user)} />
         {user.admin && <Row icon="wrench" iconTint="var(--indigo)" title={t('Admin dashboard')} accessory="chevron" onClick={() => nav('/admin')} />}
         <Row icon="signOut" iconTint="var(--red)" title={t('Sign out')} danger onClick={() => confirmSheet({ title: t('Sign out?'), message: t('Your data is synced to your profile first, then cleared from this device.'), confirmText: t('Sign out'), danger: true, onConfirm: () => { signOut(); nav('/home') } })} />
         <Row icon="shield" iconTint="var(--red)" title={t('Sign out everywhere')} subtitle={t('Ends this profile’s sessions on all your devices.')} danger onClick={signOutEverywhere} />
-      </> : webauthnOK() ? <>
-        <Row icon="sparkles" iconTint="var(--acc)" title={t('Create passkey profile')} subtitle={t('Keeps your data safe and separate per person.')} accessory="chevron" onClick={registerHere} />
-        <Row icon="person" iconTint="var(--blue)" title={t('Sign in with passkey')} accessory="chevron" onClick={signInHere} />
-      </> : (
-        <Row icon="lock" iconTint="var(--grey)" title={t('Passkeys not supported in this browser.')} />
-      )}
+      </> : <>
+        {webauthnOK() ? <>
+          <Row icon="sparkles" iconTint="var(--acc)" title={t('Create passkey profile')} subtitle={t('Keeps your data safe and separate per person.')} accessory="chevron" onClick={registerHere} />
+          <Row icon="person" iconTint="var(--blue)" title={t('Sign in with passkey')} accessory="chevron" onClick={signInHere} />
+        </> : (
+          <Row icon="lock" iconTint="var(--grey)" title={t('Passkeys not supported in this browser.')} />
+        )}
+        <Row icon="lock" iconTint="var(--teal)" title={t('Sign in with password')} accessory="chevron" onClick={() => passwordLoginSheet()} />
+      </>}
     </Section>
     {!user && !DEMO && !MOBILE && <p className="sect-f" style={{ marginTop: -18, marginBottom: 22 }}>{t('Guest mode — data lives only in this browser.')}</p>}
 
