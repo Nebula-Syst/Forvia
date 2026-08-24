@@ -50,7 +50,8 @@ const isAdmin = user => !!user && (user.admin === true || ADMIN_UIDS.includes(us
 // know a password exists and what username to prefill when changing it.
 const publicUser = user => ({
   id: user.id, name: user.name, admin: isAdmin(user),
-  hasPassword: !!user.pwd, username: user.pwd?.username || null
+  hasPassword: !!user.pwd, username: user.pwd?.username || null,
+  hasPasskey: db.creds.some(c => c.userId === user.id)
 });
 function saveDb() { atomicWrite(dbFile, JSON.stringify(db, null, 2)); }
 function atomicWrite(file, content) {
@@ -458,6 +459,35 @@ const routes = {
     });
     saveDb();
     audit(req, 'auth.register.ok', { user, msg: invite ? invite.code : null });
+    json(res, 200, { user: publicUser(user) }, { 'Set-Cookie': sessionCookie(user) });
+  },
+
+  // Password-only signup — no passkey involved. Same invite gate as passkey registration, same
+  // shape of user record, just with .pwd instead of a db.creds entry.
+  'POST /api/register/password': async (req, res) => {
+    const body = await readBody(req);
+    const name = String(body.name || '').trim().slice(0, 40);
+    const username = String(body.username || '').trim();
+    const password = String(body.password || '');
+    if (!name) return json(res, 400, { error: 'name required' });
+    if (username.length < 3) return json(res, 400, { error: 'username must be at least 3 characters' });
+    if (password.length < 8) return json(res, 400, { error: 'password must be at least 8 characters' });
+    if (findByUsername(username)) return json(res, 409, { error: 'that username is taken' });
+    const code = String(body.code || '').trim().toUpperCase();
+    let invite = null;
+    if (INVITE_ONLY) {
+      invite = db.invites.find(i => i.code === code && !i.usedBy && !i.revoked);
+      if (!invite) {
+        audit(req, 'auth.register.denied', { ok: false, name, msg: 'invite-rejected' });
+        return json(res, 403, { error: 'a valid invite code is required' });
+      }
+    }
+    const user = { id: crypto.randomBytes(12).toString('base64url'), name, created: new Date().toISOString() };
+    user.pwd = { username, ...hashPassword(password) };
+    if (invite) { user.invitedBy = invite.code; invite.usedBy = user.id; invite.usedAt = user.created; }
+    db.users.push(user);
+    saveDb();
+    audit(req, 'auth.password.register.ok', { user, msg: invite ? invite.code : null });
     json(res, 200, { user: publicUser(user) }, { 'Set-Cookie': sessionCookie(user) });
   },
 

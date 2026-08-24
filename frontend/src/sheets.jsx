@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { useStore } from './store/useStore.js'
+import { useStore, hasData } from './store/useStore.js'
 import { useUI } from './store/useUI.js'
 import { EXDB, EXIDX, BODYPARTS, isCardio, isBodyweightEq, allExercises, equipmentOf, smOf } from './lib/exercises.js'
 import { fmtDate, fmtNum, fmtVol, fmtDur, durPart, todayISO, uid, exCount, DAYN, MONTHS_LONG, ACCENTS } from './lib/format.js'
@@ -22,7 +22,7 @@ import { nextPrescription, applyPrescription, policyFor, defaultIncrement, POLIC
 import { MOBILE, shareExport } from './lib/mobile.js'
 import { buildCompletedWorkout } from './lib/finish-workout.js'
 import { isWarmupRow } from './lib/workout-model.js'
-import { passwordLogin, setPassword, removePassword } from './lib/api.js'
+import { passwordLogin, passwordRegister, setPassword, removePassword } from './lib/api.js'
 
 const S = () => useStore.getState().S
 const update = (...a) => useStore.getState().update(...a)
@@ -77,6 +77,53 @@ function PasswordLoginForm({ close }) {
 }
 export function passwordLoginSheet() {
   ui().openSheet(close => <PasswordLoginForm close={close} />)
+}
+
+function PasswordRegisterForm({ close }) {
+  const config = useStore(s => s.config)
+  const inviteOnly = !!config?.invite_only
+  const [name, setName] = useState('')
+  const [username, setUsername] = useState('')
+  const [pw, setPw] = useState('')
+  const [code, setCode] = useState('')
+  const [busy, setBusy] = useState(false)
+  const ref = useRef(null)
+  useEffect(() => { setTimeout(() => ref.current?.focus(), 250) }, [])
+  useEffect(() => { useStore.getState().loadConfig() }, [])
+  const go = async () => {
+    const n = name.trim()
+    if (!n) { toast(t('Enter a name')); return }
+    if (username.trim().length < 3) { toast(t('Username must be at least 3 characters')); return }
+    if (pw.length < 8) { toast(t('Password must be at least 8 characters')); return }
+    if (inviteOnly && !code.trim()) { toast(t('An invite code is required')); return }
+    setBusy(true)
+    try {
+      const u = await passwordRegister(n, username.trim(), pw, code.trim())
+      useStore.getState().setUser(u); close()
+      if (hasData(useStore.getState().S)) { await useStore.getState().pushState(); toast(t('Profile created — data from this device moved into it')) }
+      else { await useStore.getState().pullState(); toast(t('Welcome, {0}', u.name)) }
+    } catch (e) { toast(e.message || t('Registration failed')) }
+    finally { setBusy(false) }
+  }
+  return <>
+    <h3>{t('Create account with password')}</h3>
+    <input ref={ref} className="input" placeholder={t('Your name')} maxLength={40} value={name} onChange={e => setName(e.target.value)} />
+    <div style={{ height: 10 }} />
+    <input className="input" placeholder={t('Username')} value={username} onChange={e => setUsername(e.target.value)} />
+    <div style={{ height: 10 }} />
+    <input className="input" type="password" placeholder={t('Password (min 8 characters)')} value={pw} onChange={e => setPw(e.target.value)} />
+    {inviteOnly && <>
+      <div style={{ height: 10 }} />
+      <input className="input" placeholder={t('Invite code')} maxLength={40} value={code}
+        onChange={e => setCode(e.target.value.toUpperCase())} style={{ letterSpacing: '.14em', fontWeight: 600, textAlign: 'center' }} />
+      <div className="dim small" style={{ marginTop: 6 }}>{t('This app is invite-only — enter the code you were given.')}</div>
+    </>}
+    <div style={{ height: 12 }} />
+    <Button variant="primary" onClick={go} disabled={busy}>{t('Create account')}</Button>
+  </>
+}
+export function passwordRegisterSheet() {
+  ui().openSheet(close => <PasswordRegisterForm close={close} />)
 }
 
 function PasswordManageForm({ user, close }) {

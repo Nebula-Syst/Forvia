@@ -62,6 +62,10 @@ export async function passwordLogin(username, password) {
   const res = await api('/api/login/password', { method: 'POST', body: JSON.stringify({ username, password }) })
   return res.user
 }
+export async function passwordRegister(name, username, password, code) {
+  const res = await api('/api/register/password', { method: 'POST', body: JSON.stringify({ name, username, password, code: code || '' }) })
+  return res.user
+}
 export async function setPassword(username, password) {
   const res = await api('/api/password/set', { method: 'POST', body: JSON.stringify({ username, password }) })
   return res.user

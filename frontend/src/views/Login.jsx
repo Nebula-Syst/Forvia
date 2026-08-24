@@ -5,7 +5,7 @@ import { hasData } from '../store/useStore.js'
 import { t } from '../lib/i18n.js'
 import { DEMO, REPO } from '../lib/demo.js'
 import { guestAllowed } from '../lib/guest.js'
-import { passwordLoginSheet } from '../sheets.jsx'
+import { passwordLoginSheet, passwordRegisterSheet } from '../sheets.jsx'
 import { useState, useRef, useEffect } from 'react'
 import Icon from '../components/Icon.jsx'
 import { Button } from '../components/ui.jsx'
@@ -88,6 +88,8 @@ export default function Login() {
       </> : <div className="card small muted" style={{ textAlign: 'left', marginBottom: 10 }}>
         {t("This browser doesn't support passkeys — sign in with a password below, or on a device that does.")}</div>}
       <Button variant="ghost" className="dim" onClick={() => passwordLoginSheet()}>{t('Sign in with password')}</Button>
+      <div style={{ height: 6 }} />
+      <Button variant="ghost" className="dim" onClick={() => passwordRegisterSheet()}>{t('Create account with password')}</Button>
       {canGuest && <div style={{ height: 10 }} />}
       {canGuest && <Button variant="ghost" className="dim" onClick={() => setGuest(true)}>{t('Continue without account')}</Button>}
       <div className="dim small" style={{ marginTop: 26, lineHeight: 1.5 }}>{t('Passkeys use {0} — no password to remember.', BIO)}<br />{t('Each profile keeps its own plan, workouts & body weight.')}</div>

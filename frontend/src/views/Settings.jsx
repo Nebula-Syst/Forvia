@@ -10,7 +10,7 @@ import { wakeLockSupported } from '../lib/wakelock.js'
 import { t, LANGS, INSTR_LANGS } from '../lib/i18n.js'
 import { DEMO, REPO } from '../lib/demo.js'
 import { MOBILE, shareExport, syncReminder } from '../lib/mobile.js'
-import { loadStarterPlan, confirmSheet, importFromApp, passwordLoginSheet, passwordManageSheet } from '../sheets.jsx'
+import { loadStarterPlan, confirmSheet, importFromApp, passwordLoginSheet, passwordRegisterSheet, passwordManageSheet } from '../sheets.jsx'
 import Icon from '../components/Icon.jsx'
 import { Section, Row, SelectRow, Switch, Segmented, Button, TextField } from '../components/ui.jsx'
 
@@ -85,7 +85,9 @@ export default function Settings() {
         <Row icon="rocket" iconTint="var(--indigo)" title={t('Self-host openGym')} subtitle={t('Passkey sign-in, sync across your devices, your own data.')} accessory="chevron"
           onClick={() => window.open(REPO, '_blank', 'noopener')} />
       </> : user ? <>
-        <Row icon="personCircle" iconTint="var(--grey)" title={user.name} subtitle={t('Signed in with passkey — data syncs to this profile.')} />
+        <Row icon="personCircle" iconTint="var(--grey)" title={user.name} subtitle={user.hasPasskey
+          ? t('Signed in with passkey — data syncs to this profile.')
+          : t('Signed in with a password — data syncs to this profile.')} />
         <Row icon="lock" iconTint="var(--teal)" title={user.hasPassword ? t('Change password') : t('Add password login')}
           subtitle={user.hasPassword ? t('Signed in as {0}', user.username) : t('A backup way in, separate from your passkey.')}
           accessory="chevron" onClick={() => passwordManageSheet(user)} />
@@ -100,6 +102,7 @@ export default function Settings() {
           <Row icon="lock" iconTint="var(--grey)" title={t('Passkeys not supported in this browser.')} />
         )}
         <Row icon="lock" iconTint="var(--teal)" title={t('Sign in with password')} accessory="chevron" onClick={() => passwordLoginSheet()} />
+        <Row icon="lock" iconTint="var(--teal)" title={t('Create account with password')} accessory="chevron" onClick={() => passwordRegisterSheet()} />
       </>}
     </Section>
     {!user && !DEMO && !MOBILE && <p className="sect-f" style={{ marginTop: -18, marginBottom: 22 }}>{t('Guest mode — data lives only in this browser.')}</p>}
