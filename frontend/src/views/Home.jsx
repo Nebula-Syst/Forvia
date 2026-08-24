@@ -2,10 +2,13 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useStore } from '../store/useStore.js'
 import { effectiveRoutine, effectiveRoutineId, streakWeeks, lastBW, setsDoneActive } from '../lib/history.js'
+import { loadOfWorkouts } from '../lib/muscles.js'
 import { fmtNum, fmtDate, todayISO, isoOf, weekKey, DAYS } from '../lib/format.js'
 import { t, dateLocale } from '../lib/i18n.js'
 import { bwSheet, goalSheet, dayOverrideSheet, calendarSheet, startFlow, loadStarterPlan, bwDeltaColor } from '../sheets.jsx'
 import LineChart from '../components/LineChart.jsx'
+import Heatmap from '../components/Heatmap.jsx'
+import BodyMap, { BodyMapLegend } from '../components/BodyMap.jsx'
 import Icon from '../components/Icon.jsx'
 import { Button } from '../components/ui.jsx'
 import { glyphOf } from '../lib/glyphs.js'
@@ -38,9 +41,14 @@ export default function Home() {
   const sunday = new Date(monday); sunday.setDate(monday.getDate() + 6)
   const wkLabel = weekOffset === 0 ? t('This week') : `${monday.getDate()} ${monday.toLocaleDateString(dateLocale(), { month: 'short' })} – ${sunday.getDate()} ${sunday.toLocaleDateString(dateLocale(), { month: 'short' })}`
 
-  const wThisWeek = S.workouts.filter(w => weekKey(w.d) === weekKey(todayISO())).length
+  const weekWorkouts = S.workouts.filter(w => weekKey(w.d) === weekKey(todayISO()))
+  const wThisWeek = weekWorkouts.length
   const plannedPerWeek = Object.keys(S.week).filter(k => S.week[k]).length
   const bwPoints = S.bodyweight.slice(-30).map(b => ({ t: b.t || new Date(b.d).getTime(), y: b.w, d: b.d }))
+  const setsThisWeek = weekWorkouts.reduce((n, w) => n + w.entries.reduce((m, e) => m + e.sets.filter(s => s.done).length, 0), 0)
+  const minsThisWeek = weekWorkouts.reduce((n, w) => n + Math.max(0, Math.round(((w.end || w.start) - w.start) / 60000)), 0)
+  const weekLoad = loadOfWorkouts(weekWorkouts, null)
+  const hasHistory = S.workouts.length > 0
 
   // today's session shown right under the week strip
   const onToday = () => { if (S.active) nav('/workout'); else if (routine) startFlow(routine.id); else dayOverrideSheet(todayISO()) }
@@ -73,6 +81,13 @@ export default function Home() {
           : <Icon name="plus" className="chev" />}
       </div>
     </div>
+
+    {hasHistory && <div className="tiles">
+      <div className="tile"><div className="l"><Icon name="dumbbell" />{t('This week')}</div><div className="v">{wThisWeek}{plannedPerWeek ? '/' + plannedPerWeek : ''}</div></div>
+      <div className="tile"><div className="l"><Icon name="clipboard" />{t('Sets')}</div><div className="v">{setsThisWeek}</div></div>
+      <div className="tile"><div className="l"><Icon name="clock" />{t('Minutes')}</div><div className="v">{minsThisWeek}</div></div>
+      <div className="tile tappable" onClick={() => calendarSheet()}><div className="l"><Icon name="flame" />{t('Streak')}</div><div className="v">{streakWeeks(S)}</div></div>
+    </div>}
 
     {!S.routines.length && !S.active && (
       <div className="card">
@@ -116,17 +131,18 @@ export default function Home() {
       </> : <div className="muted small">{t("No entries yet — log your weight to start the curve. It's also asked before every workout.")}</div>}
     </div>
 
-    <div className="card tappable" style={{ cursor: 'pointer' }} onClick={() => calendarSheet()}>
-      <div className="row between">
-        <div>
-          <div className="row" style={{ gap: 7, fontSize: 22, fontWeight: 600, letterSpacing: '-.021em' }}>
-            <Icon name="flame" style={{ color: 'var(--orange)' }} />
-            {t('{0} week streak', streakWeeks(S))}
-          </div>
-          <div className="muted small" style={{ marginTop: 2 }}>{wThisWeek}{plannedPerWeek ? ' / ' + plannedPerWeek : ''} {t('this week')} · {t(S.workouts.length === 1 ? '{0} workout total' : '{0} workouts total', S.workouts.length)}</div>
-        </div>
-        <Icon name="calendar" className="chev" style={{ fontSize: 20 }} />
+    {hasHistory && <div className="card tappable" style={{ cursor: 'pointer' }} onClick={() => nav('/stats')}>
+      <div className="row between" style={{ marginBottom: 4 }}>
+        <h2 style={{ margin: 0 }}>{t('This week’s balance')}</h2>
+        <Icon name="chevronRight" className="chev" style={{ fontSize: 15 }} />
       </div>
-    </div>
+      <BodyMap load={weekLoad} body={S.body} />
+      <BodyMapLegend />
+    </div>}
+
+    {hasHistory && <div className="card">
+      <h2>{t('Activity')}</h2>
+      <Heatmap S={S} onDay={iso => calendarSheet(iso)} />
+    </div>}
   </div>
 }
