@@ -2,6 +2,7 @@ import { useNavigate } from 'react-router-dom'
 import { useStore } from '../../store/useStore.js'
 import { useUI } from '../../store/useUI.js'
 import { ACCENTS } from '../../lib/format.js'
+import { DEFAULT_PALETTE } from '../../lib/palette.js'
 import { t } from '../../lib/i18n.js'
 import Icon from '../../components/Icon.jsx'
 import { Section, Row, Segmented } from '../../components/ui.jsx'
@@ -41,6 +42,21 @@ export default function SettingsAppearance() {
               style={{ background: c }} onClick={() => update(s => { s.accent = k })} aria-label={k} />
           ))}
         </div>
+      </div>
+      <div className="lrow palette-row" style={{ flexDirection: 'column', alignItems: 'stretch', gap: 12, paddingTop: 13, paddingBottom: 14 }}>
+        <span className="lrow-t">{t('Default palette')}</span>
+        <div className="palette">
+          {DEFAULT_PALETTE.map(c => (
+            <div key={c.name} className="palette-chip">
+              <span className="palette-swatch" style={{ background: c.value }} aria-hidden="true" />
+              <span className="palette-meta">
+                <span className="palette-name">{c.name}</span>
+                <span className="palette-value">{c.value}</span>
+              </span>
+            </div>
+          ))}
+        </div>
+        <span className="lrow-s">{t('The default Forvia look: dark canvas, bright lime accent, high-contrast text.')}</span>
       </div>
     </Section>
   </div>

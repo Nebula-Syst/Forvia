@@ -33,6 +33,7 @@ import SettingsData from './views/settings/SettingsData.jsx'
 import Social, { UserProfile } from './views/Social.jsx'
 import Rank from './views/Rank.jsx'
 import Admin from './views/Admin.jsx'
+import { DEFAULT_ACCENT } from './lib/palette.js'
 
 bindUI(useUI)   // lets the shared controls open sheets without importing the store at module scope
 
@@ -42,7 +43,7 @@ bindUI(useUI)   // lets the shared controls open sheets without importing the st
 function applyPrefs(theme, accent) {
   const de = document.documentElement
   de.dataset.theme = theme === 'light' ? 'light' : theme === 'prestige' ? 'prestige' : 'dark'
-  de.dataset.accent = ACCENTS[accent] ? accent : 'lime'
+  de.dataset.accent = ACCENTS[accent] ? accent : DEFAULT_ACCENT
   const meta = document.querySelector('meta[name="theme-color"]')
   if (meta) meta.content = de.dataset.theme === 'light' ? '#f2f2f7' : de.dataset.theme === 'prestige' ? '#0d0221' : '#000000'
 }
