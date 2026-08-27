@@ -7,13 +7,14 @@ import Icon from './Icon.jsx'
 import { TIERS } from '../lib/rank.js'
 
 const SLUG_BY_TIER = Object.fromEntries(TIERS.map(t => [t.name, t.slug]))
+const RANK_ASSET_VERSION = '2'
 
 export default function RankIcon({ tier, size, className = '' }) {
   const slug = SLUG_BY_TIER[tier] || TIERS[0].slug
   const s = size ? { width: size, height: size } : null
   return (
     <span className={'rank-icon tier-icon ' + className} style={s}>
-      <img src={`/tiers/${slug}.svg`} alt="" />
+      <img src={`/tiers/${slug}.svg?v=${RANK_ASSET_VERSION}`} alt="" />
     </span>
   )
 }
