@@ -1,4 +1,4 @@
-package ch.duartesantos.opengym;
+package ch.duartesantos.forvia;
 
 import com.getcapacitor.BridgeActivity;
 

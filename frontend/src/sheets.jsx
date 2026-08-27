@@ -22,13 +22,14 @@ import { nextPrescription, applyPrescription, policyFor, defaultIncrement, POLIC
 import { MOBILE, shareExport } from './lib/mobile.js'
 import { buildCompletedWorkout } from './lib/finish-workout.js'
 import { isWarmupRow } from './lib/workout-model.js'
-import { passwordLogin, passwordRegister, setPassword } from './lib/api.js'
+import { passwordLogin, passwordRegister, setPassword, deleteAccount, socialComments, socialComment, socialCommentRemove, socialUpload, pinWorkout, unpinWorkout, pinPR } from './lib/api.js'
 
 const S = () => useStore.getState().S
 const update = (...a) => useStore.getState().update(...a)
 const ui = () => useUI.getState()
 const toast = m => ui().toast(m)
 const snd = () => S().sound
+const setUser = u => useStore.getState().setUser(u)
 
 /* ============================ custom confirm dialog ============================ */
 function ConfirmDialog({ title, message, confirmText, cancelText, danger, onConfirm, close }) {
@@ -126,32 +127,154 @@ export function passwordRegisterSheet() {
   ui().openSheet(close => <PasswordRegisterForm close={close} />)
 }
 
-function PasswordManageForm({ user, close }) {
-  const [username, setUsername] = useState(user.username || '')
+function ChangePasswordForm({ close }) {
+  const [current, setCurrent] = useState('')
   const [pw, setPw] = useState('')
+  const [confirm, setConfirm] = useState('')
   const [busy, setBusy] = useState(false)
   const save = async () => {
-    if (username.trim().length < 3) { toast(t('Username must be at least 3 characters')); return }
+    if (!current) { toast(t('Enter your current password')); return }
     if (pw.length < 8) { toast(t('Password must be at least 8 characters')); return }
+    if (pw !== confirm) { toast(t('New passwords don’t match')); return }
     setBusy(true)
     try {
-      const u = await setPassword(username.trim(), pw)
-      useStore.getState().setUser(u); close()
+      await setPassword(current, pw)
+      close()
       toast(t('Password updated'))
     } catch (e) { toast(e.message || t('Could not save')) }
     finally { setBusy(false) }
   }
   return <>
-    <h3>{t('Change username or password')}</h3>
-    <input className="input" placeholder={t('Username')} value={username} onChange={e => setUsername(e.target.value)} />
+    <h3>{t('Change password')}</h3>
+    <input className="input" type="password" placeholder={t('Current password')} value={current}
+      onChange={e => setCurrent(e.target.value)} />
     <div style={{ height: 10 }} />
-    <input className="input" type="password" placeholder={t('New password (min 8 characters)')} value={pw} onChange={e => setPw(e.target.value)} />
+    <input className="input" type="password" placeholder={t('New password (min 8 characters)')} value={pw}
+      onChange={e => setPw(e.target.value)} />
+    <div style={{ height: 10 }} />
+    <input className="input" type="password" placeholder={t('Repeat new password')} value={confirm}
+      onChange={e => setConfirm(e.target.value)} onKeyDown={e => e.key === 'Enter' && save()} />
     <div style={{ height: 12 }} />
     <Button variant="primary" onClick={save} disabled={busy}>{t('Save changes')}</Button>
   </>
 }
-export function passwordManageSheet(user) {
-  ui().openSheet(close => <PasswordManageForm user={user} close={close} />)
+export function changePasswordSheet() {
+  ui().openSheet(close => <ChangePasswordForm close={close} />)
+}
+
+/* ============================ danger zone: delete account ============================ */
+function DeleteAccountForm({ close }) {
+  const [pw, setPw] = useState('')
+  const [busy, setBusy] = useState(false)
+  const go = async () => {
+    if (!pw) { toast(t('Enter your password to confirm')); return }
+    setBusy(true)
+    try {
+      await deleteAccount(pw)
+      close()
+      useStore.getState().setUser(null)
+      nav('/home')
+      toast(t('Account deleted'))
+    } catch (e) { toast(e.message || t('Could not delete account')); setBusy(false) }
+  }
+  return <>
+    <h3>{t('Delete account?')}</h3>
+    <div className="muted small" style={{ marginBottom: 14, lineHeight: 1.5 }}>
+      {t('This permanently deletes your profile, workout history, photos and everything you posted. This cannot be undone.')}
+    </div>
+    <input className="input" type="password" placeholder={t('Confirm your password')} value={pw}
+      onChange={e => setPw(e.target.value)} onKeyDown={e => e.key === 'Enter' && go()} />
+    <div style={{ height: 12 }} />
+    <button className="btn danger" onClick={go} disabled={busy}>{t('Delete my account')}</button>
+    <div style={{ height: 8 }} />
+    <Button variant="ghost" className="dim" onClick={close}>{t('Cancel')}</Button>
+  </>
+}
+export function deleteAccountSheet() {
+  ui().openSheet(close => <DeleteAccountForm close={close} />, { locked: true })
+}
+
+/* ============================ social: comments on a workout ============================ */
+function CommentsForm({ targetUid, workoutId, close }) {
+  const me = useStore.getState().user
+  const [rows, setRows] = useState(null)
+  const [text, setTextV] = useState('')
+  const [busy, setBusy] = useState(false)
+  const load = () => socialComments(targetUid, workoutId).then(setRows).catch(() => setRows([]))
+  useEffect(() => { load() }, [])
+  const send = async () => {
+    const v = text.trim()
+    if (!v) return
+    setBusy(true)
+    try { const c = await socialComment(targetUid, workoutId, v); setRows(r => [...(r || []), c]); setTextV('') }
+    catch (e) { toast(e.message || t('Could not save')) }
+    finally { setBusy(false) }
+  }
+  const remove = async id => {
+    setRows(r => r.filter(c => c.id !== id))
+    try { await socialCommentRemove(id) } catch (e) { toast(e.message || t('Could not save')); load() }
+  }
+  const canRemove = c => me && (c.userId === me.id || targetUid === me.id || me.admin)
+  return <>
+    <h3>{t('Comments')}</h3>
+    {rows === null ? null : rows.length === 0 ? <div className="muted small" style={{ marginBottom: 14 }}>{t('No comments yet.')}</div> : (
+      <div className="list" style={{ marginBottom: 14 }}>
+        {rows.map(c => <div key={c.id} className={'item' + (c.commentHighlight ? ' comment-highlight' : '')} style={{ alignItems: 'flex-start' }}>
+          <div className="grow">
+            <div className="tt" style={{ fontWeight: 600, fontSize: 14 }}>{c.name}</div>
+            <div className="ss">{c.text}</div>
+          </div>
+          {canRemove(c) && <button className="iconbtn" style={{ width: 28, height: 28, fontSize: 13 }} onClick={() => remove(c.id)} aria-label={t('Delete')}><Icon name="trash" /></button>}
+        </div>)}
+      </div>
+    )}
+    <input className="input" placeholder={t('Write a comment…')} maxLength={500} value={text}
+      onChange={e => setTextV(e.target.value)} onKeyDown={e => e.key === 'Enter' && send()} />
+    <div style={{ height: 12 }} />
+    <Button variant="primary" onClick={send} disabled={busy || !text.trim()}>{t('Post')}</Button>
+  </>
+}
+export function commentsSheet(targetUid, workoutId) {
+  ui().openSheet(close => <CommentsForm targetUid={targetUid} workoutId={workoutId} close={close} />)
+}
+
+// "Click to see everything" from a feed card — the full post (every photo, the whole
+// exercise list, description) plus the same comment thread as commentsSheet, so there's
+// one place a comment count and a tap both lead to instead of two overlapping sheets.
+// (Distinct from workoutDetailSheet below, which is your OWN history — read-only here,
+// no delete, and the workout shape is the feed's summary, not the raw stored one.)
+function FeedPost({ item, close }) {
+  const unit = useStore(s => s.S.unit)
+  const w = item.workout
+  return <>
+    {(w.images || []).map((url, i) => <img key={i} src={url} alt="" style={{ width: '100%', maxHeight: 420, objectFit: 'cover', borderRadius: 'var(--r)', marginBottom: i === w.images.length - 1 ? 14 : 8 }} />)}
+    <h3>{w.name || t('Freestyle')}</h3>
+    <div className="ss" style={{ marginBottom: 10 }}>{item.name} · {fmtDate(w.d, true)}</div>
+    {w.desc && <div className="small" style={{ marginBottom: 14, lineHeight: 1.5 }}>{w.desc}</div>}
+    <div className="tiles" style={{ marginBottom: 14 }}>
+      <div className="tile"><div className="l">{t('Duration')}</div><div className="v" style={{ fontSize: '1.1rem' }}>{fmtDur(w.end - w.start)}</div></div>
+      <div className="tile"><div className="l">{t('Volume')}</div><div className="v" style={{ fontSize: '1.1rem' }}>{fmtVol(w.vol, unit)}</div></div>
+      <div className="tile"><div className="l">{t('Records')}</div><div className="v" style={{ fontSize: 20 }}>{w.prs.length || '—'}</div></div>
+    </div>
+    {w.exercises.length > 0 && <div style={{ marginBottom: 14 }}>
+      {w.exercises.map(e => {
+        const ex = EXIDX[e.id] || {}
+        return <div key={e.id} className="row" style={{ gap: 10, padding: '5px 0' }}>
+          <Thumb ex={ex} />
+          <div style={{ minWidth: 0, flex: 1 }}>
+            <div className="tt capitalize" style={{ fontSize: 14 }}>{ex.n || e.id}</div>
+            <div className="ss">{t('{0} sets', e.sets)}</div>
+          </div>
+          {w.prs.includes(e.id) && <Icon name="trophy" style={{ color: 'var(--yellow)', fontSize: 15, flex: 'none' }} />}
+        </div>
+      })}
+    </div>}
+    <div className="divider" />
+    <CommentsForm targetUid={item.uid} workoutId={w.id} close={close} />
+  </>
+}
+export function feedPostSheet(item) {
+  ui().openSheet(close => <FeedPost item={item} close={close} />)
 }
 
 /* ============================ starter plan ============================ */
@@ -751,7 +874,7 @@ function PlanTools({ close }) {
   const exportFile = async () => {
     const bundle = buildPlanBundle(st, user?.name ? t('{0}’s plan', user.name) : '')
     const json = JSON.stringify(bundle, null, 2)
-    const name = 'opengym-plan-' + todayISO() + '.json'
+    const name = 'forvia-plan-' + todayISO() + '.json'
     if (MOBILE) { try { await shareExport(json, name) } catch (e) { /* dismissed */ } close(); return }
     const blob = new Blob([json], { type: 'application/json' })
     const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name; a.click(); URL.revokeObjectURL(a.href)
@@ -771,7 +894,7 @@ function PlanTools({ close }) {
     <h3>{t('Share your plan')}</h3>
     <div className="muted small" style={{ marginBottom: 16 }}>{t('Send your routines to a friend, or put your week on paper.')}</div>
     <Button variant="primary" icon="upload" onClick={exportFile} disabled={!hasRoutines}>{t('Export plan file')}</Button>
-    <div className="dim small" style={{ margin: '7px 2px 0', lineHeight: 1.4 }}>{t('A small file a friend imports into their own openGym — routines only, none of your workouts or weigh-ins.')}</div>
+    <div className="dim small" style={{ margin: '7px 2px 0', lineHeight: 1.4 }}>{t('A small file a friend imports into their own Forvia — routines only, none of your workouts or weigh-ins.')}</div>
     {!MOBILE && <>
       <div style={{ height: 12 }} />
       <Button variant="tinted" icon="download" onClick={() => { close(); printPlan(st, user?.name || '') }} disabled={!hasRoutines}>{t('Print / Save as PDF')}</Button>
@@ -865,15 +988,34 @@ export const dayAssignSheet = day => ui().openSheet(close => <DayAssign day={day
 /* ============================ workout detail ============================ */
 function WorkoutDetail({ w, close }) {
   const st = useStore(s => s.S)
+  const user = useStore(s => s.user)
+  const perks = user?.perks
+  const pinnedPR = user?.pinnedPR
+  const isPinned = user?.pinnedWorkoutIds?.includes(w.id)
+  const togglePin = async () => {
+    try { setUser(isPinned ? await unpinWorkout(w.id) : await pinWorkout(w.id)) }
+    catch (e) { toast(e.message || t('Could not save')) }
+  }
+  const togglePinPR = async id => {
+    const already = pinnedPR?.workoutId === w.id && pinnedPR?.exerciseId === id
+    try { setUser(already ? await pinPR('', '') : await pinPR(w.id, id)) }
+    catch (e) { toast(e.message || t('Could not save')) }
+  }
   return <>
-    <h3>{w.name}</h3>
+    <div className="row between" style={{ marginBottom: 2 }}>
+      <h3 style={{ margin: 0 }}>{w.name}</h3>
+      {!!perks?.pinnedMax && <button className="iconbtn" aria-label={t('Pin to profile')} onClick={togglePin}><Icon name="flag" className={isPinned ? 'accent' : undefined} /></button>}
+    </div>
     <div className="muted small" style={{ marginBottom: 12 }}>{[fmtDate(w.d, true), ...durPart(w.end - w.start), fmtVol(w.vol, st.unit), ...(w.bw ? [fmtNum(w.bw) + ' ' + st.unit] : [])].join(' · ')}</div>
     {w.entries.map((e, i) => {
       const ex = EXIDX[e.id]
+      const isPr = w.prs && w.prs.includes(e.id)
+      const prPinned = pinnedPR?.workoutId === w.id && pinnedPR?.exerciseId === e.id
       return <div key={i} className="row" style={{ marginBottom: 12, alignItems: 'flex-start' }}>
         {ex && <Thumb ex={ex} />}
-        <div className="grow"><div className="tt capitalize" style={{ fontWeight: 600 }}>{ex ? ex.n : (e.n || e.id)} {w.prs && w.prs.includes(e.id) && <span className="pr"><Icon name="trophy" />PR</span>}</div>
+        <div className="grow"><div className="tt capitalize" style={{ fontWeight: 600 }}>{ex ? ex.n : (e.n || e.id)} {isPr && <span className="pr"><Icon name="trophy" />PR</span>}</div>
           <div className="ss">{e.sets.filter(s => s.done).map(s => setLabel(e.id, s, e.target)).join('  ·  ') || t('no sets')}</div></div>
+        {isPr && perks?.pinFavoritePR && <button className="iconbtn" style={{ width: 30, height: 30, fontSize: 14 }} aria-label={t('Pin as favorite PR')} onClick={() => togglePinPR(e.id)}><Icon name={prPinned ? 'starFill' : 'star'} className={prPinned ? 'accent' : undefined} /></button>}
       </div>
     })}
     <Button variant="danger" onClick={() => confirmSheet({ title: t('Delete workout?'), message: t('This removes it from your history for good.'), confirmText: t('Delete'), danger: true, onConfirm: () => { update(s => { s.workouts = s.workouts.filter(x => x.id !== w.id) }); close(); toast(t('Workout deleted')) } })}>{t('Delete workout')}</Button>
@@ -1019,11 +1161,46 @@ function WorkoutComplete({ close }) {
 }
 export const workoutCompleteSheet = () => ui().openSheet(close => <WorkoutComplete close={close} />, { kind: 'center' })
 
+const DEFAULT_MAX_WORKOUT_IMAGES = 4
+const MAX_IMAGE_MB = 6
+
+// Every field here is optional and saves itself as soon as it's known (blur for text, on
+// upload for photos) — closing the sheet without touching anything leaves the workout exactly
+// as buildCompletedWorkout() made it, same as before this existed.
 function FinishSummary({ w, prs, e1prs = [], close }) {
   const st = useStore(s => s.S)
-  return <div style={{ textAlign: 'center', padding: '8px 0' }}>
-    <div style={{ fontSize: 44, display: 'flex', justifyContent: 'center', color: 'var(--acc)' }}><Icon name="trophy" /></div>
-    <h3 style={{ margin: '8px 0' }}>{t('Workout complete!')}</h3>
+  const maxImages = useStore(s => s.user?.perks?.maxPhotos) || DEFAULT_MAX_WORKOUT_IMAGES
+  const [title, setTitle] = useState(w.name || '')
+  const [desc, setDesc] = useState(w.desc || '')
+  const [images, setImages] = useState(w.images || [])
+  const [uploading, setUploading] = useState(false)
+
+  const patch = fields => update(s => { const wk = s.workouts.find(x => x.id === w.id); if (wk) Object.assign(wk, fields) })
+  const saveTitle = () => { const v = title.trim() || w.name; setTitle(v); patch({ name: v }) }
+  const saveDesc = () => { const v = desc.trim(); setDesc(v); patch({ desc: v }) }
+
+  const addPhotos = async e => {
+    const files = Array.from(e.target.files || []).slice(0, maxImages - images.length)
+    e.target.value = ''
+    if (!files.length) return
+    setUploading(true)
+    for (const f of files) {
+      if (f.size > MAX_IMAGE_MB * 1024 * 1024) { toast(t('{0} is too large — max {1} MB', f.name, MAX_IMAGE_MB)); continue }
+      try {
+        const dataUrl = await new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result); r.onerror = rej; r.readAsDataURL(f) })
+        const url = await socialUpload(dataUrl)
+        setImages(list => { const next = [...list, url]; patch({ images: next }); return next })
+      } catch (err) { toast(err.message || t('Could not upload image')) }
+    }
+    setUploading(false)
+  }
+  const removeImage = url => setImages(list => { const next = list.filter(x => x !== url); patch({ images: next }); return next })
+
+  return <div style={{ padding: '8px 0' }}>
+    <div style={{ textAlign: 'center' }}>
+      <div style={{ fontSize: 44, display: 'flex', justifyContent: 'center', color: 'var(--acc)' }}><Icon name="trophy" /></div>
+      <h3 style={{ margin: '8px 0' }}>{t('Workout complete!')}</h3>
+    </div>
     <div className="tiles" style={{ textAlign: 'left' }}>
       <div className="tile"><div className="l">{t('Duration')}</div><div className="v" style={{ fontSize: '1.1rem' }}>{fmtDur(w.end - w.start)}</div></div>
       <div className="tile"><div className="l">{t('Volume')}</div><div className="v" style={{ fontSize: '1.1rem' }}>{fmtVol(w.vol, st.unit)}</div></div>
@@ -1034,6 +1211,29 @@ function FinishSummary({ w, prs, e1prs = [], close }) {
       {prs.map(id => <div key={id} className="small accent capitalize row" style={{ gap: 5 }}><Icon name="trophy" style={{ fontSize: 13 }} />{t('New PR:')} {(EXIDX[id] || {}).n || id}</div>)}
       {e1prs.map(p => <div key={p.id} className="small accent capitalize row" style={{ gap: 5 }}><Icon name="chartLine" style={{ fontSize: 13 }} />{t('Best estimated 1RM:')} {(EXIDX[p.id] || {}).n || p.id} · {fmtNum(p.est)} {st.unit}</div>)}
     </div>}
+
+    <h4 className="sec" style={{ textAlign: 'left' }}>{t('Title & photos')}</h4>
+    <input className="input" value={title} maxLength={60} placeholder={t('Name this workout')}
+      onChange={e => setTitle(e.target.value)} onBlur={saveTitle} style={{ marginBottom: 8 }} />
+    <textarea className="input" value={desc} maxLength={280} rows={3} placeholder={t('Add a description (optional)')}
+      onChange={e => setDesc(e.target.value)} onBlur={saveDesc} style={{ marginBottom: 10 }} />
+    <div className="row" style={{ gap: 8, flexWrap: 'wrap', marginBottom: 14 }}>
+      {images.map(url => (
+        <div key={url} style={{ position: 'relative' }}>
+          <img src={url} className="thumb" style={{ width: 60, height: 60 }} />
+          <button className="iconbtn" aria-label={t('Delete')}
+            style={{ position: 'absolute', top: -6, right: -6, width: 20, height: 20, fontSize: 10, background: 'var(--red)', color: '#fff' }}
+            onClick={() => removeImage(url)}><Icon name="xmark" /></button>
+        </div>
+      ))}
+      {images.length < maxImages && (
+        <label className="thumb thumb-x" style={{ width: 60, height: 60, cursor: uploading ? 'wait' : 'pointer', opacity: uploading ? .5 : 1 }}>
+          <input type="file" accept="image/jpeg,image/png,image/webp" multiple hidden disabled={uploading} onChange={addPhotos} />
+          <Icon name="plus" />
+        </label>
+      )}
+    </div>
+
     <h4 className="sec" style={{ textAlign: 'left' }}>{t('What you just trained')}</h4>
     <BodyMap load={loadOfWorkouts([w])} body={st.body} />
     <div style={{ height: 14 }} />
@@ -1079,5 +1279,5 @@ function doFinishWorkout() {
   })
   useUI.getState().stopRest()
   beep(snd(), 880, 0.15); beep(snd(), 1100, 0.15, 0.18); beep(snd(), 1320, 0.3, 0.36)
-  ui().openSheet(close => <FinishSummary w={w} prs={prs} e1prs={e1prs} close={close} />, { kind: 'center', locked: true })
+  ui().openSheet(close => <FinishSummary w={w} prs={prs} e1prs={e1prs} close={close} />, { locked: true })
 }

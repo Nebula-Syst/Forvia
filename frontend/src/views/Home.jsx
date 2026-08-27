@@ -10,6 +10,8 @@ import LineChart from '../components/LineChart.jsx'
 import Heatmap from '../components/Heatmap.jsx'
 import BodyMap, { BodyMapLegend } from '../components/BodyMap.jsx'
 import Icon from '../components/Icon.jsx'
+import RankRow from '../components/RankRow.jsx'
+import TasksCard from '../components/TasksCard.jsx'
 import { Button } from '../components/ui.jsx'
 import { glyphOf } from '../lib/glyphs.js'
 
@@ -71,10 +73,16 @@ export default function Home() {
   // today's session shown right under the week strip
   const onToday = () => { if (S.active) nav('/workout'); else if (routine) startFlow(routine.id); else dayOverrideSheet(todayISO()) }
 
-  return <div className="narrow">
+  return <div>
     <div className="hdr">
-      <div><h1>{user ? t('Hi {0}', user.name) : 'openGym'}</h1><div className="sub">{today.toLocaleDateString(dateLocale(), { weekday: 'long', day: 'numeric', month: 'long' })}</div></div>
-      <button className="iconbtn" onClick={() => nav('/settings')} aria-label={t('Settings')}><Icon name="gear" /></button>
+      <div>
+        <h1>{user ? t('Hi {0}', user.name) : 'Forvia'}</h1>
+        <div className="sub">{today.toLocaleDateString(dateLocale(), { weekday: 'long', day: 'numeric', month: 'long' })}</div>
+        {user && <div style={{ marginTop: 8 }}><RankRow /></div>}
+      </div>
+      <div className="row" style={{ gap: 8 }}>
+        <button className="iconbtn" onClick={() => nav('/plan')} aria-label={t('Plan')}><Icon name="calendar" /></button>
+      </div>
     </div>
 
     <div className="card">
@@ -106,6 +114,8 @@ export default function Home() {
           : <Icon name="plus" className="chev" />}
       </div>
     </div>
+
+    {user && <TasksCard />}
 
     {hasHistory && <div className="tiles">
       <div className="tile k-green">

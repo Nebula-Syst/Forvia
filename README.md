@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="assets/banner.png" alt="openGym" width="720">
+<img src="assets/banner.png" alt="Forvia" width="720">
 
 <br>
 
@@ -19,10 +19,10 @@ No account on someone else's server, no subscription, no ads. Just `docker compo
 ![Docker](https://img.shields.io/badge/Docker-compose-2496ED?style=flat-square&logo=docker&logoColor=white)
 ![No tracking](https://img.shields.io/badge/telemetry-none-f472b6?style=flat-square)
 <br>
-[![Build](https://img.shields.io/github/actions/workflow/status/Nebula-Syst/opengym/docker-publish.yml?branch=main&style=flat-square)](https://github.com/Nebula-Syst/opengym/actions)
-![Last commit](https://img.shields.io/github/last-commit/Nebula-Syst/opengym?style=flat-square)
-[![Stars](https://img.shields.io/github/stars/Nebula-Syst/opengym?style=flat-square)](https://github.com/Nebula-Syst/opengym/stargazers)
-[![Issues](https://img.shields.io/github/issues/Nebula-Syst/opengym?style=flat-square)](https://github.com/Nebula-Syst/opengym/issues)
+[![Build](https://img.shields.io/github/actions/workflow/status/Nebula-Syst/forvia/docker-publish.yml?branch=main&style=flat-square)](https://github.com/Nebula-Syst/forvia/actions)
+![Last commit](https://img.shields.io/github/last-commit/Nebula-Syst/forvia?style=flat-square)
+[![Stars](https://img.shields.io/github/stars/Nebula-Syst/forvia?style=flat-square)](https://github.com/Nebula-Syst/forvia/stargazers)
+[![Issues](https://img.shields.io/github/issues/Nebula-Syst/forvia?style=flat-square)](https://github.com/Nebula-Syst/forvia/issues)
 [![Discord](https://img.shields.io/badge/Discord-join-5865F2?style=flat-square&logo=discord&logoColor=white)](https://discord.gg/e62jY6fwVb)
 [![Buy Me A Coffee](https://img.shields.io/badge/Buy%20me%20a%20coffee-support-FFDD00?style=flat-square&logo=buymeacoffee&logoColor=black)](https://buymeacoffee.com/duartesantos)
 
@@ -42,17 +42,18 @@ No account on someone else's server, no subscription, no ads. Just `docker compo
 
 <div align="center">
 
-### [📦 Source on GitHub](https://github.com/Nebula-Syst/opengym)
+### [📦 Source on GitHub](https://github.com/Nebula-Syst/forvia)
 
-This is Nebula Systems' fork of openGym — same features, self-hosted login now required
-(no guest mode), and an ongoing visual redesign.
+Forvia is Nebula Systems' update of [openGym](https://gitlab.com/DuarteSantos8/opengym) by
+Duarte Santos. It keeps the same self-hosted training-log core, with Nebula Systems' current
+packaging, docs and site around it.
 
 </div>
 
 ## Why
 
 Most workout apps lock your data behind a login on their servers, nag you to upgrade, or
-disappear when the startup does. openGym is the opposite: **it runs on your box, your data
+disappear when the startup does. Forvia is the opposite: **it runs on your box, your data
 stays in a folder you control, and it's yours to fork.** It still feels modern — installable
 as a home-screen app, passkey sign-in, offline support, sync across your phone and laptop.
 
@@ -87,15 +88,15 @@ as a home-screen app, passkey sign-in, offline support, sync across your phone a
 - 📥 **Bring your history with you** — import from **FitNotes** (Android and iOS), **Strong** and **Hevy**, or body weight straight out of an **Apple Health** export. Exercise names are matched against the library and anything unrecognised becomes one of your own exercises, so nothing in the file is dropped
 - 📦 **Yours to keep** — one-tap JSON export/import, guest mode, **no telemetry**
 - 🤖 **Ask an AI about your training** (optional) — an [MCP server](mcp/README.md) lets a client like Claude Desktop or Cursor read your history in your own words: *"what did I bench last week?"*. Read-only, spawned locally by the client, nothing leaves your box. Not in the Docker build — if you don't use an AI assistant, it isn't there
-- 📱 **Standalone Android app** — the whole tracker as a sideloadable APK: no account, no server, data on the phone, native workout reminders ([download](https://opengym.duarte-santos.ch))
+- 📱 **Standalone Android app** — the whole tracker as a sideloadable APK: no account, no server, data on the phone, native workout reminders ([download](https://forvia.duarte-santos.ch))
 
 ## Quick start (self-host)
 
 You need [Docker](https://docs.docker.com/get-docker/) with Compose.
 
 ```bash
-git clone https://github.com/Nebula-Syst/opengym
-cd opengym
+git clone https://github.com/Nebula-Syst/forvia
+cd forvia
 cp .env.example .env
 docker compose pull   # grab prebuilt images (amd64 + arm64) — skip to build from source instead
 docker compose up -d
@@ -104,12 +105,12 @@ docker compose up -d
 Open **http://localhost:8080**, tap **Create profile**, and you're in. First launch downloads
 the exercise media (~140 MB) once.
 
-> **About that media:** it reaches openGym through
+> **About that media:** it reaches Forvia through
 > [hasaneyldrm/exercises-dataset](https://github.com/hasaneyldrm/exercises-dataset), which
 > redistributes [ExerciseDB v1](https://exercisedb.dev/) — its metadata and instruction text are
 > MIT, but the images and animations are third-party content under *neither* that MIT license nor
-> openGym's AGPL, and their ownership is currently disputed between Gym visual and ExerciseDB.
-> openGym ships none of it: your instance downloads it from upstream. Reusing it yourself,
+> Forvia's AGPL, and their ownership is currently disputed between Gym visual and ExerciseDB.
+> Forvia ships none of it: your instance downloads it from upstream. Reusing it yourself,
 > commercially or not, means clearing it with the rights holder — see [NOTICE.md](NOTICE.md).
  Prefer building the images yourself instead of pulling from
 GitHub's registry? Drop the `pull` step and run `docker compose up -d --build` — you don't need Node or
@@ -125,7 +126,7 @@ no backend — everything stays on the phone, with native workout-day reminders 
 backups. Self-hosting gets you multi-device sync and profiles for friends & family; the
 mobile app is the install-and-done flavor.
 
-- **Android:** build the APK yourself — **[docs/MOBILE.md](docs/MOBILE.md)**. openGym is
+- **Android:** build the APK yourself — **[docs/MOBILE.md](docs/MOBILE.md)**. Forvia is
   deliberately not on the Play Store; this fork doesn't currently publish signed prebuilt APKs.
 - **iPhone:** Apple doesn't allow installing apps outside the App Store, so there is no iOS
   download. Self-host and add it to your home screen from Safari (it's a full PWA), or build
@@ -170,7 +171,7 @@ All via `.env` (see `.env.example`):
 | `NGINX_PORT`  | Port the web container listens on, inside the container | `80`                 |
 | `BACKEND`     | Name of the API service that `/api` is proxied to — change it if yours isn't called `api` | `api` |
 | `PORT`        | Port the API listens on; the web container proxies to the same value | `3000`  |
-| `RP_NAME`     | Name shown in the passkey prompt                     | `openGym`               |
+| `RP_NAME`     | Name shown in the passkey prompt                     | `Forvia`               |
 | `SESSION_DAYS`| How long a sign-in lasts, in days                    | `90`                    |
 | `ADMIN_UIDS`  | User ids that get the admin dashboard (comma-separated) | *(none)*             |
 | `INVITE_ONLY` | Require an invite code to create a profile           | *(off)*                 |
@@ -189,7 +190,7 @@ host side of that volume, not the variable.
 
 Rough, community-driven — ideas and PRs welcome:
 
-- [x] Standalone mobile app — Android APK to sideload ([download](https://opengym.duarte-santos.ch)); on iOS as a self-hosted PWA (no store listings planned)
+- [x] Standalone mobile app — Android APK to sideload ([download](https://forvia.duarte-santos.ch)); on iOS as a self-hosted PWA (no store listings planned)
 - [x] Automatic progression programs (linear, Greyskull LP, double progression) with stalls and deloads
 - [x] Estimated 1RM per exercise
 - [ ] Percentage / training-max programming (5/3/1-style) on top of the progression engine
@@ -221,28 +222,28 @@ in the Docker build.
 
 - **[Discord](https://discord.gg/e62jY6fwVb)** — release announcements, self-hosting help and
   the back-and-forth that would be a slow issue thread. Quickest way to get an answer.
-- **[Issues](https://github.com/Nebula-Syst/opengym/issues)** — bugs, questions, self-hosting
+- **[Issues](https://github.com/Nebula-Syst/forvia/issues)** — bugs, questions, self-hosting
   help and ideas. There are no Discussions here, so it all lives in one tracker: label a question
   `question` and an idea `idea`, and it gets treated as one rather than as agreed-on work. Use
   an issue over the Discord for anything the next person should be able to find by searching.
 - **Login trouble?** Most of it is an `RP_ID`/`ORIGIN` mismatch — check
   [docs/SELF_HOSTING.md](docs/SELF_HOSTING.md) before opening an issue.
-- **Pull requests** — [open one on GitHub](https://github.com/Nebula-Syst/opengym/pulls); see
+- **Pull requests** — [open one on GitHub](https://github.com/Nebula-Syst/forvia/pulls); see
   [CONTRIBUTING.md](CONTRIBUTING.md).
 
-> **About this fork:** this repository is Nebula Systems' fork of
+> **About this fork:** this repository is Nebula Systems' update of
 > [openGym](https://gitlab.com/DuarteSantos8/opengym) by Duarte Santos, kept under the same
-> AGPL-3.0 license (see [NOTICE.md](NOTICE.md)). Login is required here (guest mode is off) and
-> the visual design is being reworked; the upstream project itself lives on GitLab. Issue and PR
-> numbers in [CHANGELOG.md](CHANGELOG.md) predating this fork refer to the upstream tracker, not
-> this one.
+> AGPL-3.0 license (see [NOTICE.md](NOTICE.md)). The history and design lineage are shared:
+> openGym is the original project this repo builds on, while this fork carries the Nebula
+> Systems branding, docs and packaging. Issue and PR numbers in [CHANGELOG.md](CHANGELOG.md)
+> predating this fork refer to the upstream tracker, not this one.
 
 ## Contributing
 
 Issues and PRs welcome — see [CONTRIBUTING.md](CONTRIBUTING.md). Good first issues: more starter
 plans, exercise-data languages, import from other trackers. **A ⭐ helps more people find it.**
 
-openGym is free and stays free: AGPL, no subscription, no paid tier, nothing held back for
+Forvia is free and stays free: AGPL, no subscription, no paid tier, nothing held back for
 sponsors. If it replaced a paid tracker for you and you want to chip in, there's a coffee button
 below (and a badge at the top) — a star, a bug report or a merge request is worth just as much.
 
@@ -257,19 +258,19 @@ below (and a badge at the top) — a star, a bug report or a merge request is wo
 
 ## License
 
-**openGym's own code** is [GNU AGPL v3.0](LICENSE) — free and open source. You can self-host,
+**Forvia's own code** is [GNU AGPL v3.0](LICENSE) — free and open source. You can self-host,
 use, modify and share it; if you run a modified version as a network service, you must offer that
-version's source under the same license. Nobody can turn openGym into a closed, proprietary
+version's source under the same license. Nobody can turn Forvia into a closed, proprietary
 product.
 
-**Third-party content is not, and openGym cannot sublicense it.** The exercise metadata and
-instruction text originate from [ExerciseDB v1](https://exercisedb.dev/) and reach openGym through
+**Third-party content is not, and Forvia cannot sublicense it.** The exercise metadata and
+instruction text originate from [ExerciseDB v1](https://exercisedb.dev/) and reach Forvia through
 [hasaneyldrm/exercises-dataset](https://github.com/hasaneyldrm/exercises-dataset) under the
 **MIT** license. The exercise images and animations are third-party content covered by neither
 that license nor the AGPL, and their ownership is **currently unresolved** — the upstream dataset
 attributes them to [Gym visual](https://gymvisual.com/) under a non-transferable permission, while
 [ExerciseDB/AscendAPI](https://exercisedb.io/faq) claims to be their creator and owner. A
-clarification has been requested. openGym does not redistribute them (your instance fetches them
+clarification has been requested. Forvia does not redistribute them (your instance fetches them
 at first run) and does not relicense them. To reuse that media yourself, clear it with the rights
 holder first.
 

@@ -1,9 +1,11 @@
-/* opengym-api — username/password auth + per-user state storage for openGym
+/* forvia-api — username/password auth + per-user state storage for Forvia
    No framework, JSON-file storage, signed session cookies.               */
 import http from 'node:http';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
+import net from 'node:net';
+import tls from 'node:tls';
 import webpush from 'web-push';
 
 const PORT = +(process.env.PORT || 3000);
@@ -23,7 +25,9 @@ const ALLOW_GUEST = !/^(0|false|no|off)$/i.test(process.env.ALLOW_GUEST || '');
 // internet don't want the same number. Only affects cookies minted from now on — the expiry is
 // baked into each cookie when it's issued, so lowering this never cuts an existing session short.
 const SESSION_DAYS = Math.max(1, +(process.env.SESSION_DAYS || 90) || 90);
-const MAX_BODY = 5 * 1024 * 1024;
+// Base64 inflates ~33% — 8MB comfortably fits the ~6MB compressed-photo cap enforced in
+// /api/social/upload while still bounding every other route's body too.
+const MAX_BODY = 8 * 1024 * 1024;
 // Secure cookies require HTTPS; over plain http://localhost the flag would drop the cookie
 const SECURE = /^https:/i.test(ORIGIN) ? ' Secure;' : '';
 
@@ -35,15 +39,38 @@ if (!fs.existsSync(secretFile)) fs.writeFileSync(secretFile, crypto.randomBytes(
 const SECRET = fs.readFileSync(secretFile, 'utf8').trim();
 
 const dbFile = path.join(DATA, 'db.json');
-let db = { users: [], subs: [], invites: [] };
+let db = { users: [], subs: [], invites: [], follows: [], reactions: [], comments: [] };
 try { db = JSON.parse(fs.readFileSync(dbFile, 'utf8')); } catch {}
 db.subs = db.subs || [];
 db.invites = db.invites || [];
+db.follows = db.follows || [];       // {followerId, followeeId, created}
+db.reactions = db.reactions || [];   // {userId, targetUid, workoutId, created} — one row = one like
+db.comments = db.comments || [];     // {id, userId, targetUid, workoutId, text, created}
+db.tasks = db.tasks || [];           // {id, name, desc, points, created} — admin-defined catalog
+db.taskCompletions = db.taskCompletions || [];  // {id, userId, taskId, points, date, created}
 const isAdmin = user => !!user && (user.admin === true || ADMIN_UIDS.includes(user.id));
 // The shape sent to the client for "who am I" — never the password hash/salt, just enough to
 // know what username to prefill when changing it.
 const publicUser = user => ({
-  id: user.id, name: user.name, admin: isAdmin(user), username: user.pwd?.username || null
+  id: user.id, name: user.name, admin: isAdmin(user), username: user.pwd?.username || null,
+  public: !!user.public, rank: rankFor(user.id), perks: perksFor(user.id),
+  bio: user.bio || '',
+  pinnedWorkoutIds: user.pinnedWorkoutIds || [], pinnedPR: user.pinnedPR || null,
+  email: user.email || null, emailVerified: !!user.emailVerified, phone: user.phone || null,
+});
+// A user's social presence to OTHER users — never leaks the auth-only fields above.
+// Perks ride along here too: they're cosmetic flair, meant to be seen by other people
+// (a legend frame, an animated name) — nothing sensitive about them.
+const socialUser = user => ({
+  id: user.id, name: user.name, perks: perksFor(user.id),
+  bio: user.bio || '',
+  pinnedWorkoutIds: user.pinnedWorkoutIds || [], pinnedPR: user.pinnedPR || null,
+});
+// Shared by GET /api/social/comments and the POST /api/social/comment response, so the
+// field list (and the author's commentHighlight perk) only lives in one place.
+const publicComment = c => ({
+  id: c.id, userId: c.userId, name: (db.users.find(u => u.id === c.userId) || {}).name || '?',
+  text: c.text, created: c.created, commentHighlight: perksFor(c.userId).commentHighlight,
 });
 function saveDb() { atomicWrite(dbFile, JSON.stringify(db, null, 2)); }
 function atomicWrite(file, content) {
@@ -55,6 +82,14 @@ const stateFile = uid => path.join(DATA, 'state-' + uid.replace(/[^a-zA-Z0-9_-]/
 function readState(uid) {
   try { return JSON.parse(fs.readFileSync(stateFile(uid), 'utf8')); } catch { return null; }
 }
+
+/* ---------- workout photos ---------- */
+// Stored on disk under DATA/uploads/<uid>/, served back through GET /api/uploads?uid&file —
+// through the API rather than a static nginx mount, so the one visibility rule (owner or a
+// currently-public account) applies without touching the web container at all.
+const UPLOAD_MIME = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp' };
+const uploadsDir = uid => path.join(DATA, 'uploads', uid.replace(/[^a-zA-Z0-9_-]/g, ''));
+const MAX_IMAGE_BYTES = 6 * 1024 * 1024;
 
 /* ---------- push notifications (Web Push / VAPID) ---------- */
 const vapidFile = path.join(DATA, 'vapid.json');
@@ -224,6 +259,91 @@ const findByUsername = name => {
   return norm ? db.users.find(u => u.pwd?.username?.toLowerCase() === norm) : null;
 };
 
+/* ---------- outbound email (account email verification only) ---------- */
+// Hand-rolled SMTP client, not a dependency — same call as scrypt over bcrypt above: this
+// project ships with exactly one dependency (web-push), and a plain SMTP conversation
+// (EHLO/[STARTTLS]/AUTH LOGIN/MAIL FROM/RCPT TO/DATA) is a small, well-documented protocol
+// that doesn't earn adding nodemailer just to send one kind of message. Best-effort: every
+// caller treats a false return as "couldn't send" and tells the user, never as a hard error.
+const SMTP_HOST = process.env.SMTP_HOST || '';
+const SMTP_PORT = +(process.env.SMTP_PORT || 587);
+const SMTP_USER = process.env.SMTP_USER || '';
+const SMTP_PASS = process.env.SMTP_PASS || '';
+const SMTP_SECURE = /^(1|true|yes|on)$/i.test(process.env.SMTP_SECURE || '') || SMTP_PORT === 465;
+const ORIGIN_HOST = (() => { try { return new URL(ORIGIN).hostname; } catch { return 'localhost'; } })();
+const SMTP_FROM = process.env.SMTP_FROM || `Forvia <no-reply@${ORIGIN_HOST}>`;
+const SMTP_CONFIGURED = !!SMTP_HOST;
+
+function smtpRead(socket) {
+  return new Promise((resolve, reject) => {
+    let buf = '';
+    const onData = d => {
+      buf += d.toString('utf8');
+      const lines = buf.split('\r\n').filter(Boolean);
+      const last = lines[lines.length - 1] || '';
+      if (/^\d{3} /.test(last)) { cleanup(); resolve(buf); }
+    };
+    const onErr = e => { cleanup(); reject(e); };
+    const onClose = () => { cleanup(); reject(new Error('connection closed')); };
+    function cleanup() { socket.removeListener('data', onData); socket.removeListener('error', onErr); socket.removeListener('close', onClose); }
+    socket.on('data', onData);
+    socket.once('error', onErr);
+    socket.once('close', onClose);
+  });
+}
+async function smtpCmd(socket, line) {
+  if (line != null) socket.write(line + '\r\n');
+  const r = await smtpRead(socket);
+  if (!/^2/.test(r) && !/^3/.test(r)) throw new Error('SMTP ' + r.trim().split('\r\n').pop());
+  return r;
+}
+async function connectPlain() {
+  return new Promise((resolve, reject) => {
+    const s = net.connect({ host: SMTP_HOST, port: SMTP_PORT });
+    s.once('connect', () => resolve(s));
+    s.once('error', reject);
+  });
+}
+async function upgradeTls(socket, servername) {
+  return new Promise((resolve, reject) => {
+    const s = tls.connect({ socket, host: SMTP_HOST, servername }, () => resolve(s));
+    s.once('error', reject);
+  });
+}
+async function sendMail({ to, subject, text }) {
+  if (!SMTP_CONFIGURED) return false;
+  let socket = null;
+  try {
+    socket = SMTP_SECURE ? await upgradeTls(await connectPlain(), SMTP_HOST) : await connectPlain();
+    await smtpRead(socket);   // 220 greeting
+    let r = await smtpCmd(socket, `EHLO ${ORIGIN_HOST}`);
+    if (!SMTP_SECURE && /STARTTLS/i.test(r)) {
+      await smtpCmd(socket, 'STARTTLS');
+      socket = await upgradeTls(socket, SMTP_HOST);
+      await smtpCmd(socket, `EHLO ${ORIGIN_HOST}`);
+    }
+    if (SMTP_USER) {
+      await smtpCmd(socket, 'AUTH LOGIN');
+      await smtpCmd(socket, Buffer.from(SMTP_USER).toString('base64'));
+      await smtpCmd(socket, Buffer.from(SMTP_PASS).toString('base64'));
+    }
+    const fromAddr = (SMTP_FROM.match(/<([^>]+)>/) || [, SMTP_FROM])[1];
+    await smtpCmd(socket, `MAIL FROM:<${fromAddr}>`);
+    await smtpCmd(socket, `RCPT TO:<${to}>`);
+    await smtpCmd(socket, 'DATA');
+    const body = [`From: ${SMTP_FROM}`, `To: ${to}`, `Subject: ${subject}`,
+      'MIME-Version: 1.0', 'Content-Type: text/plain; charset=utf-8', '', text, '.'].join('\r\n');
+    await smtpCmd(socket, body);
+    await smtpCmd(socket, 'QUIT').catch(() => {});
+    socket.end();
+    return true;
+  } catch (e) {
+    console.error('sendMail failed:', e.message);
+    try { socket && socket.destroy(); } catch {}
+    return false;
+  }
+}
+
 /* ---------- helpers ---------- */
 function json(res, code, obj, extraHeaders) {
   const body = JSON.stringify(obj);
@@ -349,6 +469,143 @@ if (AUDIT_ON) {
   setInterval(compactAudit, 3600000).unref();    // honour AUDIT_DAYS on an idle instance too
 }
 
+/* ---------- social (opt-in: follow, feed, reactions, comments, leaderboard) ---------- */
+// weekKey/streakWeeks are ports of frontend/src/lib/format.js + history.js's exact algorithm
+// (ISO week number) — kept in sync by hand since the backend doesn't share code with the
+// frontend bundle. If that frontend logic ever changes, mirror the change here too.
+function weekKeyOf(iso) {
+  const dt = new Date(iso + 'T12:00:00');
+  const day = (dt.getDay() + 6) % 7;
+  dt.setDate(dt.getDate() - day + 3);
+  const jan4 = new Date(dt.getFullYear(), 0, 4);
+  const week = 1 + Math.round(((dt - jan4) / 86400000 - 3 + ((jan4.getDay() + 6) % 7)) / 7);
+  return dt.getFullYear() + '-' + week;
+}
+function isoOf(d) { return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); }
+function streakWeeksOf(workouts) {
+  if (!workouts.length) return 0;
+  const weeks = new Set(workouts.map(w => weekKeyOf(w.d)));
+  let streak = 0;
+  const cur = new Date();
+  for (let i = 0; i < 520; i++) {
+    if (weeks.has(weekKeyOf(isoOf(cur)))) streak++;
+    else if (i > 0) break;
+    cur.setDate(cur.getDate() - 7);
+  }
+  return streak;
+}
+function statsFor(uid) {
+  const S = readState(uid) || {};
+  const workouts = S.workouts || [];
+  const thisWeek = workouts.filter(w => weekKeyOf(w.d) === weekKeyOf(isoOf(new Date()))).length;
+  return { streak: streakWeeksOf(workouts), thisWeek };
+}
+
+/* ---------- rank / level ---------- */
+// XP needed to go from level n to n+1 grows quadratically — brisk early (a solid first
+// week already levels you up a few times) and a genuine grind near the cap: level 98→99
+// costs ~2200 XP, roughly 2-3 months for someone training consistently and clearing a
+// few tasks a day. 100 levels total, no reset — tune XP_FOR_LEVEL/the per-action XP
+// below if that pace ends up feeling off in practice.
+const XP_FOR_LEVEL = n => 80 + Math.round(0.22 * n * n);
+const LEVEL_CUM = [0];   // LEVEL_CUM[L] = total XP to *reach* level L+1; LEVEL_CUM[0] = level 1's floor
+for (let n = 1; n <= 100; n++) LEVEL_CUM.push(LEVEL_CUM[n - 1] + XP_FOR_LEVEL(n));
+function levelFromXp(xp) {
+  let lvl = 1;
+  for (let L = 2; L <= 100; L++) { if (xp >= LEVEL_CUM[L - 1]) lvl = L; else break; }
+  return lvl;
+}
+const WORKOUT_XP = 25, PR_XP = 15, GOAL_XP = 150;
+// Deliberately computed fresh from what's already stored (workout count, PRs, the
+// bodyweight-goal check Home.jsx itself uses) rather than kept as a mutable counter —
+// same reasoning as statsFor/feedItemsFor: nothing to desync, nothing to migrate.
+// Only task completions are their own stored fact, since those are a real one-time
+// server-side action (a claim), not something re-derivable from workout history.
+function xpFor(uid) {
+  const S = readState(uid);
+  const workouts = S?.workouts || [];
+  let xp = workouts.length * WORKOUT_XP;
+  xp += workouts.reduce((n, w) => n + (w.prs?.length || 0), 0) * PR_XP;
+  const bw = S?.bodyweight?.length ? S.bodyweight[S.bodyweight.length - 1] : null;
+  if (S?.targetW && bw && Math.abs(S.targetW - bw.w) < 0.05) xp += GOAL_XP;
+  xp += db.taskCompletions.filter(c => c.userId === uid).reduce((n, c) => n + c.points, 0);
+  return xp;
+}
+// One full 1→100 climb's worth of XP. Crossing it rolls over automatically — level
+// resets to 1, prestige +1 — the same shape as CoD's prestige without a separate
+// "reset me" action to build: totalXp only ever grows, so this is just where in that
+// growth you currently are, recomputed fresh every time like the rest of rankFor.
+const CYCLE_XP = LEVEL_CUM[100];
+function rankFor(uid) {
+  const totalXp = xpFor(uid);
+  const prestige = Math.floor(totalXp / CYCLE_XP);
+  const xp = totalXp - prestige * CYCLE_XP;
+  const level = levelFromXp(xp);
+  const floor = LEVEL_CUM[level - 1], ceil = LEVEL_CUM[level] ?? floor;
+  return { level, prestige, xp, xpInLevel: xp - floor, xpForLevel: ceil - floor, totalXp };
+}
+// Perks per rank tier / prestige level — computed fresh from rankFor, same "nothing to
+// desync" reasoning as the rest of this section. Rank perks use `level` directly, so
+// they reset along with the tier display whenever a prestige rolls level back to 1;
+// prestige perks use `prestige`, which only ever grows, so they're permanent.
+// Gold (level 31) and Prestige 1 used to gate a custom badge-ring color — that perk was
+// pulled to be redefined, so those two tiers currently grant nothing extra of their own.
+function perksFor(uid) {
+  const { level, prestige } = rankFor(uid);
+  return {
+    pinFavoritePR: level >= 11,   // Bronze
+    bio: level >= 21,             // Silver
+    animatedBadge: level >= 41,   // Platinum
+    maxPhotos: prestige >= 6 ? 8 : (level >= 51 ? 6 : 4),   // Diamond / Prestige 6
+    pinnedMax: (level >= 61 ? 1 : 0) + (level >= 81 ? 1 : 0) + (prestige >= 3 ? 1 : 0),   // Master + Elite + Prestige 3
+    borderBeam: level >= 71,      // Champion
+    legendFrame: level >= 91,     // Legend
+    crownBadge: prestige >= 2,
+    commentHighlight: prestige >= 4,
+    avatarFrame: prestige >= 5,
+    animatedName: prestige >= 7,
+    appTheme: prestige >= 8,
+    veteranBadge: prestige >= 9,
+    subscriptionDiscount: prestige >= 10 ? 50 : (prestige >= 5 ? 25 : 0),
+  };
+}
+// Re-checked on every read, never cached from follow time — a user going private must
+// disappear from everyone's feed/leaderboard/discovery on their very next request.
+const isPublic = uid => { const u = db.users.find(x => x.id === uid); return !!u && !!u.public && !u.disabled; };
+const followingOf = uid => db.follows.filter(f => f.followerId === uid).map(f => f.followeeId).filter(isPublic);
+const FEED_LIMIT = 50;   // feed page size — a self-hosted instance's follow graph is small
+const FEED_DAYS = 30;
+// Shared by /api/social/feed (uids = who I follow) and /api/social/discover (uids =
+// public accounts I don't follow yet) — same shape either way, just a different guest list.
+function feedItemsFor(uids, me) {
+  const cutoff = Date.now() - FEED_DAYS * 86400000;
+  let items = [];
+  for (const uid of uids) {
+    const u = db.users.find(x => x.id === uid);
+    const S = readState(uid);
+    const { level, prestige } = rankFor(uid);
+    const perks = perksFor(uid);
+    for (const w of (S?.workouts || [])) {
+      if ((w.end || w.start || 0) < cutoff) continue;
+      const reactions = db.reactions.filter(r => r.targetUid === uid && r.workoutId === w.id);
+      const comments = db.comments.filter(c => c.targetUid === uid && c.workoutId === w.id);
+      items.push({
+        uid, name: u.name, level, prestige, perks,
+        workout: {
+          id: w.id, d: w.d, start: w.start, end: w.end, name: w.name, prs: w.prs || [],
+          desc: w.desc || '', images: w.images || [], vol: w.vol || 0,
+          exercises: (w.entries || []).map(e => ({ id: e.id, sets: (e.sets || []).filter(s => s.done).length })).filter(e => e.sets > 0),
+        },
+        likes: reactions.length,
+        liked: reactions.some(r => r.userId === me.id),
+        comments: comments.length
+      });
+    }
+  }
+  items.sort((a, b) => (b.workout.end || b.workout.start || 0) - (a.workout.end || a.workout.start || 0));
+  return items.slice(0, FEED_LIMIT);
+}
+
 /* ---------- routes ---------- */
 const routes = {
   'GET /api/health': async (req, res) => json(res, 200, { ok: true, users: db.users.length }),
@@ -401,22 +658,151 @@ const routes = {
     json(res, 200, { user: publicUser(user) }, { 'Set-Cookie': sessionCookie(user) });
   },
 
-  // Change username/password for the signed-in account. No "remove" route: with password as the
-  // only way in, deleting it would lock the account out — this only ever replaces it.
-  'POST /api/password/set': async (req, res) => {
+  // Account info — one route per field (same convention as the /api/social/* setters):
+  // each call touches exactly one thing on the signed-in account and returns the fresh
+  // publicUser() so the frontend never has to guess what changed.
+  'POST /api/account/name': async (req, res) => {
+    const user = readSession(req);
+    if (!user) return json(res, 401, { error: 'not signed in' });
+    const body = await readBody(req);
+    const name = String(body.name || '').trim().slice(0, 60);
+    if (!name) return json(res, 400, { error: 'name required' });
+    user.name = name;
+    saveDb();
+    audit(req, 'account.name.set', { user });
+    json(res, 200, { user: publicUser(user) });
+  },
+
+  'POST /api/account/phone': async (req, res) => {
+    const user = readSession(req);
+    if (!user) return json(res, 401, { error: 'not signed in' });
+    const body = await readBody(req);
+    const phone = String(body.phone || '').trim().slice(0, 24);
+    if (phone && !/^[+\d][\d\s()-]{3,23}$/.test(phone)) return json(res, 400, { error: 'that doesn\'t look like a phone number' });
+    user.phone = phone || null;
+    saveDb();
+    audit(req, 'account.phone.set', { user });
+    json(res, 200, { user: publicUser(user) });
+  },
+
+  // Username only — no password required alongside it (that used to be one combined route;
+  // splitting means changing your handle doesn't force picking a new password too).
+  'POST /api/account/username': async (req, res) => {
     const user = readSession(req);
     if (!user) return json(res, 401, { error: 'not signed in' });
     const body = await readBody(req);
     const username = String(body.username || '').trim();
-    const password = String(body.password || '');
     if (username.length < 3) return json(res, 400, { error: 'username must be at least 3 characters' });
-    if (password.length < 8) return json(res, 400, { error: 'password must be at least 8 characters' });
     const other = findByUsername(username);
     if (other && other.id !== user.id) return json(res, 409, { error: 'that username is taken' });
-    user.pwd = { username, ...hashPassword(password) };
+    user.pwd.username = username;
     saveDb();
-    audit(req, 'auth.password.set', { user });
+    audit(req, 'account.username.set', { user });
     json(res, 200, { user: publicUser(user) });
+  },
+
+  // Password only. No "remove" route: with password as the only way in, deleting it would
+  // lock the account out — this only ever replaces it.
+  'POST /api/account/password': async (req, res) => {
+    const user = readSession(req);
+    if (!user) return json(res, 401, { error: 'not signed in' });
+    const body = await readBody(req);
+    const password = String(body.password || '');
+    if (password.length < 8) return json(res, 400, { error: 'password must be at least 8 characters' });
+    if (!verifyPassword(String(body.currentPassword || ''), user.pwd.salt, user.pwd.hash)) {
+      audit(req, 'account.password.fail', { user, msg: 'bad-current-password' });
+      return json(res, 401, { error: 'your current password is incorrect' });
+    }
+    user.pwd = { ...user.pwd, ...hashPassword(password) };
+    saveDb();
+    audit(req, 'account.password.set', { user });
+    json(res, 200, { user: publicUser(user) });
+  },
+
+  // Sets a pending email and fires off a verification link — best-effort: if this instance
+  // has no SMTP_HOST configured, the address is still saved (unverified) so it's there once
+  // an admin sets one up, and `mailConfigured:false` tells the frontend not to promise a mail
+  // that can't be sent.
+  'POST /api/account/email': async (req, res) => {
+    const user = readSession(req);
+    if (!user) return json(res, 401, { error: 'not signed in' });
+    const body = await readBody(req);
+    const email = String(body.email || '').trim().toLowerCase().slice(0, 254);
+    if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return json(res, 400, { error: 'enter a valid email address' });
+    user.email = email || null;
+    user.emailVerified = false;
+    delete user.emailVerifyToken;
+    if (!email) { saveDb(); audit(req, 'account.email.cleared', { user }); return json(res, 200, { user: publicUser(user), mailSent: false, mailConfigured: SMTP_CONFIGURED }); }
+    user.emailVerifyToken = { token: crypto.randomBytes(24).toString('base64url'), expires: Date.now() + 86400000 };
+    saveDb();
+    audit(req, 'account.email.set', { user });
+    const mailSent = SMTP_CONFIGURED && await sendMail({
+      to: email, subject: 'Verify your email — Forvia',
+      text: `Confirm this is your email address for your Forvia account (${user.pwd?.username || user.name}):\n\n${ORIGIN}/api/account/verify-email?token=${user.emailVerifyToken.token}\n\nIf you didn't request this, you can ignore this message — nothing changes until the link above is opened.`,
+    });
+    json(res, 200, { user: publicUser(user), mailSent, mailConfigured: SMTP_CONFIGURED });
+  },
+
+  'POST /api/account/email/resend': async (req, res) => {
+    const user = readSession(req);
+    if (!user) return json(res, 401, { error: 'not signed in' });
+    if (!user.email) return json(res, 400, { error: 'no email on file' });
+    if (user.emailVerified) return json(res, 400, { error: 'already verified' });
+    user.emailVerifyToken = { token: crypto.randomBytes(24).toString('base64url'), expires: Date.now() + 86400000 };
+    saveDb();
+    const mailSent = SMTP_CONFIGURED && await sendMail({
+      to: user.email, subject: 'Verify your email — Forvia',
+      text: `Confirm this is your email address for your Forvia account (${user.pwd?.username || user.name}):\n\n${ORIGIN}/api/account/verify-email?token=${user.emailVerifyToken.token}\n\nIf you didn't request this, you can ignore this message — nothing changes until the link above is opened.`,
+    });
+    json(res, 200, { mailSent, mailConfigured: SMTP_CONFIGURED });
+  },
+
+  // Opened from the email link, not the app — no session, matched by token alone. Answers
+  // with a tiny standalone HTML page since whatever mail client opened it isn't running the SPA.
+  'GET /api/account/verify-email': async (req, res) => {
+    const q = new URL(req.url, 'http://x').searchParams;
+    const token = q.get('token') || '';
+    const user = db.users.find(u => u.emailVerifyToken?.token === token && u.emailVerifyToken.expires > Date.now());
+    // Plain English, not run through the app's frontend i18n: this page is rendered by the
+    // API itself for whatever mail client opened the link, outside the SPA entirely.
+    const page = ok => `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Forvia</title><style>body{font-family:-apple-system,system-ui,sans-serif;background:#0b1710;color:#eafff0;display:flex;
+align-items:center;justify-content:center;min-height:100vh;margin:0;text-align:center;padding:24px}
+div{max-width:360px}h1{font-size:20px;margin:0 0 8px}p{color:#9db8a8;line-height:1.5}</style></head>
+<body><div><h1>${ok ? '✓ Email verified' : 'Link expired or invalid'}</h1>
+<p>${ok ? 'You can close this tab and go back to Forvia.' : 'Ask Forvia to send you a new verification link and try again.'}</p></div></body></html>`;
+    if (!user) { res.writeHead(400, { 'Content-Type': 'text/html; charset=utf-8' }); return res.end(page(false)); }
+    user.emailVerified = true;
+    delete user.emailVerifyToken;
+    saveDb();
+    audit(req, 'account.email.verified', { user });
+    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+    res.end(page(true));
+  },
+
+  // Permanent, self-serve, password-gated. Removes the account, its workout history, uploaded
+  // photos, and every trace of it in the social graph (follows both directions, reactions,
+  // comments, task completions) — nothing left referencing an id that no longer resolves.
+  'POST /api/account/delete': async (req, res) => {
+    const user = readSession(req);
+    if (!user) return json(res, 401, { error: 'not signed in' });
+    const body = await readBody(req);
+    if (!verifyPassword(String(body.password || ''), user.pwd.salt, user.pwd.hash)) {
+      audit(req, 'account.delete.fail', { user, msg: 'bad-password' });
+      return json(res, 401, { error: 'incorrect password' });
+    }
+    audit(req, 'account.delete', { user });
+    const id = user.id;
+    db.users = db.users.filter(u => u.id !== id);
+    db.subs = db.subs.filter(s => s.userId !== id);
+    db.follows = db.follows.filter(f => f.followerId !== id && f.followeeId !== id);
+    db.reactions = db.reactions.filter(r => r.userId !== id);
+    db.comments = db.comments.filter(c => c.userId !== id);
+    db.taskCompletions = db.taskCompletions.filter(c => c.userId !== id);
+    saveDb();
+    try { fs.unlinkSync(stateFile(id)); } catch {}
+    try { fs.rmSync(uploadsDir(id), { recursive: true, force: true }); } catch {}
+    json(res, 200, { ok: true }, { 'Set-Cookie': clearCookie });
   },
 
   // Reads the session purely so the sign-out can be recorded; the cookie is cleared either way.
@@ -485,7 +871,7 @@ const routes = {
   'POST /api/push/test': async (req, res) => {
     const user = readSession(req);
     if (!user) return json(res, 401, { error: 'not signed in' });
-    await sendPush(user.id, { title: 'openGym', body: 'Test notification ✅ — this is what alerts look like.', tag: 'test' });
+    await sendPush(user.id, { title: 'Forvia', body: 'Test notification ✅ — this is what alerts look like.', tag: 'test' });
     json(res, 200, { ok: true });
   },
 
@@ -644,6 +1030,349 @@ const routes = {
     try { fs.unlinkSync(auditFile); } catch { /* nothing logged yet */ }
     auditCount = 0;
     audit(req, 'admin.audit.clear', { user: admin });
+    json(res, 200, { ok: true });
+  },
+
+  /* ---------- daily tasks (XP) ---------- */
+  // The catalog is entirely admin-authored: name, description, points, nothing the app
+  // tries to verify — same trust model as the rest of a self-hosted instance's data.
+  'GET /api/admin/tasks': async (req, res) => {
+    const admin = requireAdmin(req, res); if (!admin) return;
+    json(res, 200, { tasks: db.tasks });
+  },
+  'POST /api/admin/tasks': async (req, res) => {
+    const admin = requireAdmin(req, res); if (!admin) return;
+    const body = await readBody(req);
+    const name = String(body.name || '').trim().slice(0, 60);
+    const desc = String(body.desc || '').trim().slice(0, 200);
+    const points = Math.max(1, Math.min(500, Math.round(+body.points || 0)));
+    if (!name || !points) return json(res, 400, { error: 'name and points required' });
+    const task = { id: crypto.randomBytes(6).toString('base64url'), name, desc, points, created: new Date().toISOString() };
+    db.tasks.push(task);
+    saveDb();
+    audit(req, 'admin.task.add', { user: admin, msg: name });
+    json(res, 200, { task });
+  },
+  'POST /api/admin/tasks/remove': async (req, res) => {
+    const admin = requireAdmin(req, res); if (!admin) return;
+    const body = await readBody(req);
+    const task = db.tasks.find(t => t.id === body.id);
+    db.tasks = db.tasks.filter(t => t.id !== body.id);
+    saveDb();
+    audit(req, 'admin.task.remove', { user: admin, msg: task?.name || body.id });
+    json(res, 200, { ok: true });
+  },
+
+  // Today's catalog for the signed-in user, with per-task completion state. Completions
+  // are per calendar day (server-local date), so the checklist clears itself overnight
+  // with no cron job — "today" is just a different string tomorrow.
+  'GET /api/tasks/today': async (req, res) => {
+    const me = readSession(req);
+    if (!me) return json(res, 401, { error: 'not signed in' });
+    const today = isoOf(new Date());
+    const done = new Set(db.taskCompletions.filter(c => c.userId === me.id && c.date === today).map(c => c.taskId));
+    json(res, 200, { tasks: db.tasks.map(t => ({ ...t, done: done.has(t.id) })) });
+  },
+  'POST /api/tasks/complete': async (req, res) => {
+    const me = readSession(req);
+    if (!me) return json(res, 401, { error: 'not signed in' });
+    const body = await readBody(req);
+    const task = db.tasks.find(t => t.id === body.taskId);
+    if (!task) return json(res, 404, { error: 'no such task' });
+    const today = isoOf(new Date());
+    const already = db.taskCompletions.some(c => c.userId === me.id && c.taskId === task.id && c.date === today);
+    if (!already) {
+      db.taskCompletions.push({ id: crypto.randomBytes(8).toString('base64url'), userId: me.id, taskId: task.id, points: task.points, date: today, created: new Date().toISOString() });
+      saveDb();
+      audit(req, 'task.complete', { user: me, msg: task.name });
+    }
+    json(res, 200, { ok: true, rank: rankFor(me.id) });
+  },
+
+  /* ---------- social ---------- */
+  'POST /api/social/public': async (req, res) => {
+    const user = readSession(req);
+    if (!user) return json(res, 401, { error: 'not signed in' });
+    const body = await readBody(req);
+    user.public = !!body.public;
+    saveDb();
+    audit(req, 'social.public.set', { user, msg: user.public ? 'on' : 'off' });
+    json(res, 200, { user: publicUser(user) });
+  },
+
+  // Rank/prestige perk unlocks below — each is a single field, its own route, gated by
+  // perksFor(), same shape as /api/social/public above.
+  'POST /api/social/bio': async (req, res) => {
+    const user = readSession(req);
+    if (!user) return json(res, 401, { error: 'not signed in' });
+    if (!perksFor(user.id).bio) return json(res, 403, { error: 'not unlocked yet' });
+    const body = await readBody(req);
+    user.bio = String(body.bio || '').trim().slice(0, 140);
+    saveDb();
+    audit(req, 'social.bio.set', { user });
+    json(res, 200, { user: publicUser(user) });
+  },
+
+  // Pinning: workoutId must be one of the caller's own workouts, and the total pinned
+  // count can't exceed perksFor().pinnedMax (Diamond tier + Prestige 3, additive).
+  'POST /api/social/pin': async (req, res) => {
+    const user = readSession(req);
+    if (!user) return json(res, 401, { error: 'not signed in' });
+    const perks = perksFor(user.id);
+    if (perks.pinnedMax < 1) return json(res, 403, { error: 'not unlocked yet' });
+    const body = await readBody(req);
+    const workoutId = String(body.workoutId || '');
+    const mine = (readState(user.id)?.workouts || []).some(w => w.id === workoutId);
+    if (!mine) return json(res, 404, { error: 'no such workout' });
+    user.pinnedWorkoutIds = user.pinnedWorkoutIds || [];
+    if (!user.pinnedWorkoutIds.includes(workoutId)) {
+      if (user.pinnedWorkoutIds.length >= perks.pinnedMax) return json(res, 403, { error: 'pin limit reached' });
+      user.pinnedWorkoutIds.push(workoutId);
+      saveDb();
+      audit(req, 'social.pin', { user, msg: workoutId });
+    }
+    json(res, 200, { user: publicUser(user) });
+  },
+
+  'POST /api/social/unpin': async (req, res) => {
+    const user = readSession(req);
+    if (!user) return json(res, 401, { error: 'not signed in' });
+    const body = await readBody(req);
+    const before = (user.pinnedWorkoutIds || []).length;
+    user.pinnedWorkoutIds = (user.pinnedWorkoutIds || []).filter(id => id !== body.workoutId);
+    if (user.pinnedWorkoutIds.length !== before) {
+      saveDb();
+      audit(req, 'social.unpin', { user, msg: body.workoutId });
+    }
+    json(res, 200, { user: publicUser(user) });
+  },
+
+  // One pinned PR, separate from pinned workouts — the earliest perk (Bronze), so it
+  // doesn't share the Diamond/Prestige-3 pin budget.
+  'POST /api/social/pin-pr': async (req, res) => {
+    const user = readSession(req);
+    if (!user) return json(res, 401, { error: 'not signed in' });
+    if (!perksFor(user.id).pinFavoritePR) return json(res, 403, { error: 'not unlocked yet' });
+    const body = await readBody(req);
+    const workoutId = String(body.workoutId || ''), exerciseId = String(body.exerciseId || '');
+    if (!workoutId || !exerciseId) { user.pinnedPR = null; }
+    else {
+      const w = (readState(user.id)?.workouts || []).find(x => x.id === workoutId);
+      if (!w) return json(res, 404, { error: 'no such workout' });
+      user.pinnedPR = { workoutId, exerciseId };
+    }
+    saveDb();
+    audit(req, 'social.pinPR.set', { user });
+    json(res, 200, { user: publicUser(user) });
+  },
+
+  // Accounts you can find and follow — everyone who opted into "Public profile", minus yourself.
+  'GET /api/social/users': async (req, res) => {
+    const me = readSession(req);
+    if (!me) return json(res, 401, { error: 'not signed in' });
+    const following = new Set(db.follows.filter(f => f.followerId === me.id).map(f => f.followeeId));
+    const users = db.users.filter(u => u.public && !u.disabled && u.id !== me.id)
+      .map(u => ({ ...socialUser(u), following: following.has(u.id) }));
+    json(res, 200, { users });
+  },
+
+  'POST /api/social/follow': async (req, res) => {
+    const me = readSession(req);
+    if (!me) return json(res, 401, { error: 'not signed in' });
+    const body = await readBody(req);
+    const target = db.users.find(u => u.id === body.userId);
+    if (!target || !target.public || target.disabled) return json(res, 404, { error: 'no such public profile' });
+    if (target.id === me.id) return json(res, 400, { error: "can't follow yourself" });
+    if (!db.follows.some(f => f.followerId === me.id && f.followeeId === target.id)) {
+      db.follows.push({ followerId: me.id, followeeId: target.id, created: new Date().toISOString() });
+      saveDb();
+      audit(req, 'social.follow', { user: me, target });
+    }
+    json(res, 200, { ok: true });
+  },
+
+  'POST /api/social/unfollow': async (req, res) => {
+    const me = readSession(req);
+    if (!me) return json(res, 401, { error: 'not signed in' });
+    const body = await readBody(req);
+    const before = db.follows.length;
+    db.follows = db.follows.filter(f => !(f.followerId === me.id && f.followeeId === body.userId));
+    if (db.follows.length !== before) {
+      saveDb();
+      const target = db.users.find(u => u.id === body.userId);
+      audit(req, 'social.unfollow', { user: me, target });
+    }
+    json(res, 200, { ok: true });
+  },
+
+  // Who I follow that's still public right now, each with their current streak — the same
+  // number Home/Stats show them, computed the same way, just server-side.
+  'GET /api/social/following': async (req, res) => {
+    const me = readSession(req);
+    if (!me) return json(res, 401, { error: 'not signed in' });
+    const following = followingOf(me.id).map(uid => {
+      const u = db.users.find(x => x.id === uid);
+      return { ...socialUser(u), ...statsFor(uid) };
+    });
+    json(res, 200, { following });
+  },
+
+  'GET /api/social/leaderboard': async (req, res) => {
+    const me = readSession(req);
+    if (!me) return json(res, 401, { error: 'not signed in' });
+    const ids = [me.id, ...followingOf(me.id)];
+    const rows = ids.map(uid => {
+      const u = db.users.find(x => x.id === uid);
+      return { ...socialUser(u), me: uid === me.id, ...statsFor(uid) };
+    }).sort((a, b) => b.streak - a.streak || b.thisWeek - a.thisWeek);
+    json(res, 200, { leaderboard: rows });
+  },
+
+  // Recent workouts from everyone I follow who's still public, newest first, capped both by
+  // age and count so this stays cheap however long someone's been using the instance.
+  'GET /api/social/feed': async (req, res) => {
+    const me = readSession(req);
+    if (!me) return json(res, 401, { error: 'not signed in' });
+    json(res, 200, { items: feedItemsFor(followingOf(me.id), me) });
+  },
+
+  // Discover's own feed: recent posts from public accounts I *don't* follow yet — same
+  // shape as /api/social/feed, so the client renders both with the same feed card.
+  'GET /api/social/discover': async (req, res) => {
+    const me = readSession(req);
+    if (!me) return json(res, 401, { error: 'not signed in' });
+    const following = new Set(db.follows.filter(f => f.followerId === me.id).map(f => f.followeeId));
+    const uids = db.users.filter(u => u.public && !u.disabled && u.id !== me.id && !following.has(u.id)).map(u => u.id);
+    json(res, 200, { items: feedItemsFor(uids, me) });
+  },
+
+  // A single public profile — tapping a name in the feed lands here. 404s the instant
+  // the account isn't public any more, same rule as everywhere else in Social.
+  'GET /api/social/user': async (req, res) => {
+    const me = readSession(req);
+    if (!me) return json(res, 401, { error: 'not signed in' });
+    const q = new URL(req.url, 'http://x').searchParams;
+    const uid = q.get('uid') || '';
+    const u = db.users.find(x => x.id === uid);
+    if (!u || u.disabled || !u.public) return json(res, 404, { error: 'not found' });
+    // Pinned posts (Diamond tier / Prestige 3) surface first on the profile — everywhere
+    // else (the regular feed) stays purely chronological.
+    const pinned = new Set(u.pinnedWorkoutIds || []);
+    const items = feedItemsFor([uid], me).sort((a, b) => pinned.has(b.workout.id) - pinned.has(a.workout.id));
+    json(res, 200, {
+      user: socialUser(u),
+      ...rankFor(uid),
+      perks: perksFor(uid),
+      workouts: readState(uid)?.workouts?.length || 0,
+      followers: db.follows.filter(f => f.followeeId === uid).length,
+      following: db.follows.filter(f => f.followerId === uid).length,
+      isFollowing: db.follows.some(f => f.followerId === me.id && f.followeeId === uid),
+      items,
+    });
+  },
+
+  // My own header-card numbers for the Social right rail — workouts is mine regardless of
+  // public/private (it's a fact about me, not something I'm broadcasting), followers/following
+  // count the raw graph, not filtered to who's currently public (unlike the feed itself).
+  'GET /api/social/me': async (req, res) => {
+    const me = readSession(req);
+    if (!me) return json(res, 401, { error: 'not signed in' });
+    const S = readState(me.id);
+    json(res, 200, {
+      workouts: S?.workouts?.length || 0,
+      followers: db.follows.filter(f => f.followeeId === me.id).length,
+      following: db.follows.filter(f => f.followerId === me.id).length,
+    });
+  },
+
+  // A workout photo. Body is a data: URL (no multipart parser in this vanilla server, and
+  // base64-in-JSON matches how every other route already reads its body) capped well under
+  // MAX_BODY once base64's ~33% inflation is priced in.
+  'POST /api/social/upload': async (req, res) => {
+    const me = readSession(req);
+    if (!me) return json(res, 401, { error: 'not signed in' });
+    const body = await readBody(req);
+    const m = /^data:(image\/(?:jpeg|png|webp));base64,([a-zA-Z0-9+/=]+)$/.exec(String(body.dataUrl || ''));
+    if (!m) return json(res, 400, { error: 'unsupported image' });
+    const buf = Buffer.from(m[2], 'base64');
+    if (buf.length > MAX_IMAGE_BYTES) return json(res, 413, { error: 'image too large' });
+    const ext = UPLOAD_MIME[m[1]];
+    const file = crypto.randomBytes(10).toString('base64url') + '.' + ext;
+    fs.mkdirSync(uploadsDir(me.id), { recursive: true });
+    fs.writeFileSync(path.join(uploadsDir(me.id), file), buf);
+    json(res, 200, { url: `/api/uploads?uid=${encodeURIComponent(me.id)}&file=${encodeURIComponent(file)}` });
+  },
+
+  // Own photo, or a currently-public account's — same visibility rule the rest of Social
+  // uses, so a photo can't be scraped once its owner has gone private.
+  'GET /api/uploads': async (req, res) => {
+    const me = readSession(req);
+    if (!me) return json(res, 401, { error: 'not signed in' });
+    const q = new URL(req.url, 'http://x').searchParams;
+    const uid = q.get('uid') || '', file = q.get('file') || '';
+    if (uid !== me.id && !isPublic(uid)) return json(res, 404, { error: 'not found' });
+    if (!/^[A-Za-z0-9_-]+\.(jpg|png|webp)$/.test(file)) return json(res, 404, { error: 'not found' });
+    const ext = file.slice(file.lastIndexOf('.') + 1);
+    const mime = Object.entries(UPLOAD_MIME).find(([, e]) => e === ext)?.[0] || 'application/octet-stream';
+    fs.readFile(path.join(uploadsDir(uid), file), (err, buf) => {
+      if (err) return json(res, 404, { error: 'not found' });
+      res.writeHead(200, { 'Content-Type': mime, 'Cache-Control': 'private, max-age=31536000, immutable' });
+      res.end(buf);
+    });
+  },
+
+  'POST /api/social/react': async (req, res) => {
+    const me = readSession(req);
+    if (!me) return json(res, 401, { error: 'not signed in' });
+    const body = await readBody(req);
+    const targetUid = String(body.targetUid || ''), workoutId = String(body.workoutId || '');
+    if (!isPublic(targetUid)) return json(res, 404, { error: 'not visible' });
+    const i = db.reactions.findIndex(r => r.userId === me.id && r.targetUid === targetUid && r.workoutId === workoutId);
+    let liked;
+    if (i >= 0) { db.reactions.splice(i, 1); liked = false; }
+    else { db.reactions.push({ userId: me.id, targetUid, workoutId, created: new Date().toISOString() }); liked = true; }
+    saveDb();
+    audit(req, 'social.react', { user: me, msg: (liked ? 'like' : 'unlike') + ':' + workoutId });
+    json(res, 200, { liked });
+  },
+
+  'GET /api/social/comments': async (req, res) => {
+    const me = readSession(req);
+    if (!me) return json(res, 401, { error: 'not signed in' });
+    const q = new URL(req.url, 'http://x').searchParams;
+    const targetUid = q.get('targetUid') || '', workoutId = q.get('workoutId') || '';
+    const rows = db.comments.filter(c => c.targetUid === targetUid && c.workoutId === workoutId).map(publicComment);
+    json(res, 200, { comments: rows });
+  },
+
+  'POST /api/social/comment': async (req, res) => {
+    const me = readSession(req);
+    if (!me) return json(res, 401, { error: 'not signed in' });
+    const body = await readBody(req);
+    const targetUid = String(body.targetUid || ''), workoutId = String(body.workoutId || '');
+    const text = String(body.text || '').trim().slice(0, 500);
+    if (!text) return json(res, 400, { error: 'comment required' });
+    if (!isPublic(targetUid)) return json(res, 404, { error: 'not visible' });
+    const c = { id: crypto.randomBytes(8).toString('base64url'), userId: me.id, targetUid, workoutId, text, created: new Date().toISOString() };
+    db.comments.push(c);
+    saveDb();
+    audit(req, 'social.comment.add', { user: me, msg: workoutId });
+    json(res, 200, { comment: publicComment(c) });
+  },
+
+  // Deletable by whoever wrote it, whoever's workout it's on, or an instance admin — a union,
+  // not a single owner, so someone can moderate their own activity even if they didn't write it.
+  'POST /api/social/comment/remove': async (req, res) => {
+    const me = readSession(req);
+    if (!me) return json(res, 401, { error: 'not signed in' });
+    const body = await readBody(req);
+    const c = db.comments.find(x => x.id === body.id);
+    if (!c) return json(res, 404, { error: 'no such comment' });
+    const allowed = c.userId === me.id || c.targetUid === me.id || isAdmin(me);
+    if (!allowed) return json(res, 403, { error: 'not yours to remove' });
+    db.comments = db.comments.filter(x => x.id !== c.id);
+    saveDb();
+    audit(req, 'social.comment.remove', { user: me, msg: c.id });
     json(res, 200, { ok: true });
   }
 };

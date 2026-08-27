@@ -2,11 +2,11 @@
 
 ## v1.2.9 — 2026-08-23
 
-If you run openGym for other people, you have had no way to answer "who signed in, and when?" —
+If you run Forvia for other people, you have had no way to answer "who signed in, and when?" —
 the server kept no record of anything. It does now: an **activity log** in the admin dashboard,
 covering sign-ins, sign-outs, the attempts that failed, and every admin action. The other half of
 this release is that **the live demo is back**, self-hosted this time, after two months offline.
-And the project has a working home again: openGym now lives on **GitLab**, where CI builds the
+And the project has a working home again: Forvia now lives on **GitLab**, where CI builds the
 container images and the signed Android APK for every release — the thing that has been missing
 since the GitHub account went.
 
@@ -39,18 +39,18 @@ since the GitHub account went.
 
 ### The live demo is back
 
-- ▶️ **<https://opengym.duarte-santos.ch/demo/>** — the in-browser demo, running on the project's
+- ▶️ **<https://forvia.duarte-santos.ch/demo/>** — the in-browser demo, running on the project's
   own site instead of GitHub Pages, which went down in August with the suspended account. Same
   build as before: no backend, no account, seeded example history, and a reset button in its
   settings. The embedded demo on the landing page works again too.
 
-### openGym moved to GitLab
+### Forvia moved to GitLab
 
-- 🏠 **<https://gitlab.com/DuarteSantos8/opengym>** is the home of the project. Same history,
+- 🏠 **<https://gitlab.com/DuarteSantos8/forvia>** is the home of the project. Same history,
   same tags, same AGPL. gitea.com was the stopgap after the GitHub suspension and stays as a
   mirror; it never had a CI runner, which is why releases there had no images.
 - 🐳 **Prebuilt images are back.** `docker compose pull` now fetches
-  `registry.gitlab.com/duartesantos8/opengym/api` and `/web`, built for **amd64 and arm64** on
+  `registry.gitlab.com/duartesantos8/forvia/api` and `/web`, built for **amd64 and arm64** on
   every release. Pulling is anonymous — the project is public, no login, no token.
 - 🤖 **The APK is built by CI now, not by hand.** Every `vX.Y.Z` tag produces a `zipalign`ed,
   signed APK, attached to the GitLab release and mirrored onto the download page. The signing
@@ -60,8 +60,8 @@ since the GitHub account went.
   the fatigue probe and the MCP suite all run on GitLab CI. The GitHub Actions workflows stay
   in `.github/` for the day that account comes back.
 - 🌐 The in-browser demo also builds to GitLab Pages
-  (<https://opengym-bc111a.gitlab.io/>, which <https://duartesantos8.gitlab.io/opengym/>
-  redirects to); <https://opengym.duarte-santos.ch/demo/> remains the copy the landing page
+  (<https://forvia-bc111a.gitlab.io/>, which <https://duartesantos8.gitlab.io/forvia/>
+  redirects to); <https://forvia.duarte-santos.ch/demo/> remains the copy the landing page
   embeds.
 - 📄 Security reports have a private channel again: a **confidential issue** on GitLab. See
   `SECURITY.md`.
@@ -80,16 +80,16 @@ since the GitHub account went.
 
 ## v1.2.8 — 2026-08-22
 
-A housekeeping release, and two things worth reading even if you skip the rest. openGym has moved
+A housekeeping release, and two things worth reading even if you skip the rest. Forvia has moved
 to **gitea.com** — the GitHub account it lived on was suspended, and everything you click to
 self-host pointed there. And the exercise media's licence is now stated correctly: the images and
 animations are © Gym visual, not CC, which matters if you redistribute them.
 
 ### The project moved to gitea.com
 
-- 🏠 **openGym now lives at <https://gitea.com/DuarteSantos/openGym>.** The GitHub account
+- 🏠 **Forvia now lives at <https://gitea.com/DuarteSantos/Forvia>.** The GitHub account
   was suspended on 2026-08-19 and took the repository, the GHCR images, the Pages demo and
-  Discussions with it. `docker compose` now pulls `gitea.com/duartesantos/opengym-{api,web}`; the
+  Discussions with it. `docker compose` now pulls `gitea.com/duartesantos/forvia-{api,web}`; the
   README, `SECURITY.md`, `CONTRIBUTING.md` and the self-hosting docs point at the new home; issue
   forms, tests and the image publish run as Gitea Actions. **If you self-host, re-pull:** the old
   `ghcr.io` images are gone and will not update again.
@@ -100,18 +100,18 @@ animations are © Gym visual, not CC, which matters if you redistribute them.
 
 ### The exercise media is © Gym visual — not CC
 
-- ⚖️ **openGym described the exercise dataset as "CC". That was wrong**, and it is now
+- ⚖️ **Forvia described the exercise dataset as "CC". That was wrong**, and it is now
   corrected everywhere it appeared (README, `NOTICE.md`, the website, the in-app credit, the
   compose file and `scripts/fetch-media.sh`). Upstream
   [hasaneyldrm/exercises-dataset](https://github.com/hasaneyldrm/exercises-dataset) licenses its two
   halves differently: the exercise **metadata and instruction text are MIT**, while the **images and
   animations are © [Gym visual](https://gymvisual.com/)**, used under that dataset's terms with
   permission that is not transferable.
-- **Nothing changes for using openGym.** It never shipped that media — not in the repository,
+- **Nothing changes for using Forvia.** It never shipped that media — not in the repository,
   not in its history, not in the images or the APK; your instance downloads it from upstream on
   first run, and the media step now prints where it comes from and under what terms.
 - **It does change what you may do with the media.** Reusing the images or animations — in
-  openGym or anywhere else, commercially or not — needs your own licence from Gym visual. See
+  Forvia or anywhere else, commercially or not — needs your own licence from Gym visual. See
   [NOTICE.md](NOTICE.md).
 
 ### Fixes
@@ -126,12 +126,12 @@ animations are © Gym visual, not CC, which matters if you redistribute them.
 
 ### The website counts visits; the app still counts nothing
 
-- 📊 **<https://opengym.duarte-santos.ch> now runs self-hosted, cookieless
+- 📊 **<https://forvia.duarte-santos.ch> now runs self-hosted, cookieless
   [Umami](https://umami.is/)** — page views for the landing, about and docs pages, no cookies,
   no third-party service.
 - 🔒 **Your instance does not.** The frontend only gets an analytics tag when
   `VITE_UMAMI_SRC` *and* `VITE_UMAMI_ID` are set at build time, which they are not in any published
-  image or in a plain `npm run build`. A self-hosted openGym remains telemetry-free, as advertised.
+  image or in a plain `npm run build`. A self-hosted Forvia remains telemetry-free, as advertised.
 
 ## v1.2.7 — 2026-08-18
 
@@ -146,36 +146,36 @@ behave: pair them as you go, rest once per round, and drop an exercise you have 
 - **A per-muscle exercise breakdown** behind the muscle card — estimated 1RM per exercise, decay
   bars, and primary/secondary tags, with a best-weight fallback for holds and carries that have no
   reps to work from. Contributed by [@Space-Hermes](https://github.com/Space-Hermes) in
-  [#92](https://github.com/DuarteSantos8/openGym/pull/92),
-  [#93](https://github.com/DuarteSantos8/openGym/pull/93) and
-  [#94](https://github.com/DuarteSantos8/openGym/pull/94).
+  [#92](https://github.com/DuarteSantos8/Forvia/pull/92),
+  [#93](https://github.com/DuarteSantos8/Forvia/pull/93) and
+  [#94](https://github.com/DuarteSantos8/Forvia/pull/94).
 - **Fatigue is now intensity-weighted**, not volume alone: a set counts for more the closer it is
   to your estimated maximum. It also reads against a stable historical reference, so fatigue can no
   longer *rise* across a rest week, and bodyweight movements no longer register as zero load. A
   property probe over 108,000 comparisons runs in CI to keep it that way. Contributed by
   [@Space-Hermes](https://github.com/Space-Hermes) in
-  [#55](https://github.com/DuarteSantos8/openGym/pull/55).
+  [#55](https://github.com/DuarteSantos8/Forvia/pull/55).
 
 ### In a session
 
 - 🔗 **Supersets advance properly.** Completing a set moves to the next member of the group, the
   active exercise scrolls into view, and rest starts once the whole round is done rather than after
   each set. Contributed by [@Space-Hermes](https://github.com/Space-Hermes) in
-  [#80](https://github.com/DuarteSantos8/openGym/pull/80).
+  [#80](https://github.com/DuarteSantos8/Forvia/pull/80).
 - ➖ **Remove an exercise from a running session**, with a superset-aware picker and a confirmation.
   Contributed by [@Space-Hermes](https://github.com/Space-Hermes) in
-  [#83](https://github.com/DuarteSantos8/openGym/pull/83).
+  [#83](https://github.com/DuarteSantos8/Forvia/pull/83).
 - ⬅️ **The Android back button closes the open sheet** instead of leaving the screen or the app
   ([#63]). Each open sheet gets its own history entry, so stacked sheets unwind one at a time.
   Contributed by [@Space-Hermes](https://github.com/Space-Hermes) in
-  [#85](https://github.com/DuarteSantos8/openGym/pull/85).
+  [#85](https://github.com/DuarteSantos8/Forvia/pull/85).
 
 ### Self-hosting
 
 - 🐳 **The API service no longer has to be called `api`** ([#99]). The web image builds its nginx
   config at startup from `BACKEND`, `PORT` and `NGINX_PORT`, all defaulted to today's values, so
   existing compose files are unaffected. Reported and fixed by
-  [@GAS85](https://github.com/GAS85) in [#100](https://github.com/DuarteSantos8/openGym/pull/100).
+  [@GAS85](https://github.com/GAS85) in [#100](https://github.com/DuarteSantos8/Forvia/pull/100).
 - **…and the shipped `docker-compose.yml` now actually passes those through.** The `web` service
   had no environment of its own and published a hardcoded `:80`, so setting `BACKEND` or
   `NGINX_PORT` in `.env` did nothing at all on the stock stack — the setting existed, the wiring
@@ -184,7 +184,7 @@ behave: pair them as you go, rest once per round, and drop an exercise you have 
   as before.
 - 🏷️ **Health checks and OCI image labels** on both images — source, licence, version, revision and
   build date, so image tooling can tell what it is holding. Contributed by
-  [@GAS85](https://github.com/GAS85) in [#98](https://github.com/DuarteSantos8/openGym/pull/98).
+  [@GAS85](https://github.com/GAS85) in [#98](https://github.com/DuarteSantos8/Forvia/pull/98).
 - **Images are published from a release, not from any tag** ([#87]). A tag that gets consolidated
   away before it becomes a release used to leave its image tags behind in the registry, where
   dependency bots read them as newer versions.
@@ -195,9 +195,9 @@ behave: pair them as you go, rest once per round, and drop an exercise you have 
   places still read the older boolean, so warm-ups from FitNotes/Strong/Hevy history inflated set
   counts, progression and the fatigue map.
 
-[#63]: https://github.com/DuarteSantos8/openGym/issues/63
-[#87]: https://github.com/DuarteSantos8/openGym/issues/87
-[#99]: https://github.com/DuarteSantos8/openGym/issues/99
+[#63]: https://github.com/DuarteSantos8/Forvia/issues/63
+[#87]: https://github.com/DuarteSantos8/Forvia/issues/87
+[#99]: https://github.com/DuarteSantos8/Forvia/issues/99
 
 ## v1.2.6 — 2026-08-11
 
@@ -271,7 +271,7 @@ account.
   reads from history instead.
 
 Contributed by [@Space-Hermes](https://github.com/Space-Hermes) in
-[#50](https://github.com/DuarteSantos8/openGym/pull/50).
+[#50](https://github.com/DuarteSantos8/Forvia/pull/50).
 
 ### Pair exercises into a superset mid-session (#64)
 
@@ -286,7 +286,7 @@ Contributed by [@Space-Hermes](https://github.com/Space-Hermes) in
 - Session-only by design: pairings drive the workout, and history stores the sets.
 
 Contributed by [@Space-Hermes](https://github.com/Space-Hermes) in
-[#64](https://github.com/DuarteSantos8/openGym/pull/64).
+[#64](https://github.com/DuarteSantos8/Forvia/pull/64).
 
 ### The muscle map stops rewriting the catalogue (#67)
 
@@ -298,7 +298,7 @@ Contributed by [@Space-Hermes](https://github.com/Space-Hermes) in
   they always did.
 
 Contributed by [@Space-Hermes](https://github.com/Space-Hermes) in
-[#67](https://github.com/DuarteSantos8/openGym/pull/67).
+[#67](https://github.com/DuarteSantos8/Forvia/pull/67).
 
 ### Fixes
 
@@ -309,7 +309,7 @@ Contributed by [@Space-Hermes](https://github.com/Space-Hermes) in
   found, by [@lemi1000](https://github.com/lemi1000).
 - 📥 **Imports mapped more of what other apps export** ([#74]). Treadmill, Goblet Squat, Cycling and
   Cable Core Pallof Press arrived as *custom* exercises rather than catalogue ones — no word
-  overlap could reach the names openGym stores them under. Those and their neighbours are now in
+  overlap could reach the names Forvia stores them under. Those and their neighbours are now in
   the alias table. Already-imported history stays custom; new imports resolve. Reported by
   [@KiloOscarSix](https://github.com/KiloOscarSix).
 - **A progression edge case that could loop forever** ([#60]). An entry left with nothing but
@@ -319,9 +319,9 @@ Contributed by [@Space-Hermes](https://github.com/Space-Hermes) in
 - Documented that `VITE_IMG_BASE` / `VITE_GIF_BASE` are build-time values, so setting them next to
   `docker compose` does nothing on a prebuilt image.
 
-[#79]: https://github.com/DuarteSantos8/openGym/issues/79
-[#74]: https://github.com/DuarteSantos8/openGym/issues/74
-[#60]: https://github.com/DuarteSantos8/openGym/pull/60
+[#79]: https://github.com/DuarteSantos8/Forvia/issues/79
+[#74]: https://github.com/DuarteSantos8/Forvia/issues/74
+[#60]: https://github.com/DuarteSantos8/Forvia/pull/60
 
 ## v1.2.5 — 2026-08-04
 
@@ -363,7 +363,7 @@ release is invisible to you.
   MCP tests — neither had ever run there before.
 
 The MCP server was contributed by [@Pengboi](https://github.com/Pengboi) — the first feature in
-openGym written by someone other than me. Thank you.
+Forvia written by someone other than me. Thank you.
 
 ## v1.2.4 — 2026-08-01
 
@@ -599,11 +599,11 @@ importer for your history from other apps.
 
 ### One codebase, two flavors
 
-openGym is also a standalone mobile app — and it ships as a direct APK download, not
+Forvia is also a standalone mobile app — and it ships as a direct APK download, not
 through app stores.
 
 - 📱 **Standalone mobile app.** The same frontend now also builds as a native iPhone /
-  Android app (Capacitor) — the install-and-done flavor of openGym: no account, no server,
+  Android app (Capacitor) — the install-and-done flavor of Forvia: no account, no server,
   no sync. Everything stays on the phone.
   - State is mirrored into a file in the app's private storage on every change, so your
     log survives even when the OS evicts WebView storage (iOS does).
@@ -614,7 +614,7 @@ through app stores.
   - `npm run build:mobile`, then open `android/` in Android Studio or `ios/` in Xcode —
     see **docs/MOBILE.md**. `NOTICE.md` now carries an AGPL §7 app-store exception.
 - 🤖 **Android APK, no Play Store.** The official build is a signed, sideloadable APK
-  (~4.5 MB) from [opengym.duarte-santos.ch](https://opengym.duarte-santos.ch) — deliberately
+  (~4.5 MB) from [forvia.duarte-santos.ch](https://forvia.duarte-santos.ch) — deliberately
   store-free. docs/MOBILE.md covers building and signing your own.
 - 🍎 **iOS reality check.** Apple permits no installs outside the App Store, so there is no
   iOS download; the docs explain the free options (self-hosted PWA on the home screen, or
@@ -663,7 +663,7 @@ A muscle map across the app, and a live demo you can try without installing anyt
 - 🐛 **Fixed: finishing a workout from its last exercise could blank the whole app.** The
   per-exercise weight sheet read the running workout without checking it was still there, and
   finishing clears it while that sheet is still on screen.
-- ▶️ **Live demo** at [duartesantos8.github.io/openGym](https://duartesantos8.github.io/openGym/) —
+- ▶️ **Live demo** at [duartesantos8.github.io/Forvia](https://duartesantos8.github.io/Forvia/) —
   a browser-only build (`VITE_DEMO=1`) published to GitHub Pages on every push to `main`. It boots
   into guest mode with a seeded example profile (12 weeks of Push/Pull/Legs, weigh-ins, PRs) so
   every screen has something to show, and it never talks to a server. Passkeys, sync and the admin
@@ -814,7 +814,7 @@ Reliability fixes for the push notifications shipped in v1.1.0, found through li
 
 ## v1.1.0 — 2026-07-21
 
-- 🐳 Prebuilt Docker images published to `ghcr.io/duartesantos8/opengym-{api,web}` (amd64 + arm64)
+- 🐳 Prebuilt Docker images published to `ghcr.io/duartesantos8/forvia-{api,web}` (amd64 + arm64)
   via GitHub Actions, so self-hosting no longer requires building from source. `docker compose pull`
   grabs them; `docker compose up -d --build` still builds locally if you'd rather.
 - 🔔 Push notifications: rest-timer-over alert (fires even if the app is closed) and an optional

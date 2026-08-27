@@ -4,7 +4,7 @@
 //
 // The cache keys carry a _gl suffix: a visitor with a still-warm sessionStorage entry
 // from the gitea era would otherwise be read with the old field names and show NaN.
-const GL_PROJECT = 'https://gitlab.com/api/v4/projects/DuarteSantos8%2Fopengym'
+const GL_PROJECT = 'https://gitlab.com/api/v4/projects/DuarteSantos8%2Fforvia'
 
 ;(async () => {
   const set = (id, v) => document.querySelectorAll('[data-gh="' + id + '"]').forEach(el => { el.textContent = v })
@@ -55,7 +55,7 @@ const GL_PROJECT = 'https://gitlab.com/api/v4/projects/DuarteSantos8%2Fopengym'
       const r = await fetch(GL_PROJECT + '/releases?per_page=100')
       if (!r.ok) return
       rel = (await r.json()).filter(x => !x.upcoming_release)
-        .map(x => ({ tag: x.tag_name, name: x.name, at: x.released_at, body: x.description || '', url: (x._links && x._links.self) || ('https://gitlab.com/DuarteSantos8/opengym/-/releases/' + x.tag_name) }))
+        .map(x => ({ tag: x.tag_name, name: x.name, at: x.released_at, body: x.description || '', url: (x._links && x._links.self) || ('https://gitlab.com/DuarteSantos8/forvia/-/releases/' + x.tag_name) }))
       sessionStorage.setItem('repo_releases_gl', JSON.stringify(rel))
     }
     if (!rel.length) return

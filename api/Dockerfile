@@ -5,11 +5,11 @@ ARG VCS_REF=dev
 ARG BUILD_DATE=unknown
 
 LABEL maintainer="Nebula Systems https://github.com/Nebula-Syst" \
-    org.opencontainers.image.title="opengym-api" \
+    org.opencontainers.image.title="forvia-api" \
     org.opencontainers.image.description="Backend for Self-hosted gym & body-weight tracker — plan routines, log workouts (supersets & cardio too), track your weight and progress, passkey login. Your data, your server." \
-    org.opencontainers.image.source="https://github.com/Nebula-Syst/opengym" \
-    org.opencontainers.image.url="https://github.com/Nebula-Syst/opengym/pkgs/container/opengym-api" \
-    org.opencontainers.image.documentation="https://github.com/Nebula-Syst/opengym#readme" \
+    org.opencontainers.image.source="https://github.com/Nebula-Syst/forvia" \
+    org.opencontainers.image.url="https://github.com/Nebula-Syst/forvia/pkgs/container/forvia-api" \
+    org.opencontainers.image.documentation="https://github.com/Nebula-Syst/forvia#readme" \
     org.opencontainers.image.licenses="AGPL-3.0-or-later" \
     org.opencontainers.image.version=$VERSION \
     org.opencontainers.image.revision=$VCS_REF \

@@ -1,4 +1,4 @@
-// openGym control set.
+// Forvia control set.
 //
 // Every input in the app is built here rather than styled on top of a native
 // widget. Native controls are the single loudest "unfinished" tell: a checkbox
@@ -92,7 +92,10 @@ export function Switch({ checked, onChange, disabled }) {
 
 /* ============================ segmented ============================ */
 
-// options: [{ value, label, icon? }]  — the selected pill slides between cells.
+// options: [{ value, label, icon?, disabled?, onDisabledClick? }]  — the selected pill
+// slides between cells. A `disabled` option (e.g. a perk not unlocked yet) stays visible
+// rather than vanishing — tapping it runs `onDisabledClick` (a hint toast, a link to see
+// how to unlock it) instead of `onChange`, so what's coming is discoverable, not hidden.
 export function Segmented({ options, value, onChange, className = '' }) {
   const i = Math.max(0, options.findIndex(o => o.value === value))
   return (
@@ -101,9 +104,9 @@ export function Segmented({ options, value, onChange, className = '' }) {
       {options.map(o => (
         <button
           key={o.value}
-          className={o.value === value ? 'on' : ''}
+          className={(o.value === value ? 'on' : '') + (o.disabled ? ' off' : '')}
           aria-pressed={o.value === value}
-          onClick={() => onChange(o.value)}
+          onClick={() => o.disabled ? o.onDisabledClick?.() : onChange(o.value)}
         >
           {o.icon && <Icon name={o.icon} />}
           {o.label && <span>{o.label}</span>}

@@ -21,6 +21,15 @@ if (!files.length) {
   process.exit(1)
 }
 
+// This check only means anything with 2+ locales to compare against each other — with
+// one active pack (the rest suspended in locales/_suspended/, see i18n-core.js LANGS)
+// every key trivially looks "only here". check-source-strings.mjs still verifies that
+// one pack against every t() call in src/, which is the check that actually matters here.
+if (files.length === 1) {
+  console.log(`1 locale (${files[0]}) — nothing to compare; see check-source-strings.mjs.`)
+  process.exit(0)
+}
+
 const locales = new Map()
 for (const file of files) {
   const { default: dict } = await import(pathToFileURL(join(localesDir, file)).href)

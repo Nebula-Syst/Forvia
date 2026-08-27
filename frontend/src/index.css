@@ -1,5 +1,5 @@
 /* ============================================================================
-   openGym — design system
+   Forvia — design system
    ----------------------------------------------------------------------------
    Rebuilt around four rules, each aimed at a specific "generated" tell in the
    previous sheet:
@@ -57,6 +57,7 @@
   --r-sm:10px; --r:14px; --r-lg:20px; --r-xl:28px; --r-card:18px;
   --pad:16px;
   --icon-stroke:1.7;
+  --sidenav-w:248px;   /* desktop sidebar — 0 below the ≥1000px breakpoint, where it isn't rendered */
 
   /* motion */
   --ease:cubic-bezier(.32,.72,0,1);
@@ -78,6 +79,12 @@
 
   /* ambient background glow strength — dark can take saturated colour */
   --glow-1:38%; --glow-2:26%; --glow-3:24%; --glow-4:16%;
+  /* ...and their ellipse size, in px — fixed so the glow reads the same on a
+     1080p window, but that leaves a big screen's outer thirds untouched by
+     it; a wide-viewport tier below scales these up so the glow still fills
+     the frame instead of fading to flat --bg partway across. */
+  --glow-sz-1:1400px 1000px; --glow-sz-2:1300px 950px;
+  --glow-sz-3:1500px 1100px; --glow-sz-4:1200px 900px;
 }
 
 :root[data-theme="light"] {
@@ -111,6 +118,30 @@
   --shadow-lg: 0 20px 60px -12px rgba(0,0,0,.22), inset 0 1px 0 var(--glass-highlight);
 
   --glow-1:22%; --glow-2:15%; --glow-3:14%; --glow-4:9%;
+}
+
+/* Prestige-8 perk (perksFor().appTheme) — a dark-family variant, so it only overrides
+   what the light block above also overrides; shadows/glow stay the dark theme's. */
+:root[data-theme="prestige"] {
+  --bg:        #0d0221;
+  --bg-el:     #150a30;
+  --surface:   #1e0f3d;
+  --surface-2: #2a1854;
+  --surface-3: #3a2270;
+
+  --label:     #f5e9ff;
+  --label-2:   rgba(240,220,255,.62);
+  --label-3:   rgba(240,220,255,.34);
+  --label-4:   rgba(240,220,255,.18);
+
+  --sep:       rgba(180,140,255,.30);
+  --sep-op:    rgba(180,140,255,.18);
+
+  --glass-bg:   color-mix(in srgb, var(--surface) 56%, transparent);
+  --glass-bg-2: color-mix(in srgb, var(--surface-2) 64%, transparent);
+  --glass-border: color-mix(in srgb, #ffd76a 24%, transparent);
+  --glass-highlight: rgba(255,225,150,.18);
+  --glass-sheen: linear-gradient(155deg, color-mix(in srgb, #ffd76a 20%, transparent), transparent 45%);
 }
 
 /* accents — Apple's system colours, so a recolour never looks off-system */
@@ -148,10 +179,10 @@ html{
    the page reads tinted instead of neutral-with-glass-on-top. */
 body{
   background:
-    radial-gradient(1400px 1000px at 8% -5%, color-mix(in srgb, var(--acc) var(--glow-1), transparent), transparent 62%),
-    radial-gradient(1300px 950px at 96% 14%, color-mix(in srgb, var(--acc) var(--glow-2), transparent), transparent 64%),
-    radial-gradient(1500px 1100px at 40% 105%, color-mix(in srgb, var(--acc) var(--glow-3), transparent), transparent 60%),
-    radial-gradient(1200px 900px at 100% 100%, color-mix(in srgb, var(--acc) var(--glow-4), transparent), transparent 60%),
+    radial-gradient(var(--glow-sz-1) at 8% -5%, color-mix(in srgb, var(--acc) var(--glow-1), transparent), transparent 62%),
+    radial-gradient(var(--glow-sz-2) at 96% 14%, color-mix(in srgb, var(--acc) var(--glow-2), transparent), transparent 64%),
+    radial-gradient(var(--glow-sz-3) at 40% 105%, color-mix(in srgb, var(--acc) var(--glow-3), transparent), transparent 60%),
+    radial-gradient(var(--glow-sz-4) at 100% 100%, color-mix(in srgb, var(--acc) var(--glow-4), transparent), transparent 60%),
     var(--bg);
   background-attachment:fixed;
   color:var(--label);
@@ -255,6 +286,57 @@ h4.sec{
   transition:box-shadow var(--med) var(--ease),transform var(--med) var(--ease);
 }
 .card .big{font-size:30px;font-weight:600;letter-spacing:-.026em;line-height:1.1}
+
+/* --- Social feed: swipeable media (photos, then an exercise-preview page) ---
+   Bleeds past .card's own padding to sit flush against its rounded top corners;
+   scroll-snap gives the swipe with no JS and no dependency. */
+.feed-card{padding:20px}
+/* A fixed height, not aspect-ratio — the box has to hold the shortest reasonable
+   content (a 3-4 row exercise list) without half of it being empty air, and a
+   ratio tall enough for that stops looking like a photo once the card is wide.
+   290px = 4 rows (60px: a 50px .thumb + 5px top/bottom padding) plus the page's
+   own 16px top/bottom padding, with a little slack so the 4th row isn't flush
+   against the edge. */
+.feed-media{
+  position:relative;margin:-20px -20px 12px;border-radius:var(--r-card) var(--r-card) 0 0;
+  overflow:hidden;cursor:pointer;height:290px;
+}
+.feed-media-scroll{
+  display:flex;width:100%;height:100%;overflow-x:auto;scroll-snap-type:x mandatory;
+  -webkit-overflow-scrolling:touch;scrollbar-width:none;
+}
+.feed-media-scroll::-webkit-scrollbar{display:none}
+.feed-media-img{flex:none;width:100%;height:100%;object-fit:cover;scroll-snap-align:start;background:var(--surface)}
+/* No background of its own — it's meant to read as the card's own surface showing
+   through, not a boxed panel nested inside it (unlike the photo pages, which always
+   fill the frame edge-to-edge via object-fit:cover so this never shows behind them). */
+.feed-media-ex{
+  flex:none;width:100%;height:100%;scroll-snap-align:start;
+  padding:16px;overflow-y:auto;box-sizing:border-box;
+}
+/* Prev/next — hairline circular buttons, hidden at either end. Page dots sit below;
+   pointer-events:none on the dots so a tap always reaches the swipe/open behaviour
+   underneath, never the dot itself. Both read the accent colour when active/hovered,
+   matching how the rest of the app marks "the current one" (.wday .dot.done etc). */
+.feed-media-nav{
+  position:absolute;top:50%;transform:translateY(-50%);z-index:1;
+  width:32px;height:32px;border-radius:50%;
+  display:flex;align-items:center;justify-content:center;
+  background:rgba(0,0,0,.38);color:#fff;font-size:16px;
+  backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);
+  transition:background var(--fast);
+}
+.feed-media-nav.prev{left:10px} .feed-media-nav.next{right:10px}
+@media (hover:hover){ .feed-media-nav:hover{background:rgba(0,0,0,.55)} }
+.feed-media-dots{
+  position:absolute;left:0;right:0;bottom:10px;
+  display:flex;justify-content:center;gap:5px;pointer-events:none;
+}
+.feed-media-dots span{
+  width:5px;height:5px;border-radius:50%;background:rgba(255,255,255,.45);
+  box-shadow:0 0 2px rgba(0,0,0,.4);transition:background var(--fast),transform var(--fast);
+}
+.feed-media-dots span.on{background:var(--acc);transform:scale(1.3)}
 
 /* ------------------------------------------------------ inset group list -- */
 .sect{margin-bottom:22px}
@@ -392,6 +474,50 @@ h4.sec{
 }
 @keyframes ping{0%{transform:scale(1);opacity:.7}100%{transform:scale(1.45);opacity:0}}
 
+/* --------------------------------------------------------- side nav (≥1000px) --- */
+/* #tabbar's desktop replacement — same routes, same Tab/startWorkout logic
+   (TabBar.jsx renders both, CSS picks one), laid out as a fixed left rail
+   instead of a bottom bar. Hidden here; the ≥1000px breakpoint turns it on
+   and hides #tabbar in exchange (see the "desktop" section below). */
+#sidenav{
+  display:none;flex-direction:column;gap:2px;
+  position:fixed;left:0;top:0;bottom:0;width:var(--sidenav-w);z-index:40;
+  padding:calc(var(--sat) + 22px) 14px calc(18px + var(--sab));
+  background:var(--glass-bg);background-image:var(--glass-sheen);
+  backdrop-filter:saturate(var(--glass-sat)) blur(var(--glass-blur));
+  -webkit-backdrop-filter:saturate(var(--glass-sat)) blur(var(--glass-blur));
+  border-right:var(--hair) solid var(--sep-op);
+}
+#sidenav .brand{
+  display:flex;align-items:center;gap:9px;padding:4px 10px;margin-bottom:18px;
+  font-size:19px;font-weight:800;letter-spacing:-.024em;cursor:pointer;
+}
+#sidenav .brand .mark{
+  width:30px;height:30px;border-radius:9px;flex:none;background:var(--acc);color:var(--on-acc);
+  display:flex;align-items:center;justify-content:center;font-size:17px;
+}
+#sidenav .brand .mark .icn{--icon-stroke:2}
+#sidenav .sidestart{
+  display:flex;align-items:center;gap:9px;padding:11px 12px;margin-bottom:14px;
+  background:var(--acc);color:var(--on-acc);border-radius:var(--r);font-size:15px;font-weight:600;
+  box-shadow:0 6px 18px -6px color-mix(in srgb,var(--acc) 55%,transparent);
+  transition:transform var(--fast) var(--ease);
+}
+#sidenav .sidestart:active{transform:scale(.98)}
+#sidenav .sidestart .icn{font-size:18px;--icon-stroke:2}
+#sidenav .sidestart.rec{background:var(--orange);box-shadow:0 6px 18px -6px color-mix(in srgb,var(--orange) 55%,transparent)}
+#sidenav button:not(.sidestart){
+  display:flex;align-items:center;gap:12px;padding:10px 12px;border-radius:var(--r);
+  color:var(--label-2);font-size:15px;font-weight:500;text-align:left;
+  transition:background var(--fast),color var(--fast);
+}
+#sidenav button:not(.sidestart) .icn{font-size:20px;--icon-stroke:1.8;flex:none}
+#sidenav button:not(.sidestart).on{background:var(--acc-soft);color:var(--acc)}
+#sidenav button:not(.sidestart).on .icn{--icon-stroke:2}
+@media (hover:hover){
+  #sidenav button:not(.sidestart):not(.on):hover{background:var(--glass-bg-2);color:var(--label)}
+}
+
 /* ------------------------------------------------------------ week strip -- */
 .week{display:flex;justify-content:space-between;gap:4px}
 .wday{
@@ -438,6 +564,165 @@ h4.sec{
   font-weight:500;text-transform:capitalize;
 }
 .tag.acc{background:var(--acc-soft);color:var(--acc)}
+
+/* --- rank badge (level/tier — RankBadge.jsx / RankIcon.jsx) --- */
+.rank-badge{
+  display:inline-flex;align-items:center;gap:4px;flex:none;
+  font-weight:700;border-radius:99px;
+  background:color-mix(in srgb, var(--tier) 18%, transparent);
+  color:var(--tier);
+}
+.rank-icon{flex:none;display:inline-flex;width:1em;height:1em}
+.tier-icon img{width:100%;height:100%;object-fit:contain;display:block}
+.rank-badge-icon{font-size:1.15em}
+.rank-badge-prestige{
+  display:inline-flex;align-items:center;gap:2px;color:var(--indigo);
+  padding-right:4px;border-right:1px solid color-mix(in srgb, var(--tier) 35%, transparent);
+  margin-right:2px;
+}
+.rank-badge-tier{display:inline-flex;align-items:center;gap:4px}
+.rank-badge.sm{font-size:12px;padding:3px 8px}
+.rank-badge.lg{font-size:15px;padding:6px 13px;gap:7px}
+.rank-badge.lg .rank-badge-icon{font-size:1.35em}
+/* No text left to size the pill around — pad the two big icons directly instead. */
+.rank-badge.icons-only{padding:7px 12px;gap:10px}
+.rank-badge.icons-only .rank-badge-prestige{padding-right:10px;margin-right:0}
+.rank-xp-bar{height:10px;border-radius:99px;background:var(--surface-3);overflow:hidden}
+.rank-xp-bar i{display:block;height:100%;border-radius:99px;transition:width var(--slow) var(--ease)}
+
+/* Prestige badge — real artwork (public/prestige/*.webp), not currentColor SVG, so it
+   carries its own fixed size instead of inheriting text color. */
+.prestige-icon{position:relative;display:inline-flex;flex:none;width:1em;height:1em}
+.prestige-icon img{width:100%;height:100%;object-fit:contain;display:block}
+.prestige-icon.locked img{filter:grayscale(1) brightness(.45) contrast(.9)}
+.prestige-icon-lock{
+  position:absolute;right:-3px;bottom:-3px;font-size:.5em;flex:none;
+  background:var(--surface-2);color:var(--label-2);border-radius:50%;
+  padding:3px;box-shadow:0 0 0 2px var(--bg);--icon-stroke:2.4;
+}
+
+/* --- rank/prestige perks (perksFor() in api/server.js) --- */
+/* Platinum (animatedBadge): a slow brightness pulse — filter/transform only, so it never
+   fights the badgeColor ring, which is set via inline box-shadow. */
+@keyframes badge-pulse{0%,100%{filter:brightness(1)}50%{filter:brightness(1.25)}}
+.rank-badge.pulse{animation:badge-pulse 2s ease-in-out infinite}
+
+/* Prestige-5 (avatarFrame) / Legend (legendFrame): outline rather than box-shadow, so it
+   never collides with .avatar's own lift shadow. */
+@keyframes frame-shimmer{0%,100%{outline-color:var(--indigo)}50%{outline-color:var(--pink)}}
+.avatar-frame{outline:3px solid var(--indigo);outline-offset:2px;animation:frame-shimmer 3s ease-in-out infinite}
+.avatar-frame-legend{outline:3px solid var(--yellow);outline-offset:2px}
+
+/* Prestige-7 (animatedName): a slow-flowing gradient through the text itself. */
+@keyframes name-flow{to{background-position:300% 50%}}
+.name-animated{
+  background-image:linear-gradient(90deg, var(--indigo), var(--pink), var(--blue), var(--indigo));
+  background-size:300% 100%;-webkit-background-clip:text;background-clip:text;color:transparent;
+  animation:name-flow 4s linear infinite;
+}
+
+/* Prestige-9 (veteranBadge) — small chip, same idiom as .tag. */
+.veteran-badge{
+  display:inline-flex;align-items:center;font-size:11px;font-weight:700;
+  padding:2px 7px;border-radius:6px;background:color-mix(in srgb, var(--purple) 22%, transparent);
+  color:var(--purple);text-transform:uppercase;letter-spacing:.03em;
+}
+
+/* Prestige-4 (commentHighlight) — a soft tint behind the author's own comment rows. */
+.item.comment-highlight{background:color-mix(in srgb, var(--indigo) 10%, transparent)}
+
+/* Champion (borderBeam) — a conic-gradient sweep behind a re-painted glass fill, so only
+   a thin rotating "beam" shows at the card's edge. No external library. */
+@keyframes beam-spin{to{transform:rotate(360deg)}}
+.border-beam{position:relative;overflow:hidden}
+.border-beam::before{
+  content:'';position:absolute;inset:-60%;z-index:0;
+  background:conic-gradient(from 0deg, transparent 0 305deg, var(--acc) 335deg, transparent 360deg);
+  animation:beam-spin 3.5s linear infinite;
+}
+.border-beam::after{
+  content:'';position:absolute;inset:2px;border-radius:calc(var(--r-card) - 2px);z-index:0;
+  background:var(--glass-bg);background-image:var(--glass-sheen);
+}
+.border-beam>*{position:relative;z-index:1}
+
+/* --- Rank page (views/Rank.jsx) — hero ring, tier ladder, prestige grid --- */
+.rank-hero{
+  margin-bottom:18px;padding:26px 20px 22px;border-radius:24px;text-align:center;position:relative;
+  background:var(--glass-bg);background-image:var(--glass-sheen);
+  backdrop-filter:saturate(var(--glass-sat)) blur(var(--glass-blur));-webkit-backdrop-filter:saturate(var(--glass-sat)) blur(var(--glass-blur));
+  border:1px solid var(--glass-border);box-shadow:var(--shadow-md);
+}
+.rank-ring-wrap{position:relative;width:208px;height:208px;margin:0 auto 6px}
+@keyframes rank-float{0%,100%{transform:translateY(0)}50%{transform:translateY(-5px)}}
+.rank-ring-badge{position:absolute;inset:12px;display:flex;align-items:center;justify-content:center;animation:rank-float 4.2s ease-in-out infinite}
+.rank-tier-name{
+  font-size:24px;font-weight:800;letter-spacing:-.02em;margin-top:6px;
+  background-clip:text;-webkit-background-clip:text;-webkit-text-fill-color:transparent;color:var(--label);
+}
+.rank-level-line{color:var(--label-2);font-size:15px;font-weight:600;margin-top:2px}
+.rank-prestige-pill{
+  display:inline-flex;align-items:center;gap:6px;margin-top:12px;padding:5px 12px 5px 6px;
+  border-radius:99px;border:1px solid transparent;font-size:13px;font-weight:700;
+}
+.rank-xp-row{display:flex;justify-content:space-between;font-size:13px;margin:18px 2px 7px}
+
+.rank-ladder{
+  display:flex;align-items:center;overflow-x:auto;gap:10px;padding:18px 4px;margin:0 -4px 2px;scrollbar-width:none;
+  -webkit-overflow-scrolling:touch;touch-action:pan-x;
+  /* The connecting line is a background, not an absolutely-positioned div: a positioned
+     child's percentages resolve against the *visible* box even while the row itself
+     scrolls, so a left/right-anchored line would stop partway through the scrollable
+     content instead of spanning every node. background-attachment:local sizes/positions
+     the background against the full scrollable content instead, and scrolls with it. */
+  background-image:linear-gradient(var(--sep), var(--sep));
+  background-repeat:no-repeat;background-size:calc(100% - 72px) 2px;background-position:36px 61px;
+  background-attachment:local;
+  /* fades the last ~28px so a cut-off node visibly hints "more to scroll", same idiom
+     the app already uses for photo/media strips (.feed-media) rather than a hard edge */
+  mask-image:linear-gradient(90deg, #000 calc(100% - 28px), transparent);
+  -webkit-mask-image:linear-gradient(90deg, #000 calc(100% - 28px), transparent);
+}
+.rank-ladder::-webkit-scrollbar{display:none}
+/* No name label under a node — it's redundant with the list right below and only ate
+   space; the circle carries the tier/prestige art at a size that reads on its own. */
+.rank-node{flex:none;position:relative;z-index:1}
+.rank-node-circ{
+  width:72px;height:72px;padding:10px;box-sizing:border-box;border-radius:50%;
+  background:var(--surface-2);border:2px solid var(--sep);transition:width var(--med),height var(--med),padding var(--med);
+}
+.rank-node.locked .rank-node-circ{opacity:.55;filter:grayscale(1)}
+.rank-node.current .rank-node-circ{
+  width:86px;height:86px;padding:12px;border-color:var(--ntier);
+  box-shadow:0 0 0 4px color-mix(in srgb, var(--ntier) 18%, transparent), 0 0 18px -2px var(--ntier);
+}
+.rank-node.done .rank-node-circ{border-color:color-mix(in srgb, var(--ntier) 55%, var(--sep))}
+
+.rank-next-card{
+  margin-bottom:14px;padding:14px 16px;border-radius:16px;display:flex;align-items:center;gap:12px;
+  background:var(--glass-bg-2);border:1px dashed var(--glass-border);
+}
+.rank-next-card .ico{width:48px;height:48px;flex:none;padding:5px;box-sizing:border-box;opacity:.6;filter:grayscale(1)}
+.rank-next-card .t{font-size:13px;color:var(--label-2)}
+.rank-next-card .n{font-size:15px;font-weight:700}
+
+.rank-lvl-pill{font-size:11px;font-weight:700;padding:2px 6px;border-radius:6px;flex:none}
+.perk-ul{margin:2px 0 0;padding-left:15px;color:var(--label-2);font-size:12.5px;line-height:1.5}
+.perk-ul li{margin-bottom:0}
+
+/* Settings → Profile preview: the tier/prestige art large, each with the number that
+   actually means something at that size overlaid on the corner — the tier's number is
+   its position within ITS OWN ten levels (1-10), not the raw 1-100 level, since which
+   tier you're in already reads from the artwork; the prestige number is the prestige
+   count itself, since prestige has no sub-levels to be "through". */
+.profile-preview-icon{position:relative;display:inline-flex;width:92px;height:92px}
+.profile-preview-icon.pulse{animation:badge-pulse 2s ease-in-out infinite}
+.profile-preview-badge{
+  position:absolute;bottom:-4px;right:-4px;min-width:26px;height:26px;padding:0 6px;box-sizing:border-box;
+  border-radius:99px;background:var(--surface-2);border:2px solid var(--bg-el);
+  display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:800;color:var(--label);
+  box-shadow:var(--shadow-sm);
+}
 
 /* ---------------------------------------------------------------- chips -- */
 .chips{
@@ -537,6 +822,8 @@ h4.sec{
 }
 .seg button .icn{font-size:16px}
 .seg button:not(.on){color:var(--label-2);font-weight:400}
+.seg button.off{color:var(--label-3);opacity:.55}
+.seg button.off .icn{opacity:.7}
 .seg button:active{opacity:.5}
 /* sitting in a list row: shrink to content instead of filling the row */
 .seg-inline{flex:none;min-width:132px}
@@ -930,6 +1217,29 @@ h4.sec{
 .tile .v{font-size:26px;font-weight:600;letter-spacing:-.026em;margin-top:5px;line-height:1.1}
 .tile.tappable:active{background:var(--surface-2)}
 
+/* --- Settings home (Settings.jsx) — a grid of category tiles instead of one long
+   scrolling list; each opens its own focused sub-page (views/settings/*.jsx). --- */
+.settings-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:20px}
+.settings-tile{
+  background:var(--glass-bg);background-image:var(--glass-sheen);border:1px solid var(--glass-border);box-shadow:var(--shadow-sm);
+  backdrop-filter:saturate(var(--glass-sat)) blur(var(--glass-blur));-webkit-backdrop-filter:saturate(var(--glass-sat)) blur(var(--glass-blur));
+  border-radius:var(--r-card);padding:16px 14px;text-align:left;width:100%;
+  display:flex;flex-direction:column;gap:22px;position:relative;
+  transition:background var(--fast),transform var(--fast) var(--ease);
+}
+.settings-tile:active{background:var(--glass-bg-2);transform:scale(.98)}
+.settings-tile .ico{
+  width:38px;height:38px;border-radius:11px;flex:none;display:flex;align-items:center;justify-content:center;font-size:18px;
+  background-image:var(--glass-sheen), linear-gradient(155deg, color-mix(in srgb, var(--tint) 100%, #fff 22%), var(--tint));
+  color:#fff;box-shadow:0 3px 8px -2px color-mix(in srgb, var(--tint) 55%, transparent), inset 0 1px 0 rgba(255,255,255,.3);
+}
+.settings-tile .t{font-size:15px;font-weight:600}
+.settings-tile .s{font-size:12px;color:var(--label-2);margin-top:2px;line-height:1.35}
+.settings-tile .badge{
+  position:absolute;top:14px;right:14px;background:color-mix(in srgb, var(--acc) 20%, transparent);
+  color:var(--acc);font-size:10.5px;font-weight:700;padding:3px 8px;border-radius:99px;
+}
+
 /* --- PR badge --- */
 .pr{
   display:inline-flex;align-items:center;gap:4px;
@@ -1040,31 +1350,74 @@ h4.sec{
 /* --- utility: a vertical stack of cards inside one .cols column --- */
 .col{display:flex;flex-direction:column;gap:12px}
 
+
 /* --------------------------------------------------- desktop (≥1000px) --- */
+/* Below this, Forvia is the mobile app: bottom tab bar, one column, sheets
+   sliding up from the edge. At and above it, the bottom bar is replaced by a
+   fixed left sidebar (#sidenav, markup in TabBar.jsx) and the page gains the
+   width to lay things out side by side — .cols is the two-column split
+   already used by Home/Plan/Stats, .tiles goes to a 4-across grid. Centred
+   overlays (.sheet/.center/#timer) shift right by half the sidebar's width so
+   they sit centred on the visible content area, not on the sidebar too. */
 .cols{display:block}
 @media (min-width:1000px){
+  body{padding-left:var(--sidenav-w)}
   #app{max-width:1080px;padding-top:32px}
   .cols{display:grid;grid-template-columns:1fr 1fr;gap:14px;align-items:start}
   .cols>*{min-width:0}
   #app .list{display:grid;grid-template-columns:1fr 1fr;gap:8px}
-  #modal-root .list,.narrow .list{display:flex;flex-direction:column}
+  /* #app .narrow beats #app .list on specificity alone (id+2 classes > id+1 class), which
+     is the whole point — .narrow marks "this list reads top-to-bottom", full stop, so it
+     has to win regardless of where in the stylesheet either rule sits. */
+  #modal-root .list,#app .narrow .list{display:flex;flex-direction:column}
   .narrow{max-width:640px;margin:0 auto}
+  /* Social's feed/discover column specifically — narrower than the standard .narrow
+     reading measure, a stack of photo/stat cards feels tighter at this width. */
+  .narrow.social-narrow{max-width:520px}
   .tiles{grid-template-columns:repeat(4,1fr)}
   .cols .tiles{grid-template-columns:1fr 1fr}
-  #tabbar{
-    left:50%;right:auto;bottom:16px;transform:translateX(-50%);width:520px;
-    border:var(--hair) solid var(--sep-op);border-radius:var(--r-xl);
-    padding:7px 10px 9px;box-shadow:0 12px 40px -10px rgba(0,0,0,.5);
-  }
-  #tabbar button.start{margin-top:-26px}
-  .sheet{left:50%;right:auto;margin-left:-320px;width:640px;border-radius:var(--r-xl) var(--r-xl) 0 0}
-  .center{width:340px}
-  #timer{left:50%;right:auto;margin-left:-260px;width:520px;bottom:112px}
+  #tabbar{display:none}
+  #sidenav{display:flex}
+  .sheet{left:calc(50% + var(--sidenav-w)/2);right:auto;margin-left:-320px;width:640px;border-radius:var(--r-xl) var(--r-xl) 0 0}
+  .center{left:calc(50% + var(--sidenav-w)/2);width:340px}
+  #timer{left:calc(50% + var(--sidenav-w)/2);right:auto;margin-left:-260px;width:520px;bottom:32px}
   /* 520px fits the clock, the bar and all three controls on one line again */
   #timer.rest{flex-direction:row;align-items:center;gap:14px}
   #timer.rest .head{flex:1;min-width:0}
   .exmedia img{height:380px}
   .hm-wrap{display:flex;flex-direction:column;align-items:center}
+}
+
+/* ---------------------------------------------- large desktop (≥1600px) --- */
+/* Laptops stop at the tier above; this is for the space a big monitor or a 4K
+   display actually has. The sidebar and the type scale stay put — only the
+   content column and its grids get more generous, so the app reads as a
+   proper desktop layout instead of the phone build stretched out with empty
+   margins on both sides. */
+@media (min-width:1600px){
+  :root{--sidenav-w:272px}
+  #app{max-width:1320px}
+  .cols{gap:22px}
+  .narrow{max-width:760px}
+  .narrow.social-narrow{max-width:580px}
+}
+
+/* -------------------------------------------- ultra-wide / 4K (≥2200px) --- */
+/* Past ~1600px the content column stops growing on its own — without this,
+   a 4K monitor is a 272px sidebar, a fixed-width column of cards, and a wall
+   of near-black on both sides where the glow (fixed px ellipses, sized for a
+   1080p window) has already faded to flat --bg. Both get one more notch here:
+   the column keeps growing (still capped — full-bleed text at 4K is its own
+   readability problem) and the glow ellipses scale up to match, so the extra
+   real estate reads as "designed for this screen" rather than "ran out of
+   room to fill". */
+@media (min-width:2200px){
+  :root{
+    --glow-sz-1:2000px 1400px; --glow-sz-2:1850px 1350px;
+    --glow-sz-3:2150px 1550px; --glow-sz-4:1700px 1250px;
+  }
+  #app{max-width:1560px}
+  .cols{gap:28px}
 }
 
 /* ------------------------------------------- pointer hover (mouse only) -- */

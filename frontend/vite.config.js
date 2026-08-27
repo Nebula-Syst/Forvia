@@ -11,7 +11,7 @@ const umamiSrc = process.env.VITE_UMAMI_SRC
 const umamiId = process.env.VITE_UMAMI_ID
 
 const umami = {
-  name: 'opengym-umami',
+  name: 'forvia-umami',
   transformIndexHtml() {
     if (!umamiSrc || !umamiId) return
     return [{

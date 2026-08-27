@@ -1,7 +1,7 @@
-# Publishes the browser-only demo to GitHub Pages: https://duartesantos8.github.io/openGym/
+# Publishes the browser-only demo to GitHub Pages: https://duartesantos8.github.io/Forvia/
 #
 # DORMANT since 2026-08-19, when the GitHub account was suspended. The demo is now built with the
-# same command below and served from the project's own site at https://opengym.duarte-santos.ch/demo/
+# same command below and served from the project's own site at https://forvia.duarte-santos.ch/demo/
 # (Vite's base is './', so it drops into a subdirectory unchanged). Kept for the day the account
 # comes back, exactly like the other workflows in this folder.
 #

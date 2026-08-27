@@ -24,16 +24,27 @@ import Stats from './views/Stats.jsx'
 import History from './views/History.jsx'
 import Library from './views/Library.jsx'
 import Settings from './views/Settings.jsx'
+import SettingsAccount from './views/settings/SettingsAccount.jsx'
+import SettingsProfile from './views/settings/SettingsProfile.jsx'
+import SettingsWorkout from './views/settings/SettingsWorkout.jsx'
+import SettingsAppearance from './views/settings/SettingsAppearance.jsx'
+import SettingsNotifications from './views/settings/SettingsNotifications.jsx'
+import SettingsData from './views/settings/SettingsData.jsx'
+import Social, { UserProfile } from './views/Social.jsx'
+import Rank from './views/Rank.jsx'
 import Admin from './views/Admin.jsx'
 
 bindUI(useUI)   // lets the shared controls open sheets without importing the store at module scope
 
+// 'prestige' is the Prestige-8 perk's exclusive theme (perksFor().appTheme, api/server.js)
+// — Settings.jsx only offers it once unlocked, and prestige perks are permanent, so no
+// extra gate is needed here.
 function applyPrefs(theme, accent) {
   const de = document.documentElement
-  de.dataset.theme = theme === 'light' ? 'light' : 'dark'
+  de.dataset.theme = theme === 'light' ? 'light' : theme === 'prestige' ? 'prestige' : 'dark'
   de.dataset.accent = ACCENTS[accent] ? accent : 'lime'
   const meta = document.querySelector('meta[name="theme-color"]')
-  if (meta) meta.content = de.dataset.theme === 'light' ? '#f2f2f7' : '#000000'
+  if (meta) meta.content = de.dataset.theme === 'light' ? '#f2f2f7' : de.dataset.theme === 'prestige' ? '#0d0221' : '#000000'
 }
 
 function Shell() {
@@ -76,6 +87,15 @@ function Shell() {
               <Route path="/history" element={<History />} />
               <Route path="/library" element={<Library />} />
               <Route path="/settings" element={<Settings />} />
+              <Route path="/settings/account" element={<SettingsAccount />} />
+              <Route path="/settings/profile" element={<SettingsProfile />} />
+              <Route path="/settings/workout" element={<SettingsWorkout />} />
+              <Route path="/settings/appearance" element={<SettingsAppearance />} />
+              <Route path="/settings/notifications" element={<SettingsNotifications />} />
+              <Route path="/settings/data" element={<SettingsData />} />
+              <Route path="/social" element={<Social />} />
+              <Route path="/social/u/:uid" element={<UserProfile />} />
+              <Route path="/rank" element={<Rank />} />
               <Route path="/admin" element={user?.admin ? <Admin /> : <Navigate to="/home" replace />} />
               <Route path="*" element={<Navigate to="/home" replace />} />
             </Routes>

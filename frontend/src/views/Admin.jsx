@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useStore } from '../store/useStore.js'
 import { useUI } from '../store/useUI.js'
-import { api } from '../lib/api.js'
+import { api, adminTasks, adminTaskAdd, adminTaskRemove } from '../lib/api.js'
 import { fmtDate, fmtNum, fmtVol, fmtDur } from '../lib/format.js'
 import { auditCat, auditLine, fmtWhen } from '../lib/audit.js'
 import { workoutVolume, setsDone } from '../lib/history.js'
@@ -89,6 +89,42 @@ function InvitesCard({ invites, reload }) {
   </div>
 }
 
+// The daily-task catalog that drives the XP/level system (RankBadge.jsx) — pure admin
+// content: name, description, points, nothing the app verifies. Users see and check
+// these off themselves from Home; this card is only where they're authored.
+function TasksCard({ tasks, reload }) {
+  const toast = useUI(s => s.toast)
+  const [name, setName] = useState('')
+  const [desc, setDesc] = useState('')
+  const [points, setPoints] = useState('10')
+
+  const add = () => {
+    const n = name.trim(), p = Math.round(+points)
+    if (!n || !p || p < 1) return toast('Name and a positive point value are required')
+    adminTaskAdd(n, desc.trim(), p)
+      .then(() => { setName(''); setDesc(''); setPoints('10'); toast('Task added'); reload() })
+      .catch(e => toast(e.message))
+  }
+  const remove = id => adminTaskRemove(id).then(() => { toast('Task removed'); reload() }).catch(e => toast(e.message))
+
+  return <div className="card">
+    <h2 style={{ margin: '0 0 8px' }}>Daily tasks (XP)</h2>
+    <div className="small muted" style={{ marginBottom: 10 }}>Self-checked by users once a day from Home. Editing points here only affects future completions.</div>
+    {(tasks || []).map(t => <div key={t.id} className="row between" style={{ padding: '7px 2px', borderBottom: '1px solid var(--sep)' }}>
+      <div className="grow"><div className="small" style={{ fontWeight: 600 }}>{t.name} <span className="tag acc" style={{ marginLeft: 4 }}>+{t.points} XP</span></div>
+        {t.desc && <div className="dim" style={{ fontSize: '.72rem' }}>{t.desc}</div>}</div>
+      <button className="iconbtn" style={{ width: 30, height: 30, borderRadius: 8, fontSize: 14, color: 'var(--red)' }} onClick={() => remove(t.id)} aria-label="remove"><Icon name="trash" /></button>
+    </div>)}
+    {tasks && !tasks.length && <div className="dim small" style={{ marginBottom: 4 }}>No tasks yet — add one below.</div>}
+    <div style={{ marginTop: 10, display: 'grid', gap: 6 }}>
+      <input className="input" placeholder="Task name" value={name} onChange={e => setName(e.target.value)} />
+      <input className="input" placeholder="Description (optional)" value={desc} onChange={e => setDesc(e.target.value)} />
+      <input className="input" type="number" min="1" max="500" placeholder="Points" value={points} onChange={e => setPoints(e.target.value)} style={{ width: 100 }} />
+      <Button variant="primary" size="sm" icon="plus" onClick={add}>Add task</Button>
+    </div>
+  </div>
+}
+
 // Who signed in, who tried and failed, what an admin changed. A card rather than its own route:
 // the dashboard is deliberately one page of cards, and the 95 % use of this is a glance at the
 // last twenty events. Paging follows Library.jsx's house style — "Show more", not page numbers.
@@ -155,12 +191,14 @@ export default function Admin() {
   const [users, setUsers] = useState(null)
   const [invites, setInvites] = useState(null)
   const [inviteOnly, setInviteOnly] = useState(false)
+  const [tasks, setTasks] = useState(null)
   const [tick, setTick] = useState(0)          // the ↻ button; the activity log listens to it
 
   const loadUsers = () => api('/api/admin/users').then(d => { setUsers(d.users); setInviteOnly(d.invite_only) }).catch(e => toast(e.message || 'Failed to load'))
   const loadInvites = () => api('/api/admin/invites').then(d => setInvites(d.invites)).catch(() => {})
+  const loadTasks = () => adminTasks().then(setTasks).catch(() => {})
   // poll every 15s so the "training now" section stays live without a manual refresh
-  useEffect(() => { if (!user?.admin) return; loadUsers(); loadInvites(); const iv = setInterval(loadUsers, 15000); return () => clearInterval(iv) }, [])
+  useEffect(() => { if (!user?.admin) return; loadUsers(); loadInvites(); loadTasks(); const iv = setInterval(loadUsers, 15000); return () => clearInterval(iv) }, [])
   if (!user?.admin) return null
 
   const openUser = id => openSheet(close => <UserDetail id={id} onChanged={loadUsers} close={close} />)
@@ -193,6 +231,7 @@ export default function Admin() {
     </div>}
 
     <InvitesCard invites={invites} reload={loadInvites} />
+    <div style={{ marginTop: 14 }}><TasksCard tasks={tasks} reload={loadTasks} /></div>
 
     <h4 className="sec">Users</h4>
     <div className="list">

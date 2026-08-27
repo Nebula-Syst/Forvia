@@ -1,7 +1,7 @@
 # DISABLED IN THIS FORK — kept as reference only, .yml renamed so GitLab won't pick it up.
 # This fork's CI lives in .github/workflows/ (GitHub Actions, publishes to ghcr.io).
 #
-# openGym — GitLab CI/CD (original, upstream)
+# Forvia — GitLab CI/CD (original, upstream)
 #
 # This is the pipeline that actually gates and ships the project. It replaces the
 # GitHub Actions workflows (.github/, dormant since the account suspension) and the
@@ -9,7 +9,7 @@
 #
 # What it does, in order:
 #   test     — frontend + MCP suites, on every branch, MR and tag
-#   build    — the two container images → registry.gitlab.com/duartesantos8/opengym/{api,web}
+#   build    — the two container images → registry.gitlab.com/duartesantos8/forvia/{api,web}
 #   package  — the signed Android APK → job artifact + generic package registry
 #   deploy   — the browser-only demo → GitLab Pages
 #   release  — a GitLab Release with the changelog section and links to APK + images
@@ -111,7 +111,7 @@ test:mcp:
 
 # --------------------------------------------------------------------------- images
 
-# Images land at registry.gitlab.com/duartesantos8/opengym/{api,web} and are what
+# Images land at registry.gitlab.com/duartesantos8/forvia/{api,web} and are what
 # `docker compose pull` fetches.
 #
 # On a v* tag: linux/amd64 + linux/arm64, tagged X.Y.Z, X.Y and latest.
@@ -176,7 +176,7 @@ build:images:
         PLATFORMS="linux/amd64"
         TAGS="-t $REPO:edge -t $REPO:$VERSION"
       fi
-      docker buildx create --use --name opengym --driver docker-container tls-environment
+      docker buildx create --use --name forvia --driver docker-container tls-environment
       # shellcheck disable=SC2086
       docker buildx build \
         --platform "$PLATFORMS" \
@@ -206,12 +206,12 @@ build:images:
 
 # The official signed APK. Signing keys live in protected CI variables, so they only
 # exist on protected refs (main and v* tags) — a fork's MR builds an unsigned APK and
-# cannot get at the key. Sideload-only by design: openGym is on no app store.
+# cannot get at the key. Sideload-only by design: Forvia is on no app store.
 #
 # Needs three CI/CD variables (Settings → CI/CD → Variables), all *protected*:
-#   ANDROID_KEYSTORE_B64       file    base64 of opengym-release.keystore
+#   ANDROID_KEYSTORE_B64       file    base64 of forvia-release.keystore
 #   ANDROID_KEYSTORE_PASSWORD  masked  the keystore password
-#   ANDROID_KEY_ALIAS          plain   opengym
+#   ANDROID_KEY_ALIAS          plain   forvia
 # KEEP THAT KEYSTORE: updates must be signed with the same key or Android refuses to
 # install them over an existing copy.
 build:apk:
@@ -247,9 +247,9 @@ build:apk:
           --ks-pass "env:ANDROID_KEYSTORE_PASSWORD" \
           --ks-key-alias "$ANDROID_KEY_ALIAS" \
           --key-pass "env:ANDROID_KEYSTORE_PASSWORD" \
-          --out "$CI_PROJECT_DIR/openGym-$VER.apk" aligned.apk
+          --out "$CI_PROJECT_DIR/Forvia-$VER.apk" aligned.apk
         rm -f "$CI_PROJECT_DIR/.ks.jks"
-        "$BT/apksigner" verify --print-certs "$CI_PROJECT_DIR/openGym-$VER.apk"
+        "$BT/apksigner" verify --print-certs "$CI_PROJECT_DIR/Forvia-$VER.apk"
       elif [ -n "${CI_COMMIT_TAG:-}" ]; then
         # A release must never quietly ship an APK nobody can install. If the key is missing
         # on a tag, something is wrong with the protected variables — say so and stop.
@@ -258,7 +258,7 @@ build:apk:
         exit 1
       else
         echo "No signing key on this ref — producing an UNSIGNED apk (cannot be installed)."
-        "$BT/zipalign" -f -p 4 "$UNSIGNED" "$CI_PROJECT_DIR/openGym-$VER-unsigned.apk"
+        "$BT/zipalign" -f -p 4 "$UNSIGNED" "$CI_PROJECT_DIR/Forvia-$VER-unsigned.apk"
       fi
       echo "APK_VERSION=$VER" >> "$CI_PROJECT_DIR/apk.env"
     # On a release tag the APK also goes into the generic package registry, which is
@@ -267,24 +267,24 @@ build:apk:
       set -eu
       cd "$CI_PROJECT_DIR"
       . ./apk.env
-      if [ -n "${CI_COMMIT_TAG:-}" ] && [ -f "openGym-$APK_VERSION.apk" ]; then
+      if [ -n "${CI_COMMIT_TAG:-}" ] && [ -f "Forvia-$APK_VERSION.apk" ]; then
         # Sideloading means nobody's app store checked this file for you, so publish the
         # digest next to it rather than leaving people to trust the download.
-        sha256sum "openGym-$APK_VERSION.apk" > "openGym-$APK_VERSION.apk.sha256"
-        cat "openGym-$APK_VERSION.apk.sha256"
-        for f in "openGym-$APK_VERSION.apk" "openGym-$APK_VERSION.apk.sha256"; do
+        sha256sum "Forvia-$APK_VERSION.apk" > "Forvia-$APK_VERSION.apk.sha256"
+        cat "Forvia-$APK_VERSION.apk.sha256"
+        for f in "Forvia-$APK_VERSION.apk" "Forvia-$APK_VERSION.apk.sha256"; do
           curl --fail --silent --show-error \
             --header "JOB-TOKEN: $CI_JOB_TOKEN" \
             --upload-file "$f" \
-            "$CI_API_V4_URL/projects/$CI_PROJECT_ID/packages/generic/opengym-android/$APK_VERSION/$f"
+            "$CI_API_V4_URL/projects/$CI_PROJECT_ID/packages/generic/forvia-android/$APK_VERSION/$f"
           echo "uploaded $f to the generic package registry"
         done
       fi
   artifacts:
-    name: "openGym-apk-$CI_COMMIT_REF_SLUG"
+    name: "Forvia-apk-$CI_COMMIT_REF_SLUG"
     paths:
-      - "openGym-*.apk"
-      - "openGym-*.apk.sha256"
+      - "Forvia-*.apk"
+      - "Forvia-*.apk.sha256"
     reports:
       dotenv: apk.env
     expire_in: 30 days
@@ -305,9 +305,9 @@ build:apk:
 
 # ---------------------------------------------------------------------------- pages
 
-# The browser-only demo: https://opengym-bc111a.gitlab.io/
+# The browser-only demo: https://forvia-bc111a.gitlab.io/
 # (that opaque host is GitLab's "unique domain" for Pages, on by default; the tidier
-# https://duartesantos8.gitlab.io/opengym/ 308s to it. Settings → Pages turns it off.)
+# https://duartesantos8.gitlab.io/forvia/ 308s to it. Settings → Pages turns it off.)
 # Pages serves static files only, so this build has no backend — VITE_DEMO=1 makes the
 # app boot straight into guest mode with a seeded example history (frontend/src/lib/demo.js).
 # Vite's base is './', so the bundle drops into a subdirectory unchanged.
@@ -362,20 +362,20 @@ release:
         inside { print }
       ' CHANGELOG.md > release-notes.md
       if [ ! -s release-notes.md ]; then
-        echo "openGym $CI_COMMIT_TAG" > release-notes.md
+        echo "Forvia $CI_COMMIT_TAG" > release-notes.md
       fi
       head -40 release-notes.md
   release:
     tag_name: $CI_COMMIT_TAG
-    name: "openGym $CI_COMMIT_TAG"
+    name: "Forvia $CI_COMMIT_TAG"
     description: release-notes.md
     assets:
       links:
-        - name: "openGym-$APK_VERSION.apk (Android, sideload)"
-          url: "$CI_API_V4_URL/projects/$CI_PROJECT_ID/packages/generic/opengym-android/$APK_VERSION/openGym-$APK_VERSION.apk"
+        - name: "Forvia-$APK_VERSION.apk (Android, sideload)"
+          url: "$CI_API_V4_URL/projects/$CI_PROJECT_ID/packages/generic/forvia-android/$APK_VERSION/Forvia-$APK_VERSION.apk"
           link_type: package
-        - name: "openGym-$APK_VERSION.apk.sha256 (checksum)"
-          url: "$CI_API_V4_URL/projects/$CI_PROJECT_ID/packages/generic/opengym-android/$APK_VERSION/openGym-$APK_VERSION.apk.sha256"
+        - name: "Forvia-$APK_VERSION.apk.sha256 (checksum)"
+          url: "$CI_API_V4_URL/projects/$CI_PROJECT_ID/packages/generic/forvia-android/$APK_VERSION/Forvia-$APK_VERSION.apk.sha256"
           link_type: other
         - name: "Container images (api + web)"
           url: "$CI_PROJECT_URL/container_registry"

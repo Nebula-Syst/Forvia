@@ -2,10 +2,13 @@
 // instrFor, getLang). Plain Node-loadable — the browser-only pieces (import.meta.glob lazy
 // loads, the React subscription hook) live in i18n.js and re-export from here.
 
+// Suspended, not dropped: the other 9 locale packs (de/fr/it/pt/pl/tr/ru/zh/ko/hi) still
+// live in full at src/locales/_suspended/ — moved out of src/locales/ so check-locales.mjs
+// and this module's import.meta.glob both stop seeing them, which is what actually stops
+// every new string from having to be translated 11 ways. Move a file back into
+// src/locales/ and re-add its entry here to reactivate it; nothing was deleted.
 export const LANGS = {
-  en: 'English', de: 'Deutsch', es: 'Español', fr: 'Français', it: 'Italiano',
-  pt: 'Português', pl: 'Polski', tr: 'Türkçe', ru: 'Русский', zh: '中文',
-  ko: '한국어', hi: 'हिन्दी'
+  en: 'English', es: 'Español',
 }
 export const INSTR_LANGS = ['en', 'es', 'fr', 'it', 'tr', 'ru', 'zh', 'hi', 'pl', 'ko']
 export const DATE_LOCALES = {

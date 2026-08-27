@@ -1,6 +1,7 @@
 # Building the mobile app (iOS / Android)
 
-openGym ships in two flavors from the same codebase:
+Forvia ships in two flavors from the same codebase. It is Nebula Systems' current update of
+openGym by Duarte Santos, and the mobile path is one of the two ways that code is shipped:
 
 | | **Self-hosted** (this repo's default) | **Mobile app** (`VITE_MOBILE=1`) |
 |---|---|---|
@@ -11,7 +12,7 @@ openGym ships in two flavors from the same codebase:
 | Exercise media | served by your server (`img/`, `gif/`) | loaded from the jsDelivr CDN |
 
 The mobile flavor never talks to a backend: no sign-in screen, no sync, no telemetry.
-State is mirrored from `localStorage` into `opengym-state.json` in the app's private data
+State is mirrored from `localStorage` into `forvia-state.json` in the app's private data
 directory on every change (iOS is allowed to evict WebView storage under pressure — the
 file mirror is the durable copy and is restored on launch). Backups go out through the
 OS share sheet instead of a browser download.
@@ -22,7 +23,7 @@ OS share sheet instead of a browser download.
 - **Android:** Android Studio (bundles the SDK). Java 21 for Gradle.
 - **iOS:** a Mac with Xcode 15+ and CocoaPods (`brew install cocoapods`). A free Apple ID
   is enough to run the app on your own iPhone (see below); paid membership is only needed
-  for App Store distribution, which openGym doesn't do.
+  for App Store distribution, which Forvia doesn't do.
 
 ## Build & run
 
@@ -56,18 +57,18 @@ npx @capacitor/assets generate --iconBackgroundColor '#0c0e12' --splashBackgroun
 
 ## Distribution — deliberately no app stores
 
-openGym's mobile app is not on the Play Store or App Store, and that's a choice: no store
+Forvia's mobile app is not on the Play Store or App Store, and that's a choice: no store
 accounts, no store rules, no yearly fees between you and an open-source app.
 
 ### Android — sideload the APK
 
 The official signed APK is in three places, all the same file:
 
-- **[opengym.duarte-santos.ch](https://opengym.duarte-santos.ch)** — the download page.
-- **[GitLab's package registry](https://gitlab.com/DuarteSantos8/opengym/-/packages)** — every
-  build under `opengym-android/<version>/`, with a `.sha256` beside it. Direct link, no login:
-  `https://gitlab.com/api/v4/projects/85678327/packages/generic/opengym-android/<version>/openGym-<version>.apk`
-- **[The GitLab release](https://gitlab.com/DuarteSantos8/opengym/-/releases)** for that version,
+- **[forvia.duarte-santos.ch](https://forvia.duarte-santos.ch)** — the download page.
+- **[GitLab's package registry](https://gitlab.com/DuarteSantos8/forvia/-/packages)** — every
+  build under `forvia-android/<version>/`, with a `.sha256` beside it. Direct link, no login:
+  `https://gitlab.com/api/v4/projects/85678327/packages/generic/forvia-android/<version>/Forvia-<version>.apk`
+- **[The GitLab release](https://gitlab.com/DuarteSantos8/forvia/-/releases)** for that version,
   which links to the two above.
 
 Android asks you to allow installs from the browser the first time — that's standard for any
@@ -89,11 +90,11 @@ cd android && ./gradlew assembleRelease            # → app/build/outputs/apk/r
 
 # one-time: create a keystore. KEEP IT — updates must be signed with the same key,
 # or Android refuses to install the new version over the old one.
-keytool -genkeypair -keystore my.keystore -alias opengym -keyalg RSA -validity 10950
+keytool -genkeypair -keystore my.keystore -alias forvia -keyalg RSA -validity 10950
 
 # align + sign (zipalign/apksigner ship with the Android SDK build-tools)
 zipalign -f -p 4 app-release-unsigned.apk aligned.apk
-apksigner sign --ks my.keystore --ks-key-alias opengym --out openGym.apk aligned.apk
+apksigner sign --ks my.keystore --ks-key-alias forvia --out Forvia.apk aligned.apk
 ```
 
 ### iPhone — what's actually possible
@@ -115,7 +116,7 @@ that would simply install. Your free options:
   reads `version` out of it), so the two drifting apart shows up as a misnamed file.
 - Tagging `vX.Y.Z` is what ships everything: images, APK, release notes. Don't push a version
   tag you don't mean to release — `v*` tags are protected for that reason.
-- **License:** openGym is AGPL-3.0, which by itself sits badly with app-store terms of
+- **License:** Forvia is AGPL-3.0, which by itself sits badly with app-store terms of
   service. `NOTICE.md` carries an app-store exception (an additional permission under
   AGPL §7) granted by the copyright holder — relevant only if store distribution ever happens.
 - The app requests notification permission only when the workout-day reminder is switched

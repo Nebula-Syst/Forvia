@@ -3,14 +3,14 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Docs — openGym</title>
-<meta name="description" content="How to install openGym on Android, use it on iPhone, self-host it with Docker, import your training history, and keep backups.">
+<title>Docs — Forvia</title>
+<meta name="description" content="How to install Forvia on Android, use it on iPhone, self-host it with Docker, import your training history, and keep backups.">
 <meta name="theme-color" content="#0c0e12">
 <link rel="icon" type="image/png" sizes="512x512" href="icon-512.png">
 <link rel="icon" type="image/png" sizes="180x180" href="icon-180.png">
 <link rel="apple-touch-icon" href="icon-180.png">
 <link rel="stylesheet" href="styles.css?v=3">
-<!-- Umami web analytics for opengym.duarte-santos.ch (self-hosted, cookieless). -->
+<!-- Umami web analytics for forvia.duarte-santos.ch (self-hosted, cookieless). -->
 <script defer src="https://stats.duarte-santos.ch/script.js" data-website-id="db36019e-50f4-453c-9c56-d0588aefe233"></script>
 </head>
 <body>
@@ -18,7 +18,7 @@
 <nav><div class="wrap nav-in">
   <a class="brand" href="/">
     <img src="icon-180.png" alt="" width="26" height="26" style="border-radius:6px">
-    openGym
+    Forvia
   </a>
   <div class="nav-links">
     <a href="/#features" class="hide-s">Features</a>
@@ -26,7 +26,7 @@
     <a href="/#demo" class="hide-s">Demo</a>
     <a href="docs.html">Docs</a>
     <a href="about.html" class="hide-s">About</a>
-    <a href="https://gitlab.com/DuarteSantos8/opengym" rel="noopener"><span data-gh="stars">GitLab</span></a>
+    <a href="https://gitlab.com/DuarteSantos8/forvia" rel="noopener"><span data-gh="stars">GitLab</span></a>
     <a href="https://discord.gg/e62jY6fwVb" rel="noopener">Discord</a>
     <a class="cta" href="/#download">Download</a>
   </div>
@@ -36,14 +36,14 @@
      revert the links (+ site.js) to github.com once the account is restored. -->
 <div class="alert" role="alert"><div class="wrap">
   <div class="alert-tag">⚠️ Important notice</div>
-  <h2>My GitHub account has been suspended — the openGym repo is gone with it</h2>
-  <p><b>github.com/DuarteSantos8/openGym is offline.</b> The repository and the releases are
-     unreachable — not by choice. openGym itself is unaffected: the app, the APK on this page,
+  <h2>My GitHub account has been suspended — the Forvia repo is gone with it</h2>
+  <p><b>github.com/DuarteSantos8/Forvia is offline.</b> The repository and the releases are
+     unreachable — not by choice. Forvia itself is unaffected: the app, the APK on this page,
      the demo (now hosted here) and every self-hosted install keep working exactly as before.</p>
   <p>Until I get the account back, the code lives on GitLab — and the Discord is where I will
      announce the moment it is resolved:</p>
   <div class="alert-actions">
-    <a class="btn alert-btn" href="https://gitlab.com/DuarteSantos8/opengym" rel="noopener">gitlab.com/DuarteSantos8/opengym</a>
+    <a class="btn alert-btn" href="https://gitlab.com/DuarteSantos8/forvia" rel="noopener">gitlab.com/DuarteSantos8/forvia</a>
     <a class="btn dc-btn" href="https://discord.gg/e62jY6fwVb" rel="noopener">Join the Discord</a>
   </div>
   <p class="alert-note">Every repository link on this site now points at GitLab — same code, same
@@ -53,9 +53,10 @@
 
 <main class="wrap prose">
   <h1>Docs</h1>
-  <p class="lead">Everything you need to get openGym running — on a phone, or on your own
-     server. The deeper, maintainer-level docs live
-     <a href="https://gitlab.com/DuarteSantos8/opengym/-/blob/main/docs" rel="noopener">in the repository</a>.</p>
+  <p class="lead">Everything you need to get Forvia running — on a phone, or on your own
+     server. Forvia is Nebula Systems' update of openGym by Duarte Santos, and the deeper,
+     maintainer-level docs live
+     <a href="https://gitlab.com/DuarteSantos8/forvia/-/blob/main/docs" rel="noopener">in the repository</a>.</p>
 
   <div class="toc">
     <a href="#android">Android</a>
@@ -74,9 +75,9 @@
     <li>Your browser will ask whether it may install apps — allow it. This is standard for
         any app installed outside the Play Store (called <i>sideloading</i>), and you can
         revoke the permission right after.</li>
-    <li>Open the downloaded <code>openGym.apk</code>, confirm, done. No account, no setup.</li>
+    <li>Open the downloaded <code>Forvia.apk</code>, confirm, done. No account, no setup.</li>
   </ol>
-  <div class="note">openGym is deliberately <b>not</b> on the Play Store — no store account
+  <div class="note">Forvia is deliberately <b>not</b> on the Play Store — no store account
     between you and an open-source app. The APK is signed; updates install over the old
     version and keep your data.</div>
   <p>Everything is stored on the phone itself. The only things fetched from the internet are
@@ -86,13 +87,13 @@
   <p>Apple does not allow installing apps outside the App Store, so there is no iOS download —
      that's a platform rule, not a choice we made. What works instead:</p>
   <ul>
-    <li><b>Self-host + home screen (recommended):</b> open your own openGym instance in
+    <li><b>Self-host + home screen (recommended):</b> open your own Forvia instance in
         Safari → <b>Share</b> → <b>Add to Home Screen</b>. You get a full-screen app with its
         own icon, passkey sign-in and sync — no expiry, no fees.</li>
     <li><b>Build it onto your own iPhone:</b> with a Mac and Xcode, the native app runs on
         your device with a free Apple ID (Apple expires the signature after 7 days; re-run
         from Xcode to renew). See
-        <a href="https://gitlab.com/DuarteSantos8/opengym/-/blob/main/docs/MOBILE.md" rel="noopener">docs/MOBILE.md</a>.</li>
+        <a href="https://gitlab.com/DuarteSantos8/forvia/-/blob/main/docs/MOBILE.md" rel="noopener">docs/MOBILE.md</a>.</li>
     <li><b>Just looking?</b> Try the <a href="/demo/">in-browser demo</a> — the real app with
         example data, no account and nothing to install. The Android app above needs no account either.</li>
   </ul>
@@ -101,8 +102,8 @@
   <p>The self-hosted flavor adds passkey profiles, sync across devices, and (optionally) an
      admin dashboard. You need <a href="https://docs.docker.com/get-docker/" rel="noopener">Docker</a>
      with Compose:</p>
-  <pre><code>git clone https://gitlab.com/DuarteSantos8/opengym
-cd openGym
+  <pre><code>git clone https://gitlab.com/DuarteSantos8/forvia
+cd Forvia
 cp .env.example .env
 docker compose pull    # prebuilt images (amd64 + arm64) — skip to build from source
 docker compose up -d</code></pre>
@@ -111,7 +112,7 @@ docker compose up -d</code></pre>
   <div class="note">Want it reachable from your phone with passkeys? You'll need an HTTPS
     domain — a two-line change in <code>.env</code>. The full guide, including reverse-proxy
     examples and the invite-only/admin options, is in
-    <a href="https://gitlab.com/DuarteSantos8/opengym/-/blob/main/docs/SELF_HOSTING.md" rel="noopener">docs/SELF_HOSTING.md</a>.</div>
+    <a href="https://gitlab.com/DuarteSantos8/forvia/-/blob/main/docs/SELF_HOSTING.md" rel="noopener">docs/SELF_HOSTING.md</a>.</div>
 
   <h3>Settings worth knowing about</h3>
   <p>All of these live in <code>.env</code>; the defaults are what you get if you touch nothing.</p>
@@ -122,18 +123,18 @@ docker compose up -d</code></pre>
     <tr><td><code>ALLOW_GUEST</code></td><td>Set <code>0</code> to remove <b>Continue without account</b>, so everyone using the instance has a profile.</td></tr>
     <tr><td><code>ADMIN_UIDS</code></td><td>Which user ids get the admin dashboard.</td></tr>
     <tr><td><code>SESSION_DAYS</code></td><td>How long a sign-in lasts. Default <code>90</code>.</td></tr>
-    <tr><td><code>BACKEND</code> / <code>PORT</code> / <code>NGINX_PORT</code></td><td>For fitting openGym into a stack that already has an <code>api</code> service, or putting it behind your own proxy on another port. The web container renders its nginx config at start-up, so these work on a prebuilt image.</td></tr>
+    <tr><td><code>BACKEND</code> / <code>PORT</code> / <code>NGINX_PORT</code></td><td>For fitting Forvia into a stack that already has an <code>api</code> service, or putting it behind your own proxy on another port. The web container renders its nginx config at start-up, so these work on a prebuilt image.</td></tr>
   </table>
 
   <h2 id="mcp">Ask an AI about your training</h2>
-  <p>openGym ships an optional <b>MCP server</b>: a small read-only bridge that lets a client
+  <p>Forvia ships an optional <b>MCP server</b>: a small read-only bridge that lets a client
      like Claude Desktop or Cursor answer questions from your actual log — <i>"what did I bench
      last week?"</i>, <i>"which muscle have I not trained this month?"</i>, <i>"what's my
      estimated 1RM on squats?"</i></p>
   <p>It runs on your machine, is spawned by the client, and reads your exported data directly.
      Nothing is sent anywhere, and it is <b>not part of the Docker build</b> — if you don't use
      an AI assistant, it simply isn't there. Setup is a few lines of client config:
-     <a href="https://gitlab.com/DuarteSantos8/opengym/-/blob/main/mcp/README.md" rel="noopener">mcp/README.md</a>.</p>
+     <a href="https://gitlab.com/DuarteSantos8/forvia/-/blob/main/mcp/README.md" rel="noopener">mcp/README.md</a>.</p>
 
   <h2 id="import">Import your training history</h2>
   <p>Coming from another tracker? <b>Settings → Data → Import from another app</b> reads:</p>
@@ -154,7 +155,7 @@ docker compose up -d</code></pre>
      weights, settings — into one file. On the mobile app it goes out through the share sheet
      (Files, AirDrop, mail…); in the browser it downloads. <b>Import backup</b> restores it
      anywhere: another phone, your self-hosted instance, or a fresh install. That file is the
-     whole point of openGym — your training log as a file <i>you</i> own.</p>
+     whole point of Forvia — your training log as a file <i>you</i> own.</p>
 
   <h2 id="build">Build it yourself</h2>
   <p>Everything on this page is built from the public repo:</p>
@@ -163,14 +164,14 @@ docker compose up -d</code></pre>
         inside the container — no local Node needed.</li>
     <li><b>Android APK / iOS app:</b> the Capacitor projects live in <code>frontend/android</code>
         and <code>frontend/ios</code> — build, signing and distribution notes are in
-        <a href="https://gitlab.com/DuarteSantos8/opengym/-/blob/main/docs/MOBILE.md" rel="noopener">docs/MOBILE.md</a>.</li>
+        <a href="https://gitlab.com/DuarteSantos8/forvia/-/blob/main/docs/MOBILE.md" rel="noopener">docs/MOBILE.md</a>.</li>
   </ul>
 
   <h2 id="faq">FAQ</h2>
   <h3>Is it really free?</h3>
   <p>Yes — free as in cost <i>and</i> as in freedom (AGPL-3.0). No pro tier, no locked
      features, no ads, and the license keeps every fork open source too.</p>
-  <h3>What data does openGym collect?</h3>
+  <h3>What data does Forvia collect?</h3>
   <p>None. There is no telemetry, no analytics, no crash reporting. The mobile app's only
      network traffic is fetching exercise media from a CDN; a self-hosted instance talks only
      to your own server.</p>
@@ -185,21 +186,21 @@ docker compose up -d</code></pre>
   <h3>Where does the exercise database come from?</h3>
   <p>From <a href="https://github.com/hasaneyldrm/exercises-dataset" rel="noopener">hasaneyldrm/exercises-dataset</a>:
      1,324 exercises with animations and instructions in 10 languages. That dataset licenses the two
-     halves differently, and so does openGym: the exercise metadata and instruction text are
+     halves differently, and so does Forvia: the exercise metadata and instruction text are
      <b>MIT</b>, while the images and animations are
      <b>© <a href="https://gymvisual.com/" rel="noopener">Gym visual</a></b>, used under the
-     dataset's terms rather than openGym's AGPL.</p>
-  <p>openGym does not redistribute that media — your instance downloads it from the upstream source on
+     dataset's terms rather than Forvia's AGPL.</p>
+  <p>Forvia does not redistribute that media — your instance downloads it from the upstream source on
      first run. If you want to reuse it yourself, commercially or otherwise, get your own licence from
      Gym visual first (<a href="https://gymvisual.com/content/3-terms-and-conditions-of-use" rel="noopener">terms&nbsp;&amp;&nbsp;conditions</a>).</p>
 </main>
 
 <footer><div class="wrap foot">
-  <span>openGym · AGPL-3.0 · © 2026 <a href="https://duarte-santos.ch" rel="noopener">Duarte Santos</a></span>
+  <span>Forvia · AGPL-3.0 · © 2026 <a href="https://duarte-santos.ch" rel="noopener">Duarte Santos</a></span>
   <div class="links">
     <a href="docs.html">Docs</a>
     <a href="about.html" class="hide-s">About</a>
-    <a href="https://gitlab.com/DuarteSantos8/opengym" rel="noopener">GitLab</a>
+    <a href="https://gitlab.com/DuarteSantos8/forvia" rel="noopener">GitLab</a>
     <a href="https://discord.gg/e62jY6fwVb" rel="noopener">Discord</a>
     <a href="/#download">Download</a>
   </div>
