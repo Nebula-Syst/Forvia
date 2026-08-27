@@ -43,8 +43,8 @@ ENV PORT=3000
 # hardcoded http://localhost/ breaks on any instance that changed it), and address it as
 # 127.0.0.1: envsubst rewrites the conf after the image's IPv6 script, so nginx ends up
 # listening on IPv4 only while "localhost" resolves to ::1 first.
-HEALTHCHECK --interval=5m \
+HEALTHCHECK --start-period=10s \
+            --interval=15s \
             --timeout=5s \
             --retries=3 \
             CMD wget --spider -q "http://127.0.0.1:${NGINX_PORT}/" || exit 1
-
