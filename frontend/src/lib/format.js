@@ -44,4 +44,12 @@ export function weekKey(d) {
 export const localTZ = () => { try { return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC' } catch { return 'UTC' } }
 
 export const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7)
-export const ACCENTS = { lime: '#30d158', sky: '#0a84ff', orange: '#ff9f0a', violet: '#bf5af2', pink: '#ff375f', red: '#ff453a', teal: '#40c8e0', gold: '#ffd60a' }
+
+// Accent-insensitive search key — "jalon" must match "jalón". Strips combining diacritics
+// after Unicode NFD decomposition rather than a hand-rolled accent map, so it works for every
+// locale's search, not just Spanish.
+const DIACRITICS_RE = new RegExp('[' + String.fromCharCode(0x0300) + '-' + String.fromCharCode(0x036f) + ']', 'g')
+export const normalizeSearch = s => (s || '').normalize('NFD').replace(DIACRITICS_RE, '').toLowerCase()
+// 'lime' is the default accent (lib/palette.js DEFAULT_ACCENT) and its hex is the Forvia
+// brand's own accent color, not a generic green — keep it in sync with palette.js.
+export const ACCENTS = { lime: '#a3e635', sky: '#0a84ff', orange: '#ff9f0a', violet: '#bf5af2', pink: '#ff375f', red: '#ff453a', teal: '#40c8e0', gold: '#ffd60a' }

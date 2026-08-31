@@ -5,6 +5,7 @@ import { effortOf } from '../../lib/history.js'
 import { t } from '../../lib/i18n.js'
 import { MOBILE } from '../../lib/mobile.js'
 import { wakeLockSupported } from '../../lib/wakelock.js'
+import { vibrationSupported } from '../../lib/sound.js'
 import Icon from '../../components/Icon.jsx'
 import { Section, Row, SelectRow, Switch, Segmented } from '../../components/ui.jsx'
 
@@ -49,6 +50,7 @@ export default function SettingsWorkout() {
   const S = useStore(s => s.S)
   const { update } = useStore()
   const wakeOK = wakeLockSupported()
+  const vibOK = vibrationSupported()
 
   return <div className="narrow">
     <div className="hdr">
@@ -56,24 +58,11 @@ export default function SettingsWorkout() {
       <div style={{ flex: 1, marginLeft: 10 }}><h1>{t('Workout')}</h1></div>
     </div>
 
-    <Section footer={wakeOK ? t('The screen stays on while a workout is running, so you don’t have to unlock your phone between sets.') : null}>
+    <Section title={t('Logging')} footer={t('Note: switching units only changes the label — logged numbers are not converted.')}>
       <Row icon="scale" iconTint="var(--teal)" title={t('Weight unit')}>
         <Segmented className="seg-inline"
           options={[{ value: 'kg', label: 'kg' }, { value: 'lb', label: 'lb' }]}
           value={S.unit} onChange={v => update(s => { s.unit = v })} />
-      </Row>
-      <SelectRow icon="timer" iconTint="var(--orange)" title={t('Rest timer')}
-        value={S.restSec} onChange={v => update(s => { s.restSec = v })}
-        options={[60, 90, 120, 150, 180].map(v => ({ value: v, label: v + 's' }))} />
-      {(wakeOK || !MOBILE) && (
-        <Row icon="sun" iconTint="var(--yellow)" title={t('Keep screen awake')}
-          subtitle={wakeOK ? null : t('Not supported in this browser.')}>
-          <Switch checked={wakeOK && S.keepAwake !== false} disabled={!wakeOK}
-            onChange={v => update(s => { s.keepAwake = v })} />
-        </Row>
-      )}
-      <Row icon="bell" iconTint="var(--pink)" title={t('Sounds')}>
-        <Switch checked={!!S.sound} onChange={v => update(s => { s.sound = v })} />
       </Row>
       {/* Two names for the same judgement, so the column asks in the scale you already think in.
           The (i) sits before the control — you read it on the way to the choice, not after it. */}
@@ -93,6 +82,29 @@ export default function SettingsWorkout() {
         />
       </Row>
     </Section>
-    <p className="sect-f" style={{ marginTop: -18, marginBottom: 22 }}>{t('Note: switching units only changes the label — logged numbers are not converted.')}</p>
+
+    <Section title={t('During a workout')}
+      footer={wakeOK ? t('The screen stays on while a workout is running, so you don’t have to unlock your phone between sets.') : null}>
+      <SelectRow icon="timer" iconTint="var(--orange)" title={t('Rest timer')}
+        value={S.restSec} onChange={v => update(s => { s.restSec = v })}
+        options={[0, 60, 90, 120, 150, 180].map(v => ({ value: v, label: v === 0 ? t('Off') : v + 's' }))} />
+      {(wakeOK || !MOBILE) && (
+        <Row icon="sun" iconTint="var(--yellow)" title={t('Keep screen awake')}
+          subtitle={wakeOK ? null : t('Not supported in this browser.')}>
+          <Switch checked={wakeOK && S.keepAwake !== false} disabled={!wakeOK}
+            onChange={v => update(s => { s.keepAwake = v })} />
+        </Row>
+      )}
+      <Row icon="bell" iconTint="var(--pink)" title={t('Sounds')}>
+        <Switch checked={!!S.sound} onChange={v => update(s => { s.sound = v })} />
+      </Row>
+      {(vibOK || MOBILE) && (
+        <Row icon="bolt" iconTint="var(--indigo)" title={t('Vibration')}
+          subtitle={vibOK ? null : t('Not supported in this browser.')}>
+          <Switch checked={vibOK && S.vibration !== false} disabled={!vibOK}
+            onChange={v => update(s => { s.vibration = v })} />
+        </Row>
+      )}
+    </Section>
   </div>
 }

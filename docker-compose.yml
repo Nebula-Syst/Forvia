@@ -1,4 +1,4 @@
-name: forvia
+name: forvia-dev
 
 services:
   # One-time: download the exercise images + GIFs into ./media (skipped if already there).

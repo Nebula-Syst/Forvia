@@ -25,12 +25,10 @@ export default function Settings() {
 
   const showProfile = user && !DEMO && !MOBILE
   const showNotifications = user || MOBILE
-  const lockedPerks = showProfile ? [!user.perks?.bio].filter(Boolean).length : 0
 
   return <div className="narrow">
     <div className="hdr">
-      <button className="iconbtn" onClick={() => nav('/home')} aria-label={t('Home')}><Icon name="chevronLeft" /></button>
-      <div style={{ flex: 1, marginLeft: 10 }}><h1>{t('Settings')}</h1></div>
+      <div><h1>{t('Settings')}</h1></div>
     </div>
 
     <div className="settings-grid">
@@ -38,9 +36,12 @@ export default function Settings() {
         subtitle={MOBILE ? t('About this app') : DEMO ? t('Demo') : t('Sign-in, username, sessions')}
         onClick={() => nav('/settings/account')} />
       {showProfile && (
-        <Tile icon="sparkles" tint="var(--purple)" title={t('Profile')} subtitle={t('Bio, badge color — perks that unlock with level')}
-          badge={lockedPerks > 0 ? t('{0} locked', lockedPerks) : null}
+        <Tile icon="sparkles" tint="var(--purple)" title={t('Profile')} subtitle={t('Bio, badges')}
           onClick={() => nav('/settings/profile')} />
+      )}
+      {user && (
+        <Tile icon="medal" tint="var(--yellow)" title={t('Level & Prestige')} subtitle={t('Tier progress, perks')}
+          onClick={() => nav('/rank')} />
       )}
       <Tile icon="dumbbell" tint="var(--orange)" title={t('Workout')} subtitle={t('Rest timer, sounds, units')}
         onClick={() => nav('/settings/workout')} />
@@ -52,6 +53,18 @@ export default function Settings() {
       )}
       <Tile icon="folder" tint="var(--teal)" title={t('Data')} subtitle={t('Backup, import, reset')}
         onClick={() => nav('/settings/data')} />
+      {user && (
+        <Tile icon="info" tint="var(--grey)" title={t('How it works')} subtitle={t('Rank, prestige, penalties')}
+          onClick={() => nav('/settings/fair-play')} />
+      )}
     </div>
+
+    {user?.admin && (
+      <div className="item" onClick={() => nav('/admin')}>
+        <span className="lrow-i" style={{ '--tint': 'var(--indigo)' }}><Icon name="wrench" /></span>
+        <div className="grow"><div className="tt">{t('Admin dashboard')}</div></div>
+        <Icon name="chevronRight" className="chev" />
+      </div>
+    )}
   </div>
 }

@@ -20,6 +20,7 @@ export async function passwordRegister(name, username, password, code) {
 /* ---------- account ---------- */
 export const setName = name => api('/api/account/name', { method: 'POST', body: JSON.stringify({ name }) }).then(r => r.user)
 export const setPhone = phone => api('/api/account/phone', { method: 'POST', body: JSON.stringify({ phone }) }).then(r => r.user)
+export const setBadges = badges => api('/api/account/badges', { method: 'POST', body: JSON.stringify({ badges }) }).then(r => r.user)
 export const setUsername = username => api('/api/account/username', { method: 'POST', body: JSON.stringify({ username }) }).then(r => r.user)
 export const setPassword = (currentPassword, password) => api('/api/account/password', { method: 'POST', body: JSON.stringify({ currentPassword, password }) }).then(r => r.user)
 export const setEmail = email => api('/api/account/email', { method: 'POST', body: JSON.stringify({ email }) })
@@ -53,8 +54,17 @@ export const unpinWorkout = workoutId => api('/api/social/unpin', { method: 'POS
 export const pinPR = (workoutId, exerciseId) => api('/api/social/pin-pr', { method: 'POST', body: JSON.stringify({ workoutId, exerciseId }) }).then(r => r.user)
 
 /* ---------- rank / daily tasks ---------- */
+export const confirmPrestige = () => api('/api/prestige', { method: 'POST' }).then(r => r.user)
 export const tasksToday = () => api('/api/tasks/today').then(r => r.tasks)
-export const completeTask = taskId => api('/api/tasks/complete', { method: 'POST', body: JSON.stringify({ taskId }) })
-export const adminTasks = () => api('/api/admin/tasks').then(r => r.tasks)
-export const adminTaskAdd = (name, desc, points) => api('/api/admin/tasks', { method: 'POST', body: JSON.stringify({ name, desc, points }) }).then(r => r.task)
+export const adminTasks = () => api('/api/admin/tasks')
+export const adminTaskAdd = (name, desc, points, criteria) => api('/api/admin/tasks', { method: 'POST', body: JSON.stringify({ name, desc, points, criteria }) }).then(r => r.task)
 export const adminTaskRemove = id => api('/api/admin/tasks/remove', { method: 'POST', body: JSON.stringify({ id }) })
+export const adminUserCreate = (name, username, password) => api('/api/admin/user/create', { method: 'POST', body: JSON.stringify({ name, username, password }) }).then(r => r.user)
+export const adminSetEmployeeTypes = (id, employeeTypes) => api('/api/admin/user/employee-types', { method: 'POST', body: JSON.stringify({ id, employeeTypes }) })
+
+/* ---------- anti-cheat review ---------- */
+export const anticheatStatus = () => api('/api/anticheat/status').then(r => r.penalties)
+export const anticheatAppeal = (id, message) => api('/api/anticheat/appeal', { method: 'POST', body: JSON.stringify({ id, message }) })
+export const anticheatAck = id => api('/api/anticheat/ack', { method: 'POST', body: JSON.stringify({ id }) })
+export const adminAnticheat = () => api('/api/admin/anticheat').then(r => r.penalties)
+export const adminAnticheatReview = (id, decision) => api('/api/admin/anticheat/review', { method: 'POST', body: JSON.stringify({ id, decision }) })

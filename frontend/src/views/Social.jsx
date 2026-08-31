@@ -3,12 +3,14 @@ import { useStore } from '../store/useStore.js'
 import { useUI } from '../store/useUI.js'
 import { EXIDX } from '../lib/exercises.js'
 import { fmtDate, fmtDur, fmtVol } from '../lib/format.js'
-import { t } from '../lib/i18n.js'
+import { t, nameFor } from '../lib/i18n.js'
 import { socialFollow, socialUnfollow, socialFeed, socialDiscover, socialReact, socialUser } from '../lib/api.js'
+import { tierFor } from '../lib/rank.js'
 import { feedPostSheet } from '../sheets.jsx'
 import { Thumb } from '../components/Media.jsx'
 import Icon from '../components/Icon.jsx'
 import RankBadge from '../components/RankBadge.jsx'
+import ProfileBadge from '../components/ProfileBadge.jsx'
 import { Segmented } from '../components/ui.jsx'
 import { nav } from '../lib/nav.js'
 import { useParams } from 'react-router-dom'
@@ -20,7 +22,7 @@ function ExerciseRow({ id, sets, starred }) {
   return <div className="row" style={{ gap: 10, padding: '5px 0' }}>
     <Thumb ex={ex} />
     <div style={{ minWidth: 0, flex: 1 }}>
-      <div className="tt capitalize" style={{ fontSize: 14 }}>{ex.n || id}</div>
+      <div className="tt capitalize" style={{ fontSize: 14 }}>{ex ? nameFor(ex) : id}</div>
       <div className="ss">{t('{0} sets', sets)}</div>
     </div>
     {starred && <Icon name="trophy" style={{ color: 'var(--yellow)', fontSize: 15, flex: 'none' }} />}
@@ -225,9 +227,18 @@ export function UserProfile() {
         <div className={'tt' + (data.perks?.animatedName ? ' name-animated' : '')} style={{ fontWeight: 700, fontSize: 18 }}>{data.user.name}</div>
         {data.perks?.crownBadge && <Icon name="crown" style={{ color: 'var(--gold, var(--yellow))', fontSize: 16 }} />}
       </div>
+      <div style={{ display: 'flex', justifyContent: 'center', marginTop: 6 }}>
+        <RankBadge level={data.level} prestige={data.prestige} size="sm" />
+      </div>
       {data.perks?.veteranBadge && <span className="veteran-badge" style={{ marginTop: 4 }}>{t('Veteran')}</span>}
-      {data.user.bio && <div className="ss" style={{ marginTop: 6 }}>{data.user.bio}</div>}
-      <div style={{ marginTop: 8 }}><RankBadge level={data.level} prestige={data.prestige} size="lg" perks={data.perks} /></div>
+      {data.user.bio && <div className="ss profile-bio-text" style={{ marginTop: 6 }}>{data.user.bio}</div>}
+      <div className="profile-badges">
+        {(data.user.badges || []).map((type, slot) => type && (
+          <span key={slot} className={'badge-slot filled' + (type === 'rank' && data.perks?.animatedBadge ? ' pulse' : '')}>
+            <ProfileBadge type={type} level={data.level} prestige={data.prestige} tier={tierFor(data.level).name} size={80} />
+          </span>
+        ))}
+      </div>
       <div className="row" style={{ justifyContent: 'center', gap: 22, marginTop: 14 }}>
         <div><div style={{ fontWeight: 700 }}>{data.workouts}</div><div className="dim small">{t('Workouts')}</div></div>
         <div><div style={{ fontWeight: 700 }}>{data.followers}</div><div className="dim small">{t('Followers')}</div></div>

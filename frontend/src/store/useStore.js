@@ -6,11 +6,12 @@ import { DEMO, DEMO_SEEDED } from '../lib/demo.js'
 import { guestAllowed } from '../lib/guest.js'
 import { MOBILE, nativeLoad, nativeSave, syncReminder } from '../lib/mobile.js'
 import { DEFAULT_ACCENT, DEFAULT_THEME } from '../lib/palette.js'
+import { checkNowForLevelUp } from '../lib/levelWatch.js'
 
 const KEY = 'gym_state_v1'
 export const DEF = {
-  unit: 'kg', restSec: 90, sound: true, keepAwake: true, lang: 'en',
-  theme: DEFAULT_THEME, accent: DEFAULT_ACCENT, body: 'male', targetW: null,
+  unit: 'kg', restSec: 90, sound: true, vibration: true, keepAwake: true, lang: 'en',
+  theme: DEFAULT_THEME, accent: DEFAULT_ACCENT, reduceMotion: false, body: 'male', targetW: null,
   bodyweight: [], routines: [], week: {}, dayPlan: {},
   exWeights: {}, workouts: [], active: null, customEx: [], gifSize: 'full',
   // effort: which per-set effort scale is logged — 'none' | 'rir' | 'rpe'. null, not 'none', so
@@ -113,10 +114,29 @@ export const useStore = create((set, get) => {
       set({ user: u })
     },
 
+    // user (and its perks — rank/prestige unlocks like maxPhotos) is a snapshot from login/boot;
+    // nothing that happens mid-session pushes a fresh one back down, so finishing enough workouts
+    // to cross a rank threshold left the very next screen still reading the old tier's limits.
+    // Called after anything that can move XP right before the user needs the new perks (e.g.
+    // finishing a workout, right before the photo picker that reads maxPhotos) — components
+    // reading `user.perks` are already subscribed to the store, so this alone makes them catch up.
+    async refreshUser() {
+      if (!get().user) return
+      try { const me = await api('/api/me'); get().setUser(me.user); checkNowForLevelUp(me.user) } catch (e) { /* offline — keep what we have */ }
+    },
+
     async pushState() {
       if (!get().user) return
       clearTimeout(pushTm)
-      try { await api('/api/data', { method: 'PUT', body: JSON.stringify({ state: get().S }) }); localStorage.removeItem('gym_dirty') }
+      try {
+        await api('/api/data', { method: 'PUT', body: JSON.stringify({ state: get().S }) })
+        localStorage.removeItem('gym_dirty')
+        // Catches every XP source that only ever goes through the debounced auto-save (the
+        // bodyweight goal bonus, mainly) — the workout-finish path already checks explicitly
+        // right after its own pushState (see sheets.jsx), but this covers the rest so a level-up
+        // never waits on the next poll/tab-focus no matter what actually earned the XP.
+        checkNowForLevelUp()
+      }
       catch (e) { localStorage.setItem('gym_dirty', '1') }
     },
     async pullState() {

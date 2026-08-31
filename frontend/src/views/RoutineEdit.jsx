@@ -1,18 +1,105 @@
 import { useNavigate, useParams } from 'react-router-dom'
 import { useEffect } from 'react'
 import { useStore } from '../store/useStore.js'
-import { exOr } from '../lib/exercises.js'
-import { uid } from '../lib/format.js'
-import { t } from '../lib/i18n.js'
-import { supersetUnits, cleanupSg, exLine } from '../lib/history.js'
+import { useUI } from '../store/useUI.js'
+import { exOr, isCardio } from '../lib/exercises.js'
+import { t, nameFor } from '../lib/i18n.js'
+import { supersetUnits, cleanupSg, lastEntryFor, setLabel, modeOf, isBw, defaultConfig, freestyleConfig, pairAdjacent, unpairSuperset } from '../lib/history.js'
 import { Thumb } from '../components/Media.jsx'
-import { glyphPicker, exercisePicker, exConfigSheet, confirmSheet } from '../sheets.jsx'
+import { glyphPicker, exercisePicker, exConfigSheet, confirmSheet, exerciseDetailSheet } from '../sheets.jsx'
 import Icon from '../components/Icon.jsx'
 import { glyphOf } from '../lib/glyphs.js'
-import { Button, SelectRow } from '../components/ui.jsx'
-import { POLICIES_FOR, POLICY_NAME, POLICY_DESC } from '../lib/progression.js'
+import { Button, NumberField } from '../components/ui.jsx'
 import BodyMap from '../components/BodyMap.jsx'
 import { loadOfRoutine, rankOf, MUSCLE_NAME } from '../lib/muscles.js'
+
+// One exercise's plan: same table look as the live workout (issue #64) — series/previous/
+// weight/reps, no checkbox column since nothing here is "done" yet, just prepared. Every row
+// is the same set repeated `e.sets` times (the routine has no per-row storage — see the scoped
+// decision on issue #64), so every row's cell is bound to the same field and editing any one
+// of them edits them all; the slot the checkbox used to fill instead removes that one row.
+function RoutineExBlock({ e, S, onField, onAddSet, onRemoveSet, onMenu }) {
+  const ex = exOr(e.id)
+  const cardio = isCardio(ex.id)
+  const mode = cardio ? 'cardio' : modeOf(e)
+  const timed = mode === 'time'
+  const bw = !cardio && isBw(e)
+  const last = lastEntryFor(S, e.id)
+  const prevAt = j => (last ? (last.sets[j] || last.sets[last.sets.length - 1]) : null)
+  const loadCol = { f: 'weight', dec: true, hd: bw ? t('Added ({0})', S.unit) : t('Weight ({0})', S.unit), ghost: bw && !(e.weight > 0) }
+  const repCol = { f: 'reps', dec: false, hd: t('Reps') }
+  const col1 = cardio ? { f: 'min', dec: false, hd: t('Duration (min)') }
+    : timed ? { f: 'sec', dec: false, hd: t('Seconds') }
+      : loadCol
+  const col2 = cardio ? { f: 'speed', dec: true, hd: t('Speed (km/h)') }
+    : timed ? loadCol
+      : repCol
+  const n = Math.max(1, Math.round(e.sets) || 1)
+  const cell = col => (
+    <div className={'setcell ' + (col === col1 ? 'w' : 'r') + (col.ghost ? ' wghost' : '')}>
+      {!col.ghost && <NumberField decimal={col.dec} value={e[col.f] ?? ''}
+        onChange={v => onField(col.f, v)} className="setval" maxLength={3} />}
+    </div>
+  )
+  return <>
+    <div className="row" style={{ gap: 10, marginBottom: 8, alignItems: 'center', justifyContent: 'space-between' }}>
+      <button className="thumbbtn" aria-label={t('Details')} onClick={() => exerciseDetailSheet(ex, { hideAddToPlan: true })}><Thumb ex={ex} /></button>
+      <div className="grow" style={{ minWidth: 0, fontSize: 17, fontWeight: 600, letterSpacing: '-.02em', textTransform: 'capitalize', lineHeight: 1.2 }}>{nameFor(ex)}</div>
+      <button className="iconbtn" style={{ flexShrink: 0 }} aria-label={t('More')} onClick={onMenu}><Icon name="dots" /></button>
+    </div>
+    <div className="card" style={{ marginTop: 10, marginBottom: 0 }}>
+      <div className="sethead">
+        <span className="n-sp">{t('Sets')}</span>
+        <span className="p-sp">{t('Previous')}</span>
+        <span className={'w-sp' + (col1.ghost ? ' wghost' : '')}>{col1.hd}</span>
+        <span className={'r-sp' + (col2.ghost ? ' wghost' : '')}>{col2.hd}</span>
+        <span className="ck-sp" />
+      </div>
+      {Array.from({ length: n }).map((_, j) => {
+        const prev = prevAt(j)
+        return <div key={j} className="setrow">
+          <div className="n-wrap"><div className="n">{j + 1}</div></div>
+          <div className="prev">{prev ? setLabel(e.id, prev, last.target, { effort: false }) : '—'}</div>
+          {cell(col1)}
+          {cell(col2)}
+          <button className="chk" aria-label={t('Remove set')} disabled={n <= 1} onClick={onRemoveSet}><Icon name="trash" /></button>
+        </div>
+      })}
+      <div style={{ height: 8 }} />
+    </div>
+    <div className="row" style={{ justifyContent: 'center', marginTop: 8 }}>
+      <Button size="sm" variant="tinted" icon="plus" onClick={onAddSet}>{t('Add set')}</Button>
+    </div>
+  </>
+}
+
+// A real component (not a closure snapshot), same reasoning as Workout.jsx's ReorderSheet —
+// it has to reflect its own edits live while it's still open.
+function RoutineReorderSheet({ routineId }) {
+  const S = useStore(s => s.S)
+  const update = useStore(s => s.update)
+  const r = S.routines.find(x => x.id === routineId)
+  const list = r ? r.ex : []
+  const move = (idx, dir) => update(s => {
+    const arr = s.routines.find(x => x.id === routineId).ex
+    const j = idx + dir
+    if (j < 0 || j >= arr.length) return
+    ;[arr[idx], arr[j]] = [arr[j], arr[idx]]
+    cleanupSg(arr)
+  })
+  return <>
+    <h3>{t('Reorder exercises')}</h3>
+    <div className="list">
+      {list.map((e, i) => (
+        <div key={i} className="item">
+          <div className="grow"><div className="tt capitalize">{nameFor(exOr(e.id))}</div></div>
+          <button className="iconbtn" disabled={i === 0} aria-label={t('Move up')} onClick={() => move(i, -1)}><Icon name="arrowUp" /></button>
+          <button className="iconbtn" disabled={i === list.length - 1} aria-label={t('Move down')} onClick={() => move(i, 1)}><Icon name="arrowDown" /></button>
+        </div>
+      ))}
+    </div>
+  </>
+}
 
 export default function RoutineEdit() {
   const nav = useNavigate()
@@ -24,18 +111,86 @@ export default function RoutineEdit() {
   if (!r) return null
 
   const edit = fn => update(s => { fn(s.routines.find(x => x.id === id).ex) })
-  const move = (i, dir) => edit(ex => { const j = i + dir; if (j < 0 || j >= ex.length) return;[ex[i], ex[j]] = [ex[j], ex[i]]; cleanupSg(ex) })
-  const toggleLink = i => edit(ex => {
-    if (i < 1) return
-    const cur = ex[i], prev = ex[i - 1]
-    if (cur.sg && prev.sg && cur.sg === prev.sg) delete cur.sg
-    else { const gid = prev.sg || ('sg' + uid()); prev.sg = gid; cur.sg = gid }
-    cleanupSg(ex)
+  const pairAt = (first, second) => edit(x => x.splice(0, x.length, ...pairAdjacent(x, first, second)))
+  const unpairAt = i => edit(x => x.splice(0, x.length, ...unpairSuperset(x, i)))
+  const replaceExercise = (i, newEx) => edit(x => {
+    const cur = x[i]
+    x[i] = { id: newEx.id, sg: cur.sg, ...defaultConfig(newEx.id), sets: cur.sets }
   })
 
   const units = supersetUnits(r.ex)
-  const unitFirst = new Set(units.filter(u => u.length > 1).map(u => u[0]))
-  const inSS = new Set(units.filter(u => u.length > 1).flat())
+
+  // The ⋮ menu on one exercise's own card — reorder/replace/pair/settings/remove, mirroring
+  // the active workout's own exercise menu so the two feel like the same app.
+  const openExerciseMenu = i => {
+    const e = r.ex[i]
+    if (!e) return
+    const ex = exOr(e.id)
+    const myUnit = units.find(u => u.includes(i)) || [i]
+    const uIdx = units.indexOf(myUnit)
+    const inSuperset = myUnit.length > 1
+    const prevUnit = units[uIdx - 1], nextUnit = units[uIdx + 1]
+    const prevEdge = myUnit[0], nextEdge = myUnit[myUnit.length - 1]
+    const canPairPrev = prevUnit && prevUnit.length === 1
+    const canPairNext = nextUnit && nextUnit.length === 1
+    const addToSuperset = () => {
+      if (canPairPrev && canPairNext) {
+        useUI.getState().openSheet(close2 => (
+          <>
+            <h3>{t('Add to superset')}</h3>
+            <div className="list">
+              <div className="item" onClick={() => { close2(); pairAt(prevUnit[0], prevEdge) }}>
+                <div className="grow"><div className="tt capitalize">{nameFor(exOr(r.ex[prevUnit[0]].id))}</div></div>
+              </div>
+              <div className="item" onClick={() => { close2(); pairAt(nextEdge, nextUnit[0]) }}>
+                <div className="grow"><div className="tt capitalize">{nameFor(exOr(r.ex[nextUnit[0]].id))}</div></div>
+              </div>
+            </div>
+          </>
+        ))
+      } else if (canPairPrev) pairAt(prevUnit[0], prevEdge)
+      else pairAt(nextEdge, nextUnit[0])
+    }
+    const removeExercise = () => edit(x => { x.splice(i, 1); cleanupSg(x) })
+    useUI.getState().openSheet(close => (
+      <>
+        <h3 className="capitalize">{nameFor(ex)}</h3>
+        <div className="list">
+          {r.ex.length > 1 && <div className="item" onClick={() => { close(); useUI.getState().openSheet(() => <RoutineReorderSheet routineId={id} />) }}>
+            <span className="lrow-i"><Icon name="list" /></span>
+            <div className="grow"><div className="tt">{t('Reorder exercises')}</div></div>
+            <Icon name="chevronRight" className="chev" />
+          </div>}
+          <div className="item" onClick={() => { close(); exercisePicker(newEx => replaceExercise(i, newEx)) }}>
+            <span className="lrow-i"><Icon name="shuffle" /></span>
+            <div className="grow"><div className="tt">{t('Replace exercise')}</div></div>
+            <Icon name="chevronRight" className="chev" />
+          </div>
+          {(canPairPrev || canPairNext) && <div className="item" onClick={() => { close(); addToSuperset() }}>
+            <span className="lrow-i"><Icon name="link" /></span>
+            <div className="grow"><div className="tt">{t('Add to superset')}</div></div>
+            <Icon name="chevronRight" className="chev" />
+          </div>}
+          {inSuperset && <div className="item" onClick={() => { close(); unpairAt(i) }}>
+            <span className="lrow-i"><Icon name="link" /></span>
+            <div className="grow"><div className="tt">{t('Unpair')}</div></div>
+          </div>}
+          <div className="item" onClick={() => {
+            close()
+            exConfigSheet(ex, e, cfg => edit(x => { x[i] = { id: x[i].id, sg: x[i].sg, ...cfg } }), removeExercise, r)
+          }}>
+            <span className="lrow-i"><Icon name="gear" /></span>
+            <div className="grow"><div className="tt">{t('Exercise settings')}</div></div>
+            <Icon name="chevronRight" className="chev" />
+          </div>
+          <div className="item" onClick={() => { close(); removeExercise() }}>
+            <span className="lrow-i"><Icon name="trash" /></span>
+            <div className="grow"><div className="tt" style={{ color: 'var(--red)' }}>{t('Remove exercise')}</div></div>
+          </div>
+        </div>
+      </>
+    ))
+  }
 
   return <div className="narrow">
     <div className="hdr">
@@ -47,37 +202,34 @@ export default function RoutineEdit() {
       <button className="iconbtn" aria-label={t('Pick an icon')} onClick={() => glyphPicker(r.emoji, g => update(s => { s.routines.find(x => x.id === id).emoji = g }))}><Icon name={glyphOf(r.emoji)} /></button>
     </div>
 
-    <div className="sect-b" style={{ marginBottom: 16 }}>
-      <SelectRow icon="chartLine" title={t('Progression')} sheetTitle={t('Progression')}
-        value={r.prog || 'linear'} onChange={v => update(s => { s.routines.find(x => x.id === id).prog = v })}
-        options={POLICIES_FOR.reps.map(p => ({ value: p, label: t(POLICY_NAME[p]), subtitle: t(POLICY_DESC[p]) }))} />
-    </div>
-    <div className="small dim" style={{ margin: '-10px 2px 16px' }}>
-      {t('Applies to every exercise in this routine that does not set its own rule.')}
-    </div>
-
-    {r.ex.length ? <div className="list">{r.ex.map((e, i) => {
-      // An unresolvable id is shown rather than skipped — hiding it left an entry you
-      // could neither see nor delete, but that still turned up in the workout.
-      const ex = exOr(e.id)
-      const linkedPrev = i > 0 && e.sg && r.ex[i - 1].sg === e.sg
-      return <div key={i}>
-        {unitFirst.has(i) && <div className="ss-label"><Icon name="link" />{t('Superset')}</div>}
-        <div className={'item' + (inSS.has(i) ? ' in-ss' : '')} onClick={() => {
-          exConfigSheet(ex, e, cfg => edit(x => { x[i] = { id: x[i].id, sg: x[i].sg, ...cfg } }), () => edit(x => { x.splice(i, 1); cleanupSg(x) }), r)
-        }}>
-          <Thumb ex={ex} />
-          <div className="grow"><div className="tt capitalize">{ex.n}</div><div className="ss">{exLine(e, S.unit)}</div></div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 2, flex: 'none', alignItems: 'center' }}>
-            {i > 0 && <button className={'iconbtn' + (linkedPrev ? ' on-ss' : '')} title={t('Superset with exercise above')} style={{ width: 32, height: 28, borderRadius: 8, fontSize: 15 }} onClick={ev => { ev.stopPropagation(); toggleLink(i) }}><Icon name="link" /></button>}
-            <div style={{ display: 'flex', gap: 2 }}>
-              <button className="iconbtn" aria-label="Move up" style={{ width: 28, height: 24, borderRadius: 7, fontSize: 12 }} onClick={ev => { ev.stopPropagation(); move(i, -1) }}><Icon name="chevronUp" /></button>
-              <button className="iconbtn" aria-label="Move down" style={{ width: 28, height: 24, borderRadius: 7, fontSize: 12 }} onClick={ev => { ev.stopPropagation(); move(i, 1) }}><Icon name="chevronDown" /></button>
+    {r.ex.length ? units.map((u, ui) => {
+      const ss = u.length > 1
+      return <div key={u[0]} style={{ marginBottom: 18 }}>
+        <div className="muted small" style={{ marginBottom: 6 }}>{ss ? t('Superset {0} / {1}', ui + 1, units.length) : t('Exercise {0} / {1}', ui + 1, units.length)}</div>
+        {ss ? (
+          <div className="ss-card">
+            <div className="ss-hd" style={{ justifyContent: 'space-between' }}>
+              <span className="row" style={{ gap: 5 }}><Icon name="link" />{t('Superset')}</span>
+              <Button size="xs" variant="ghost" icon="link" title={t('Unpair')} onClick={() => unpairAt(u[0])}>{t('Unpair')}</Button>
             </div>
+            {u.map((idx, k) => <div key={idx} className="ss-ex">
+              {k > 0 && <div className="ss-amp">+</div>}
+              <RoutineExBlock e={r.ex[idx]} S={S}
+                onField={(f, v) => edit(x => { x[idx][f] = v })}
+                onAddSet={() => edit(x => { x[idx].sets = (Math.round(x[idx].sets) || 1) + 1 })}
+                onRemoveSet={() => edit(x => { x[idx].sets = Math.max(1, (Math.round(x[idx].sets) || 1) - 1) })}
+                onMenu={() => openExerciseMenu(idx)} />
+            </div>)}
           </div>
-        </div>
+        ) : (
+          <RoutineExBlock e={r.ex[u[0]]} S={S}
+            onField={(f, v) => edit(x => { x[u[0]][f] = v })}
+            onAddSet={() => edit(x => { x[u[0]].sets = (Math.round(x[u[0]].sets) || 1) + 1 })}
+            onRemoveSet={() => edit(x => { x[u[0]].sets = Math.max(1, (Math.round(x[u[0]].sets) || 1) - 1) })}
+            onMenu={() => openExerciseMenu(u[0])} />
+        )}
       </div>
-    })}</div> : <div className="empty"><div className="ico"><Icon name="dumbbell" /></div>{t('No exercises yet — add your first one.')}</div>}
+    }) : <div className="empty"><div className="ico"><Icon name="dumbbell" /></div>{t('No exercises yet — add your first one.')}</div>}
 
     {/* Coverage of the routine as planned, so a gap shows up while you're building it
         rather than after a month of training around it. */}
@@ -93,8 +245,21 @@ export default function RoutineEdit() {
       </div>
     })()}
 
-    <div className="small dim row" style={{ margin: '10px 2px', gap: 5 }}><Icon name="link" style={{ fontSize: 13 }} />{t('Tap the link button on an exercise to superset it with the one above — you’ll do them back-to-back.')}</div>
-    <Button variant="primary" onClick={() => exercisePicker(ex => exConfigSheet(ex, null, cfg => edit(x => { x.push({ id: ex.id, ...cfg }) }), null, r))} icon="plus">{t('Add exercise')}</Button>
+    <div style={{ height: 4 }} />
+    {/* Multi-pick, no per-exercise config sheet — same picker and the same "land with sensible
+        defaults, tweak inline after" flow the active workout's own "Add exercise" uses (issue
+        #64). Config carries over from the last time each one was actually trained where there
+        is one, same as freestyleConfig already does for a live session. */}
+    <Button variant="tinted" icon="plus" onClick={() => exercisePicker(list => {
+      if (!list.length) return
+      edit(x => { list.forEach(ex => { x.push({ id: ex.id, ...freestyleConfig(S, { id: ex.id, ...defaultConfig(ex.id) }) }) }) })
+    }, { multi: true })}>{t('Add exercise')}</Button>
+    <div style={{ height: 10 }} />
+    {/* Every edit on this page already saves itself the instant it happens (same as the rest
+        of the app) — this doesn't do anything the fields above haven't already done. It exists
+        for the same reason a "Done" button does: a clear, deliberate way to say "I'm finished
+        here" and head back, rather than the back-chevron in the header being the only exit. */}
+    <Button variant="primary" icon="check" onClick={() => { useUI.getState().toast(t('Routine saved')); nav('/workout') }}>{t('Save routine')}</Button>
     <div style={{ height: 10 }} />
     <Button variant="danger" onClick={() => confirmSheet({
       title: t('Delete routine?'), message: t('“{0}” and its exercises will be removed.', r.name), confirmText: t('Delete'), danger: true,

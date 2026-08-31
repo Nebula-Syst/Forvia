@@ -8,6 +8,7 @@ import { MOBILE } from '../../lib/mobile.js'
 import { setPublic, setName, setPhone, setUsername, setEmail, resendEmailVerification } from '../../lib/api.js'
 import { confirmSheet, passwordLoginSheet, passwordRegisterSheet, changePasswordSheet, deleteAccountSheet } from '../../sheets.jsx'
 import Icon from '../../components/Icon.jsx'
+import PenaltiesRow from '../../components/PenaltiesRow.jsx'
 import { Section, Row, SelectRow, Switch } from '../../components/ui.jsx'
 
 // Every field here saves itself on blur, same idiom as the Bio field in Profile settings —
@@ -140,6 +141,8 @@ export default function SettingsAccount() {
       <div style={{ flex: 1, marginLeft: 10 }}><h1>{t('Account')}</h1></div>
     </div>
 
+    <PenaltiesRow />
+
     <Section title={t('Account info')}>
       <Field label={t('Username')} value={user.username} placeholder={t('Username')}
         onSave={v => { if (v.length < 3) { toast(t('Username must be at least 3 characters')); return } save(setUsername)(v) }} />
@@ -147,9 +150,9 @@ export default function SettingsAccount() {
         onSave={v => { if (!v) { toast(t('Enter a name')); return } save(setName)(last ? v + ' ' + last : v) }} />
       <Field label={t('Last name')} value={last} placeholder={t('Last name')}
         onSave={v => save(setName)(v ? first + ' ' + v : first)} />
+      <EmailField user={user} setUser={setUser} toast={toast} />
       <Field label={t('Phone number (optional)')} value={user.phone} type="tel" placeholder={t('Phone number (optional)')}
         onSave={save(setPhone)} />
-      <EmailField user={user} setUser={setUser} toast={toast} />
     </Section>
 
     <Section title={t('Password')}>
@@ -171,7 +174,6 @@ export default function SettingsAccount() {
           subtitle: INSTR_LANGS.includes(k) ? null : t("Exercise instructions aren't available in this language yet — they stay in English."),
         }))}
       />
-      {user.admin && <Row icon="wrench" iconTint="var(--indigo)" title={t('Admin dashboard')} accessory="chevron" onClick={() => nav('/admin')} />}
     </Section>
 
     <Section title={t('Danger zone')}>

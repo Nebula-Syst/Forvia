@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
 import { useStore } from '../store/useStore.js'
+import { useUI } from '../store/useUI.js'
 import { EXIDX } from '../lib/exercises.js'
 import { lastBW, streakWeeks, setLabel, modeOf, effortOf, metricModeForEntry, metricRowsForEntry, bestWeightForEntry } from '../lib/history.js'
 import { fmtNum, fmtDate, fmtVol, todayISO, weekKey } from '../lib/format.js'
-import { t } from '../lib/i18n.js'
+import { t, nameFor } from '../lib/i18n.js'
 import { bwSheet, goalSheet, calendarSheet, workoutDetailSheet, WorkoutRow, bwDeltaColor } from '../sheets.jsx'
 import LineChart from '../components/LineChart.jsx'
 import Heatmap from '../components/Heatmap.jsx'
@@ -97,6 +97,23 @@ function fatigueLabel(value) {
   return t(state === 'ready' ? 'Ready' : state === 'recovering' ? 'Recovering' : 'Fatigued')
 }
 
+// Fatigue isn't obvious from the map alone — it decays continuously rather than clearing
+// on a fixed daily schedule, which reads as "why is this still fatigued days later" without
+// this explanation. Same (i)-sheet idiom as effortHelpSheet in SettingsWorkout.jsx.
+function fatigueHelpSheet() {
+  useUI.getState().openSheet(() => <>
+    <h3>{t('Fatigue')}</h3>
+    <div className="muted small" style={{ lineHeight: 1.5 }}>
+      {t('Not a daily countdown — it decays continuously, roughly halving every 36 hours. Every session that works a muscle adds to its stimulus; the map shows where that stimulus stands right now.')}
+    </div>
+    <div className="dim small" style={{ lineHeight: 1.5, display: 'grid', gap: 8, marginTop: 10 }}>
+      <div>{t('A heavy session for that muscle starts higher, so it can take 3–4 days to fall from Fatigued to Recovering, then Ready.')}</div>
+      <div>{t('Exercises that also work it as a secondary mover — triceps in a bench press, for example — add stimulus too and reset that clock, so a muscle you keep hitting as a secondary rarely gets a clean window to fully clear.')}</div>
+    </div>
+    <div style={{ height: 8 }} />
+  </>)
+}
+
 function MuscleBalance({ S }) {
   const [view, setView] = useState('balance')
   const [win, setWin] = useState(7)
@@ -176,7 +193,7 @@ function MuscleBalance({ S }) {
             : t('Every muscle group got some work in this period.')}</div>}
       </> : <div className="muted small">{t('No workouts in this period yet.')}</div>}
     </> : view === 'fatigue' ? <>
-      <h2>{t('Fatigue')}</h2>
+      <h2>{t('Fatigue')} <button className="helpbtn" aria-label={t('How does fatigue work?')} onClick={fatigueHelpSheet}><Icon name="info" /></button></h2>
       <BodyMap className="tappable hm-fatigue" load={fatigue} thresholds={FATIGUE_LEVELS} body={S.body} selected={sel} onMuscle={toggleSel} />
       <FatigueLegend />
       <div className="muted small" style={{ marginTop: 10 }}>{t('Fatigue shows how recently each muscle was trained. High means rest.')}</div>
@@ -275,7 +292,6 @@ function EffortCard({ S }) {
 
 // Stats = the analytics hub: all charts, progress and history live here.
 export default function Stats() {
-  const nav = useNavigate()
   const S = useStore(s => s.S)
   const [range, setRange] = useState(90)
   const [exId, setExId] = useState(null)
@@ -291,7 +307,7 @@ export default function Stats() {
   const workouts = S.workouts
   const monthW = workouts.filter(w => String(w.d || '').slice(0, 7) === todayISO().slice(0, 7)).length
 
-  const nameOf = id => EXIDX[id]?.n || workouts.flatMap(w => w.entries).find(e => e.id === id)?.n || id
+  const nameOf = id => { const ex = EXIDX[id]; return ex ? nameFor(ex) : (workouts.flatMap(w => w.entries).find(e => e.id === id)?.n || id) }
   const currentOf = id => {
     for (let i = workouts.length - 1; i >= 0; i--) {
       const en = workouts[i].entries.find(e => e.id === id)
@@ -365,8 +381,7 @@ export default function Stats() {
 
   return <>
     <div className="hdr"><div><h1>{t('Stats')}</h1><div className="sub">{t('Progress & history')}</div>
-      <div style={{ marginTop: 8 }}><RankRow /></div></div>
-      <button className="iconbtn" onClick={() => nav('/history')} aria-label={t('History')}><Icon name="history" /></button></div>
+      <div style={{ marginTop: 8 }}><RankRow /></div></div></div>
 
     <div className="tiles">
       <div className="tile"><div className="l"><Icon name="dumbbell" />{t('Workouts')}</div><div className="v">{workouts.length}</div></div>
@@ -402,7 +417,10 @@ export default function Stats() {
         <h2>{t('Exercise progress')}</h2>
         {exHist.length ? <>
           <div className="sect-b" style={{ marginBottom: 10 }}>
-            <SelectRow title={t('Exercise')} sheetTitle={t('Exercise progress')} value={curEx} onChange={setExId}
+            {/* Just the name here — the row IS the picker, so a separate "Exercise" field
+                label would be naming the obvious. The best-weight suffix still shows in the
+                picker sheet itself, where it helps you tell entries apart. */}
+            <SelectRow title={curEx ? nameOf(curEx) : t('Exercise')} sheetTitle={t('Exercise progress')} value={curEx} onChange={setExId} hideValue
               options={exHist.map(id => ({ value: id, label: nameOf(id) + (exCurrent[id].mx ? ' ' + '—' + ' ' + fmtNum(exCurrent[id].mx) + ' ' + exCurrent[id].unit : '') }))} />
           </div>
           {exOpts.length > 1 && <Segmented className="seg-range" value={onEff ? 'effort' : onE1 ? 'e1rm' : 'top'} onChange={setExMetric} options={exOpts} />}
@@ -411,8 +429,12 @@ export default function Stats() {
               ? <LineChart points={effPts} h={150} unit={hd} color="var(--yellow)" invert={kind === 'rir'} />
               : <LineChart points={onE1 ? e1Pts.map(p => ({ t: p.t, y: p.y, d: p.d })) : topPts} h={150} unit={exUnit} color="var(--blue)" />}
           </div>
-          <div style={{ marginTop: 8 }}>{exList.map((p, i) => <div key={i} className="row between small" style={{ padding: '6px 0', borderBottom: 'var(--hair) solid var(--sep)' }}>
-            <span className="muted">{fmtDate(p.d, true)}</span><span>{p.sets.map(s => setLabel(curEx, s, p.target)).join('  ')}</span></div>)}</div>
+          <div style={{ marginTop: 8 }}>{exList.map((p, i) => <div key={i} style={{ padding: '8px 0', borderBottom: 'var(--hair) solid var(--sep)' }}>
+            <div className="muted small">{fmtDate(p.d, true)}</div>
+            <div className="row" style={{ gap: 5, flexWrap: 'wrap', marginTop: 4 }}>
+              {p.sets.map((s, j) => <span key={j} className="tag">{setLabel(curEx, s, p.target)}</span>)}
+            </div>
+          </div>)}</div>
           <div className="small dim" style={{ marginTop: 8 }}>
             {onEff ? t('Average effort per workout') : onE1 ? t('Estimated 1RM per workout') : curCardio ? t('Top speed per workout') : curTimed ? t('Longest hold per workout') : t('Best set weight per workout')}
             {onEff ? '' : <> · {t('Best:')}{' '}<b className="accent">{fmtNum(onE1 ? e1Best.est : exBest)} {onE1 ? S.unit : exUnit}</b></>}
@@ -428,10 +450,7 @@ export default function Stats() {
     </div>
 
     {workouts.length > 0 && <>
-      <div className="row between" style={{ marginBottom: 10 }}>
-        <h4 className="sec" style={{ margin: 0 }}>{t('Recent workouts')}</h4>
-        <Button size="sm" variant="ghost" trailingIcon="chevronRight" onClick={() => nav('/history')}>{t('All')} {workouts.length}</Button>
-      </div>
+      <h4 className="sec">{t('Recent workouts')}</h4>
       <div className="list">{[...workouts].reverse().slice(0, 6).map(w => <WorkoutRow key={w.id} w={w} onClick={() => workoutDetailSheet(w)} />)}</div>
     </>}
   </>

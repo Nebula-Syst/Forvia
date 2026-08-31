@@ -46,9 +46,12 @@
   --yellow:#ffd60a; --teal:#40c8e0; --indigo:#5e5ce6; --pink:#ff375f;
   --purple:#bf5af2; --mint:#63e6e2; --brown:#ac8e68; --grey:#8e8e93;
 
-  /* accent (per-account, synced) */
-  --acc:  var(--green);
-  --acc-2:#248a3d;
+  /* accent (per-account, synced) — the default, "lime", is the brand's own accent from
+     the Forvia logo (#a3e635), not the generic iOS system green (--green, still used for
+     plain "positive/live" signals elsewhere — a status dot has no reason to change just
+     because the brand accent did). */
+  --acc:  #a3e635;
+  --acc-2:#75a526;
   --on-acc:#000000;
   --acc-soft: color-mix(in srgb, var(--acc) 16%, transparent);
   --acc-line: color-mix(in srgb, var(--acc) 38%, transparent);
@@ -67,6 +70,10 @@
   --glass-blur:26px; --glass-sat:180%;
   --glass-bg:   color-mix(in srgb, var(--surface) 56%, transparent);
   --glass-bg-2: color-mix(in srgb, var(--surface-2) 64%, transparent);
+  /* Sheets and dialogs can open over anything — a body diagram, a photo, a chart — so
+     unlike a page card (which knows its own backdrop) they need to stay legible
+     regardless of what's behind them. Much less see-through than --glass-bg, same blur. */
+  --sheet-bg: color-mix(in srgb, var(--surface) 92%, transparent);
   --glass-border: color-mix(in srgb, var(--label) 20%, transparent);
   --glass-highlight: rgba(255,255,255,.16);
   --glass-sheen: linear-gradient(155deg, color-mix(in srgb, #fff 16%, transparent), transparent 45%);
@@ -110,6 +117,7 @@
 
   --glass-bg:   color-mix(in srgb, var(--surface) 66%, transparent);
   --glass-bg-2: color-mix(in srgb, var(--surface-2) 74%, transparent);
+  --sheet-bg: color-mix(in srgb, var(--surface) 94%, transparent);
   --glass-border: color-mix(in srgb, #fff 60%, var(--sep));
   --glass-highlight: rgba(255,255,255,.85);
   --glass-sheen: linear-gradient(155deg, color-mix(in srgb, #fff 60%, transparent), transparent 45%);
@@ -139,13 +147,14 @@
 
   --glass-bg:   color-mix(in srgb, var(--surface) 56%, transparent);
   --glass-bg-2: color-mix(in srgb, var(--surface-2) 64%, transparent);
+  --sheet-bg: color-mix(in srgb, var(--surface) 92%, transparent);
   --glass-border: color-mix(in srgb, #ffd76a 24%, transparent);
   --glass-highlight: rgba(255,225,150,.18);
   --glass-sheen: linear-gradient(155deg, color-mix(in srgb, #ffd76a 20%, transparent), transparent 45%);
 }
 
 /* accents — Apple's system colours, so a recolour never looks off-system */
-:root[data-accent="lime"]  { --acc:var(--green);  --acc-2:#248a3d; --on-acc:#000 }
+:root[data-accent="lime"]  { --acc:#a3e635;  --acc-2:#75a526; --on-acc:#000 }
 :root[data-accent="sky"]   { --acc:var(--blue);   --acc-2:#0060df; --on-acc:#fff }
 :root[data-accent="orange"]{ --acc:var(--orange); --acc-2:#c76b00; --on-acc:#000 }
 :root[data-accent="violet"]{ --acc:var(--purple); --acc-2:#8944ab; --on-acc:#fff }
@@ -241,6 +250,11 @@ button,.chip,.tile,.item,.wday,.cal-d,.swatch,.hm-c,.lrow,.seg button,.stp butto
 /* while the rest timer floats above the tab bar, keep its height scrollable-past
    (the rest variant is two rows tall — ~44px more than the single-row work timer) */
 body.resting #app{padding-bottom:calc(250px + var(--sab))}
+/* Active workout only (App.jsx): just the safe-area inset, no decorative +8px on top of it.
+   .wsticky below bleeds edge-to-edge and sits flush against #app's own top padding — that
+   +8px was just enough gap for the body's top-left accent glow to show through above it as a
+   stray coloured line. */
+#app.notop{padding-top:var(--sat)}
 @keyframes viewfade{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
 #app.vfade{animation:viewfade var(--med) var(--ease)}
 
@@ -255,12 +269,16 @@ body.resting #app{padding-bottom:calc(250px + var(--sab))}
 
 .iconbtn{
   width:36px;height:36px;border-radius:50%;flex:none;
-  background:var(--surface);color:var(--label);
+  background:var(--glass-bg-2);background-image:var(--glass-sheen);
+  backdrop-filter:saturate(var(--glass-sat)) blur(var(--glass-blur));
+  -webkit-backdrop-filter:saturate(var(--glass-sat)) blur(var(--glass-blur));
+  border:1px solid var(--glass-border);box-shadow:var(--shadow-sm);
+  color:var(--label);
   display:flex;align-items:center;justify-content:center;font-size:18px;
   transition:background var(--fast),transform var(--fast);
 }
-.iconbtn:active{background:var(--surface-2);transform:scale(.92)}
-.iconbtn.on-ss{background:var(--acc-soft);color:var(--acc)}
+.iconbtn:active{background:var(--glass-bg);transform:scale(.92)}
+.iconbtn.on-ss{background:color-mix(in srgb, var(--acc-soft) 80%, var(--glass-bg-2));color:var(--acc)}
 
 h4.sec{
   font-size:11.5px;font-weight:700;letter-spacing:.07em;color:var(--label-3);
@@ -392,7 +410,8 @@ h4.sec{
    Letting the value shrink and ellipsise instead keeps the two out of each other's way. */
 .lrow-v{color:var(--label-2);font-size:17px;letter-spacing:-.012em;flex:0 1 auto;min-width:0;
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:right}
-.lrow-c{color:var(--label);font-size:15px;flex:none;--icon-stroke:2.4}
+.lrow-c{color:var(--label);font-size:15px;flex:none;--icon-stroke:2.4;transition:transform var(--fast)}
+.lrow-c.rot{transform:rotate(180deg)}
 .lrow-k{color:var(--acc);font-size:17px;flex:none;--icon-stroke:2.4}
 .lrow.danger,.lrow.danger .lrow-t{color:var(--red)}
 /* an (i) before a row's control: painted small and dim so the control stays the loud thing,
@@ -466,13 +485,17 @@ h4.sec{
    orange play glyph onto an orange disc. Both states restate their own colour.
    The disc is orange in either theme, so its glyph is black, not `--on-acc`. */
 #tabbar button.start .cir{color:var(--on-acc)}
-#tabbar button.start.rec .cir{background:var(--orange);color:#000;box-shadow:0 6px 18px -4px color-mix(in srgb,var(--orange) 55%,transparent)}
-#tabbar button.start.rec span{color:var(--orange)}
+/* .rec = the session is live (tap to pause); .paused = it's on hold and the active-workout
+   page blocks logging until this is tapped again. Same disc, two readings: a calm pulsing
+   accent ring says "running fine", a static red disc says "stopped, nothing is happening". */
+#tabbar button.start.rec .cir{box-shadow:0 6px 18px -4px color-mix(in srgb,var(--acc) 55%,transparent)}
 #tabbar button.start.rec .cir::after{
   content:'';position:absolute;inset:0;border-radius:50%;
-  border:2px solid var(--orange);animation:ping 1.9s var(--ease) infinite;
+  border:2px solid var(--acc);animation:ping 1.9s var(--ease) infinite;
 }
 @keyframes ping{0%{transform:scale(1);opacity:.7}100%{transform:scale(1.45);opacity:0}}
+#tabbar button.start.paused .cir{background:var(--red);color:#fff;box-shadow:0 6px 18px -4px color-mix(in srgb,var(--red) 55%,transparent)}
+#tabbar button.start.paused span{color:var(--red)}
 
 /* --------------------------------------------------------- side nav (≥1000px) --- */
 /* #tabbar's desktop replacement — same routes, same Tab/startWorkout logic
@@ -505,7 +528,7 @@ h4.sec{
 }
 #sidenav .sidestart:active{transform:scale(.98)}
 #sidenav .sidestart .icn{font-size:18px;--icon-stroke:2}
-#sidenav .sidestart.rec{background:var(--orange);box-shadow:0 6px 18px -6px color-mix(in srgb,var(--orange) 55%,transparent)}
+#sidenav .sidestart.paused{background:var(--red);color:#fff;box-shadow:0 6px 18px -6px color-mix(in srgb,var(--red) 55%,transparent)}
 #sidenav button:not(.sidestart){
   display:flex;align-items:center;gap:12px;padding:10px 12px;border-radius:var(--r);
   color:var(--label-2);font-size:15px;font-weight:500;text-align:left;
@@ -549,7 +572,12 @@ h4.sec{
   transition:background var(--fast),transform var(--fast) var(--ease),box-shadow var(--fast);text-align:left;width:100%;
 }
 .item:active{background:var(--glass-bg-2);transform:scale(.99)}
+/* Multi-select picker row, checked — same accent-ring language as .badge-pick.on and
+   .theme-swatch.on elsewhere. */
+.item.on{border-color:var(--acc);box-shadow:0 0 0 3px color-mix(in srgb, var(--acc) 25%, transparent)}
 .thumb{width:50px;height:50px;border-radius:9px;object-fit:cover;background:#fff;flex:none}
+.thumbbtn{padding:0;flex:none;border-radius:9px;display:flex;transition:transform var(--fast) var(--ease)}
+.thumbbtn:active{transform:scale(.94)}
 .thumb-x{
   display:flex;align-items:center;justify-content:center;font-size:21px;
   background:var(--surface-2);color:var(--label-2);
@@ -646,6 +674,50 @@ h4.sec{
 }
 .border-beam>*{position:relative;z-index:1}
 
+/* The "caught cheating" reveal's ring (CheatCaughtDialog, components/CheatCaughtReveal.jsx):
+   JS drives it through one drain per lost level (see the scaleX(-1) on the <svg> itself, so
+   it runs backwards), each lap easing from full to empty on this same transition, then a
+   final lap eases into the account's real, already-penalized position in the tier's color. */
+.cheat-ring-fg{transition:stroke-dashoffset .6s ease, stroke .4s ease}
+/* Wider than the standard .center dialog (which many unrelated confirm sheets also use) —
+   shared by the anti-cheat and prestige-upgrade reveals, both of which need more room than a
+   couple of buttons: a big level number and a full sentence, or the 148px reveal stage below. */
+.center:has(.wide-reveal){width:min(92vw,380px)}
+
+/* "Upgrade mastery" reveal (PrestigeUpgradeDialog, views/Rank.jsx) — a real buildup for a big
+   moment, not a quick flip: the old icon sits with a slow ambient glow, dissolves away, a beat
+   of nothing, then a burst of light as the new icon grows in with a bit of overshoot. */
+.prestige-stage{position:relative;width:148px;height:148px;margin:4px auto 22px;display:flex;align-items:center;justify-content:center}
+.prestige-reveal-icon{width:100%;height:100%;display:flex}
+@keyframes prestige-idle-glow{0%,100%{filter:drop-shadow(0 0 0 transparent)}50%{filter:drop-shadow(0 0 16px color-mix(in srgb, var(--yellow) 55%, transparent))}}
+.prestige-reveal-icon.idle{animation:prestige-idle-glow 2s ease-in-out infinite}
+@keyframes prestige-dissolve-out{0%{transform:scale(1);opacity:1;filter:blur(0)}100%{transform:scale(.35);opacity:0;filter:blur(2px)}}
+.prestige-reveal-icon.out{animation:prestige-dissolve-out .75s cubic-bezier(.4,0,.7,1) forwards}
+@keyframes prestige-grow-in{
+  0%{transform:scale(.25);opacity:0}
+  55%{transform:scale(1.16);opacity:1}
+  78%{transform:scale(.95)}
+  100%{transform:scale(1);opacity:1}
+}
+.prestige-reveal-icon.in{animation:prestige-grow-in 1.1s cubic-bezier(.22,1,.36,1) forwards}
+@keyframes prestige-burst-flash{0%{transform:scale(.3);opacity:0}30%{transform:scale(1.15);opacity:.95}100%{transform:scale(2.3);opacity:0}}
+.prestige-burst2{
+  position:absolute;inset:-26px;border-radius:50%;pointer-events:none;z-index:0;
+  background:radial-gradient(circle, color-mix(in srgb, var(--yellow) 85%, white) 0%, transparent 70%);
+  animation:prestige-burst-flash 1.1s ease-out forwards;
+}
+
+/* Level-up reveal's number overlay (LevelUpRing, components/LevelUpReveal.jsx): a bright pop
+   each time it ticks to a new value — scales up past full size with a hot white glow, then
+   eases back down. Replayed by remounting the span on a key={level} change, not a class toggle,
+   so it always plays cleanly even if two ticks land close together. */
+@keyframes level-num-flash{
+  0%{transform:scale(.5);opacity:0;text-shadow:0 0 0 rgba(255,255,255,0)}
+  40%{transform:scale(1.45);opacity:1;text-shadow:0 0 26px rgba(255,255,255,.95), 0 2px 6px rgba(0,0,0,.9)}
+  100%{transform:scale(1);opacity:1;text-shadow:0 2px 6px rgba(0,0,0,.9), 0 0 16px rgba(0,0,0,.7), 0 0 3px rgba(0,0,0,.9)}
+}
+.level-num-flash{display:inline-block;animation:level-num-flash .55s cubic-bezier(.22,1,.36,1)}
+
 /* --- Rank page (views/Rank.jsx) — hero ring, tier ladder, prestige grid --- */
 .rank-hero{
   margin-bottom:18px;padding:26px 20px 22px;border-radius:24px;text-align:center;position:relative;
@@ -710,18 +782,33 @@ h4.sec{
 .perk-ul{margin:2px 0 0;padding-left:15px;color:var(--label-2);font-size:12.5px;line-height:1.5}
 .perk-ul li{margin-bottom:0}
 
-/* Settings → Profile preview: the tier/prestige art large, each with the number that
-   actually means something at that size overlaid on the corner — the tier's number is
-   its position within ITS OWN ten levels (1-10), not the raw 1-100 level, since which
-   tier you're in already reads from the artwork; the prestige number is the prestige
-   count itself, since prestige has no sub-levels to be "through". */
+/* Settings → Profile preview: the tier/prestige art large, each with its real level/
+   prestige number sitting right against it — most of the source art has its own
+   transparent margin baked in (varies per tier), so the badge is pulled well inside the
+   box rather than pinned to the box's own corner, or it reads as floating off in space
+   next to a visibly smaller icon. */
 .profile-preview-icon{position:relative;display:inline-flex;width:92px;height:92px}
 .profile-preview-icon.pulse{animation:badge-pulse 2s ease-in-out infinite}
 .profile-preview-badge{
-  position:absolute;bottom:-4px;right:-4px;min-width:26px;height:26px;padding:0 6px;box-sizing:border-box;
+  position:absolute;bottom:6px;right:2px;min-width:24px;height:24px;padding:0 5px;box-sizing:border-box;
   border-radius:99px;background:var(--surface-2);border:2px solid var(--bg-el);
-  display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:800;color:var(--label);
+  display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:800;color:var(--label);
   box-shadow:var(--shadow-sm);
+}
+
+/* Settings → Appearance → Reduce motion: turns off the purely decorative looping
+   animations (rank badge pulse, avatar frame shimmer, animated name gradient, border-beam
+   sweep, the floating rank hero, the recording ring pulse on Start) — sheets/pages still
+   slide and fade in, that's feedback, not flair. */
+:root[data-reduce-motion] .rank-badge.pulse,
+:root[data-reduce-motion] .profile-preview-icon.pulse,
+:root[data-reduce-motion] .badge-slot.pulse,
+:root[data-reduce-motion] .avatar-frame,
+:root[data-reduce-motion] .name-animated,
+:root[data-reduce-motion] .border-beam::before,
+:root[data-reduce-motion] .rank-ring-badge,
+:root[data-reduce-motion] #tabbar button.start.rec .cir::after{
+  animation:none;
 }
 
 /* ---------------------------------------------------------------- chips -- */
@@ -751,6 +838,50 @@ h4.sec{
 .field::placeholder,.input::placeholder{color:var(--label-3)}
 .field:focus,.input:focus{box-shadow:inset 0 0 0 2px var(--acc);border-color:transparent}
 .field.area,textarea.input{min-height:92px;resize:vertical;line-height:1.42}
+.bio-field{position:relative}
+.bio-field textarea.input{resize:none;padding-bottom:26px}
+.bio-field textarea.input:focus{box-shadow:inset 0 0 0 2px var(--acc)}
+.bio-count{
+  position:absolute;right:13px;bottom:10px;font-size:11px;color:var(--label-3);
+  font-variant-numeric:tabular-nums;pointer-events:none;
+}
+/* A bio can be one long unbroken run with no spaces to break at — without this it just
+   runs past the card's edge instead of wrapping. */
+.profile-bio-text{overflow-wrap:anywhere}
+
+/* --- profile showcase badges --- */
+/* Rank and Prestige are both "a badge" at 92px in the preview above; these are the same
+   idea (a round icon, earned or not) just sized down enough that all 3 fit on one line.
+   `.filled` is a plain read-only version for other people's profiles (Social.jsx); the
+   Settings preview additionally makes these buttons that open the picker below. */
+.profile-badges{display:flex;justify-content:center;gap:12px;margin-top:12px}
+.badge-slot{
+  position:relative;width:84px;height:84px;border-radius:50%;flex:none;display:flex;align-items:center;justify-content:center;
+  font-size:26px;background:var(--surface-2);color:var(--label-3);
+  border:2px solid var(--glass-border);transition:transform var(--fast),border-color var(--fast),color var(--fast);
+}
+.badge-slot:active{transform:scale(.94)}
+.badge-slot.filled{color:var(--acc);background:color-mix(in srgb, var(--acc-soft) 55%, var(--surface-2));border-color:transparent}
+.badge-slot.on{border-color:var(--acc);box-shadow:0 0 0 3px color-mix(in srgb, var(--acc) 25%, transparent)}
+.badge-slot.pulse{animation:badge-pulse 2s ease-in-out infinite}
+.badges-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+.badge-pick{
+  position:relative;border-radius:14px;padding:12px 6px 10px;display:flex;flex-direction:column;align-items:center;gap:6px;
+  background:var(--glass-bg-2);border:2px solid transparent;transition:transform var(--fast),border-color var(--fast);
+}
+.badge-pick:active{transform:scale(.96)}
+.badge-pick.on{border-color:var(--acc);box-shadow:0 0 0 3px color-mix(in srgb, var(--acc) 25%, transparent)}
+.badge-pick.locked{opacity:.5}
+.badge-pick-ico{
+  width:34px;height:34px;border-radius:50%;display:flex;align-items:center;justify-content:center;
+  font-size:16px;background:var(--surface-2);color:var(--label);
+}
+.badge-pick-label{font-size:11px;font-weight:600;text-align:center;color:var(--label-2);line-height:1.25}
+.badge-pick-check,.badge-pick-lock{
+  position:absolute;top:5px;right:5px;font-size:9px;padding:3px;border-radius:50%;--icon-stroke:3;
+}
+.badge-pick-check{background:var(--acc);color:var(--on-acc)}
+.badge-pick-lock{background:rgba(0,0,0,.45);color:#fff}
 .exnote{
   background:var(--surface);border-radius:var(--r);padding:13px 15px;
   line-height:1.45;white-space:pre-wrap;font-size:15px;margin-bottom:10px;color:var(--label-2);
@@ -881,9 +1012,9 @@ h4.sec{
 
 /* --- checkbox --- */
 .chk,.ck{
-  width:30px;height:30px;border-radius:50%;flex:none;
+  width:40px;height:40px;border-radius:8px;flex:none;
   display:flex;align-items:center;justify-content:center;
-  background:var(--glass-bg-2);box-shadow:inset 0 0 0 1.8px var(--label-4);color:transparent;
+  background:var(--glass-bg-2);box-shadow:inset 0 0 0 1.8px var(--label-4);color:var(--label-4);
   transition:background var(--fast),box-shadow var(--fast),color var(--fast),transform var(--fast) var(--ease);
 }
 .chk .icn{font-size:16px;--icon-stroke:2.6}
@@ -897,8 +1028,32 @@ h4.sec{
 .ck.on svg{stroke:var(--on-acc)}
 
 /* ------------------------------------------------------------- workout --- */
+/* Name/discard/finish + progress + the stat row, pinned while the exercise list scrolls
+   underneath. Bleeds edge-to-edge (negative side margin matching #app's own padding, restored
+   as inner padding) so the glass strip reads as a real bar, not a card that happens to stick;
+   `top` sits below the safe-area inset rather than at literal 0, so it clears a notch instead
+   of sliding under it once actually stuck. */
+.wsticky{
+  position:sticky;top:var(--sat);z-index:15;
+  margin:0 calc(-1 * var(--pad)) 14px;padding:8px var(--pad) 10px;
+  /* Darker than the usual --glass-bg on purpose: a sheet sits over an already-dimmed backdrop,
+     this sits directly over scrolling exercise cards — the standard glass tint let too much of
+     them show through and washed out the header text against them. */
+  background:color-mix(in srgb, var(--surface) 88%, transparent);background-image:var(--glass-sheen);
+  backdrop-filter:saturate(var(--glass-sat)) blur(var(--glass-blur));
+  -webkit-backdrop-filter:saturate(var(--glass-sat)) blur(var(--glass-blur));
+  border-bottom:1px solid var(--glass-border);
+}
 .wprog{height:4px;background:var(--surface-2);border-radius:99px;overflow:hidden;margin-bottom:16px}
 .wprog i{display:block;height:100%;background:var(--acc);border-radius:99px;transition:width var(--med) var(--ease)}
+/* Time / Volume / Sets / muscle map — four glance stats for the session so far, the
+   three text ones sized alike and the map column just taking what it needs. */
+.wstats{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.wstat{flex:1;min-width:0;text-align:center}
+.wstat .v{font-weight:700;font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.wstat .l{color:var(--label-2);font-size:11px;text-transform:uppercase;letter-spacing:.02em;margin-top:2px}
+button.wstat{background:none;border:none;padding:0;font:inherit;color:inherit;transition:transform var(--fast) var(--ease)}
+button.wstat:active{transform:scale(.95)}
 .exmedia{position:relative;border-radius:var(--r-lg);overflow:hidden;background:#fff;margin-bottom:12px}
 .exmedia img{width:100%;height:320px;object-fit:contain;display:block}
 .exmedia .gifhint,.exmedia .giftoggle{
@@ -915,45 +1070,102 @@ h4.sec{
 .exmedia.compact img{height:120px}
 .exmedia.mini img{height:84px}
 
+/* .sethead and .setrow must share the exact same gap and the exact same fixed-width first
+   slot, or each later column drifts further from the label naming it — the whole reason
+   this pair is spelled out again here instead of trusting them to already match. */
 .sethead{
-  display:flex;align-items:center;gap:8px;padding:0 0 6px;
+  display:flex;align-items:center;gap:6px;padding:0 0 6px;
   font-size:11px;color:var(--label-3);font-weight:500;text-transform:uppercase;letter-spacing:.045em;
 }
-.sethead .n-sp{width:24px;flex:none}
-.sethead .w-sp{flex:1.4;text-align:center}
-.sethead .r-sp{flex:1;text-align:center}
-.sethead .eff-sp{text-align:center}
-.sethead .ck-sp{width:30px;flex:none}
-.setrow{display:flex;align-items:center;gap:8px;padding:7px 0;position:relative}
+.sethead .n-sp{width:46px;flex:none}
+/* min-width:0 on every flex label, or a label wider than its own flex-basis ("Anterior",
+   "Peso (kg)") refuses to shrink to it and steals width from its neighbours instead — the
+   row's cells already set this (that's how .setrow.eff3 and .sethead.eff3 stayed at the same
+   gap and still drifted apart: same ratios, but only one side actually honoured them). */
+.sethead .p-sp,.sethead .w-sp,.sethead .r-sp,.sethead .eff-sp{
+  min-width:0;text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+}
+.sethead .p-sp{flex:.9}
+.sethead .w-sp{flex:1.3}
+.sethead .r-sp{flex:.9}
+.sethead .eff-sp{flex:1}
+.sethead .ck-sp{width:40px;flex:none;display:flex;align-items:center;justify-content:center}
+.setrow{display:flex;align-items:center;gap:6px;padding:7px 0;position:relative}
 .setrow+.setrow::before{
-  content:'';position:absolute;left:32px;right:0;top:0;height:var(--hair);background:var(--sep);
+  content:'';position:absolute;left:52px;right:0;top:0;height:var(--hair);background:var(--sep);
 }
 .setph{margin:8px 0 2px;font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--dim);display:flex;align-items:center;gap:10px}
 .setph::after{content:'';flex:1;height:1px;background:var(--sep)}
 .setsep{height:1px;background:var(--sep);margin:9px 0}
+/* The badge itself stays a 40px square (same as the checkbox, both narrower than the 44px
+   value boxes but the same true square either way); the slot it sits in matches .n-sp's
+   46px so every column after it lines up under its header. */
+.n-wrap{width:46px;flex:none;display:flex}
 .setrow .n{
-  width:24px;height:24px;border-radius:50%;background:var(--surface-2);color:var(--label-2);
+  width:40px;height:40px;border-radius:8px;background:var(--surface-2);color:var(--label-2);
   display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:500;flex:none;
   transition:background var(--fast),color var(--fast);
 }
-.setrow .stp.w{flex:1.4;min-width:0}
-.setrow .stp.r{flex:1;min-width:0}
-.setrow .stp.eff{flex:1.1;min-width:0}
-.setrow .stp button{width:32px;height:40px}
-/* a 3rd stepper (RIR) needs narrower buttons and a tighter row gap to fit next to weight+reps
-   on narrow phones, same technique as the exercise-config sheet's three-steppers-in-a-row
-   (.cfgrow below) — RIR's own value is short ("1.5") so its buttons shrink the most, weight/reps
-   just enough to make room since their values ("82.5", "12") need more of what's left.
-   The header shares the numbers so its labels stay centred over the steppers they name. */
-.setrow.eff3,.sethead.eff3{gap:6px}
-.setrow.eff3 .stp.w,.sethead.eff3 .w-sp{flex:1.2}
-.setrow.eff3 .stp.r,.sethead.eff3 .r-sp{flex:1}
-.setrow.eff3 .stp.eff,.sethead.eff3 .eff-sp{flex:.85}
-.setrow.eff3 .stp button{width:23px}
-.setrow.eff3 .stp.eff button{width:20px}
-.setrow.eff3 .stp .num{font-size:14px}
-.setrow.done .n{background:var(--acc);color:var(--on-acc)}
-.setrow.done{opacity:.45}
+.setrow .n .icn{font-size:17px;--icon-stroke:2.4}
+/* Set type, at a glance, without opening the menu to check — stays put even once the set
+   is done (see .setrow.done above), so it keeps reading as "this was a drop set" forever,
+   not just until it's checked off. */
+.setrow .n.failure{background:color-mix(in srgb, var(--red) 26%, var(--surface-2));color:var(--red)}
+.setrow .n.drop{background:color-mix(in srgb, var(--orange) 26%, var(--surface-2));color:var(--orange)}
+.setrow .n.warmup{background:color-mix(in srgb, var(--blue) 26%, var(--surface-2));color:var(--blue)}
+.setrow .n.approach{background:color-mix(in srgb, var(--teal) 26%, var(--surface-2));color:var(--teal)}
+/* Drop sets keep their own count within the row's numbering (drop 1, drop 2…), so the icon
+   alone isn't enough — a small corner badge adds the number without competing with the icon
+   for the same 40px square the way stacking or shrinking both would. */
+.setrow .n{position:relative}
+.setrow .n .n-sub{
+  position:absolute;right:-4px;bottom:-4px;min-width:15px;height:15px;padding:0 3px;
+  border-radius:99px;background:var(--surface);color:var(--label);
+  font-size:9px;font-weight:700;line-height:13px;text-align:center;
+  border:1.5px solid var(--surface-2);
+}
+/* What this same set position read last time — plain text, no stepper, so it costs the
+   row far less width than the columns it sits next to. */
+.setrow .prev{flex:.9;min-width:0;text-align:center;font-size:13px;color:var(--label-3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* Weight/reps/effort cells — a bare, narrow value, tapped to type directly. No +/- buttons:
+   they didn't earn their width, and a set is a couple of digits, not a dial to spin.
+   .setcell keeps the same flex ratio the old three-part stepper used, so the header labels
+   above still land centred over the right span of the row; .setval is the actual box, sized
+   for 3 characters ("100") since nobody logs a set past that. Deliberately its own class,
+   not a reuse of the shared .stp stepper (exercise-config, body-weight, …), which keeps its
+   +/- buttons everywhere else. */
+.setcell{display:flex;align-items:center;justify-content:center;min-width:0;position:relative}
+.setrow .setcell.w{flex:1.3}
+.setrow .setcell.r{flex:.9}
+.setrow .setcell.eff{flex:1}
+/* A weight/reps box that looks fat-fingered (issue #61) — a small flag at its corner, not a
+   blocking error: the number stays editable and checkable, this just invites a second look. */
+.cellwarn{
+  position:absolute;top:-6px;right:-6px;width:18px;height:18px;border-radius:50%;
+  display:flex;align-items:center;justify-content:center;
+  background:var(--orange);color:#fff;border:2px solid var(--surface-2);
+}
+.cellwarn .icn{font-size:11px;--icon-stroke:3}
+/* A bodyweight set's weight column: the slot stays (so Reps/RIR/check still line up with
+   every other exercise's), the box inside it doesn't — kept in the flow, not just invisible,
+   or the row would recentre around the gap it left. Scoped name, not the generic ".ghost" —
+   that collides with <Button variant="ghost">'s own "ghost" class and made every ghost button
+   in the app invisible (issue #63). */
+.wghost{visibility:hidden}
+.setval{
+  width:44px;height:40px;box-sizing:border-box;flex:none;text-align:center;
+  background:var(--glass-bg-2);border:1px solid var(--glass-border);
+  border-radius:8px;padding:0 2px;font-size:16px;font-weight:500;letter-spacing:-.012em;
+}
+.setrow.eff3,.sethead.eff3{gap:4px}
+.setrow.eff3 .prev,.sethead.eff3 .p-sp{flex:.7;font-size:12px}
+.setrow.eff3 .setval{font-size:14px}
+/* A done set gets called out, not faded — a light accent wash across the row, rather than
+   dimming it toward the background. The badge itself stays out of it: it's the one place
+   that still says what KIND of set this is (warm-up blue, failure red, …), and turning it
+   green on done would erase that the moment it matters most. The checkmark alone carries
+   the done state at that spot. */
+.setrow.done{background:color-mix(in srgb, var(--acc) 18%, transparent);border-radius:10px;margin:0 -8px;padding:7px 8px}
 /* why the next target is what it is (issue #17) */
 .progline{
   display:flex;align-items:flex-start;gap:7px;margin:6px 0 2px;
@@ -992,6 +1204,15 @@ h4.sec{
   animation:slideup var(--med) var(--ease);
 }
 @keyframes slideup{from{transform:translateY(16px);opacity:0}to{transform:none;opacity:1}}
+
+/* A pair of primary page actions (e.g. Workout's "Freestyle" / "Create routine") pinned to
+   the bottom of the screen instead of sitting in the content flow — same fixed-positioning
+   formula as #timer above, minus its own backdrop card since each button already carries
+   its own visible fill. */
+.sticky-actions{
+  position:fixed;left:12px;right:12px;bottom:calc(88px + var(--sab));z-index:55;
+  display:flex;gap:10px;
+}
 #timer .t{font-size:26px;font-weight:600;letter-spacing:-.026em;font-variant-numeric:tabular-nums;min-width:66px}
 #timer .bar{flex:1;height:4px;background:var(--surface-3);border-radius:99px;overflow:hidden}
 #timer .bar i{display:block;height:100%;background:var(--acc);transition:width 1s var(--ease)}
@@ -1023,7 +1244,7 @@ h4.sec{
 }
 .sheet{
   position:absolute;left:0;right:0;bottom:0;
-  background:var(--glass-bg);background-image:var(--glass-sheen);
+  background:var(--sheet-bg);background-image:var(--glass-sheen);
   backdrop-filter:saturate(var(--glass-sat)) blur(var(--glass-blur));
   -webkit-backdrop-filter:saturate(var(--glass-sat)) blur(var(--glass-blur));
   border-top:1px solid var(--glass-border);
@@ -1039,7 +1260,7 @@ h4.sec{
 .center{
   position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);
   width:min(84vw,300px);
-  background:var(--glass-bg);background-image:var(--glass-sheen);
+  background:var(--sheet-bg);background-image:var(--glass-sheen);
   backdrop-filter:saturate(var(--glass-sat)) blur(var(--glass-blur));
   -webkit-backdrop-filter:saturate(var(--glass-sat)) blur(var(--glass-blur));
   border:1px solid var(--glass-border);
@@ -1162,6 +1383,13 @@ h4.sec{
   --bm-base:color-mix(in srgb,var(--label) 11%,var(--surface));
 }
 .bm-v{flex:1;min-width:0;height:auto;max-height:min(46vh,340px)}
+/* A glance-sized reading for a spot that can't spare a full card's height — the active
+   workout header, mid-session. Same front/back pair, just capped much shorter. */
+.bodymap.compact .bm-v{max-height:110px}
+/* One column among the four in .wstats — smaller again, and tight enough on gap that
+   the front/back pair reads as a single glyph rather than two separate figures. */
+.bodymap.mini{gap:2px}
+.bodymap.mini .bm-v{max-height:56px}
 .bm-ph{height:200px}                       /* holds the space while the geometry loads */
 .bm-sil{fill:color-mix(in srgb,var(--label) 18%,var(--surface))}
 .bm-m{fill:var(--bm-base);transition:fill var(--med) var(--ease),filter var(--med) var(--ease)}
@@ -1240,6 +1468,29 @@ h4.sec{
   color:var(--acc);font-size:10.5px;font-weight:700;padding:3px 8px;border-radius:99px;
 }
 
+/* --- admin data table (Admin panel — Users/Log) — dense, sortable-feeling rows for a list
+   that's a scroll-forever headache as cards. Desktop-first on purpose: this surface is never
+   translated and never touched on a phone. --- */
+.dtable-wrap{
+  overflow-x:auto;border-radius:var(--r-card);border:1px solid var(--glass-border);
+  background:var(--glass-bg);background-image:var(--glass-sheen);box-shadow:var(--shadow-sm);
+  backdrop-filter:saturate(var(--glass-sat)) blur(var(--glass-blur));
+  -webkit-backdrop-filter:saturate(var(--glass-sat)) blur(var(--glass-blur));
+}
+.dtable{width:100%;border-collapse:collapse;font-size:14px;white-space:nowrap}
+.dtable th{
+  text-align:left;font-size:11px;font-weight:700;color:var(--label-3);
+  letter-spacing:.06em;text-transform:uppercase;padding:11px 14px;
+  border-bottom:1px solid var(--sep);position:sticky;top:0;background:var(--surface);
+}
+.dtable td{padding:11px 14px;border-bottom:1px solid var(--sep);vertical-align:middle;color:var(--label)}
+.dtable tbody tr{transition:background var(--fast)}
+.dtable tbody tr.tap{cursor:pointer}
+.dtable tbody tr.tap:hover{background:var(--glass-bg-2)}
+.dtable tbody tr:last-child td{border-bottom:none}
+.dtable .dim-cell{color:var(--label-2);font-size:13px}
+.dtable-empty{padding:28px 14px;text-align:center;color:var(--label-2);font-size:14px}
+
 /* --- PR badge --- */
 .pr{
   display:inline-flex;align-items:center;gap:4px;
@@ -1266,6 +1517,20 @@ h4.sec{
 /* ---------------------------------------------------------------- misc --- */
 .empty{text-align:center;color:var(--label-2);padding:44px 20px;font-size:15px;line-height:1.45}
 .empty .ico{font-size:34px;color:var(--label-2);margin-bottom:12px;display:flex;justify-content:center}
+.pausedcard{text-align:center;padding:32px 20px}
+.pausedcard-ico{
+  width:48px;height:48px;border-radius:50%;margin:0 auto 14px;font-size:21px;
+  display:flex;align-items:center;justify-content:center;
+  background:var(--red);color:#fff;
+}
+.pausedcard h3{margin-bottom:4px}
+/* Manual timer/stopwatch sheet (the header's clock icon) — a big tabular-nums readout, same
+   digit width whichever numbers are showing so the display doesn't jitter sideways every tick. */
+.cw-seg{margin-top:8px}
+.cw-display{
+  text-align:center;font-size:52px;font-weight:700;letter-spacing:-.02em;
+  font-variant-numeric:tabular-nums;margin-top:18px;
+}
 .steps-list{
   padding-left:18px;color:var(--label-2);font-size:15px;line-height:1.5;
   display:flex;flex-direction:column;gap:9px;
@@ -1291,7 +1556,7 @@ h4.sec{
 .cal-legend i{display:inline-block;width:6px;height:6px;border-radius:50%;margin-right:5px}
 
 /* --- accent swatches --- */
-.swatches{display:flex;gap:12px;flex-wrap:wrap}
+.swatches{display:flex;gap:12px;flex-wrap:wrap;justify-content:center}
 .swatch{
   width:32px;height:32px;border-radius:50%;flex:none;position:relative;
   background-image:var(--glass-sheen);box-shadow:var(--shadow-sm);
@@ -1305,17 +1570,31 @@ h4.sec{
   transition:box-shadow var(--med) var(--ease);
 }
 
-/* --- default brand palette --- */
-.palette{display:grid;grid-template-columns:repeat(auto-fit,minmax(118px,1fr));gap:10px}
-.palette-chip{
-  display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:14px;
-  background:var(--surface-2);box-shadow:inset 0 0 0 1px var(--line);
+/* --- Settings → Appearance: theme swatches --- */
+/* Each swatch is a tiny mock card in that theme's own colours (hardcoded — it has to show
+   dark/light/prestige regardless of which one :root is actually wearing right now), so
+   picking a theme is "which of these do I like" instead of reading three plain words. */
+.theme-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:4px}
+.theme-swatch{
+  position:relative;border-radius:16px;padding:10px 10px 9px;display:flex;flex-direction:column;gap:8px;
+  border:2px solid transparent;transition:transform var(--fast),border-color var(--fast);
 }
-.palette-swatch{width:18px;height:18px;border-radius:6px;flex:none;box-shadow:inset 0 0 0 1px rgba(255,255,255,.08)}
-.palette-meta{display:flex;flex-direction:column;min-width:0}
-.palette-name{font-size:13px;font-weight:600;line-height:1.1}
-.palette-value{font-size:11px;color:var(--label-3);font-variant-numeric:tabular-nums}
-.palette-row .lrow-s{margin-top:-4px}
+.theme-swatch:active{transform:scale(.96)}
+.theme-swatch.on{border-color:var(--acc);box-shadow:0 0 0 3px color-mix(in srgb, var(--acc) 25%, transparent)}
+.theme-swatch.locked{opacity:.6}
+.theme-swatch-card{
+  border-radius:10px;padding:9px 8px;display:flex;flex-direction:column;align-items:center;gap:5px;
+  height:40px;justify-content:center;box-shadow:inset 0 0 0 1px rgba(127,127,127,.16);
+}
+.theme-swatch-dot{width:8px;height:8px;border-radius:50%;margin-bottom:1px}
+.theme-swatch-line{height:5px;border-radius:3px;width:68%}
+.theme-swatch-line.short{width:42%}
+.theme-swatch-badge{
+  position:absolute;top:7px;right:7px;font-size:10px;padding:3px;border-radius:50%;
+  background:rgba(0,0,0,.45);color:#fff;--icon-stroke:3;
+}
+.theme-swatch-badge.on{background:var(--acc);color:var(--on-acc)}
+.theme-swatch-label{font-size:12.5px;font-weight:600;text-align:center;color:var(--label-2)}
 
 /* --- supersets --- */
 .ss-label{
@@ -1393,6 +1672,7 @@ h4.sec{
   .sheet{left:calc(50% + var(--sidenav-w)/2);right:auto;margin-left:-320px;width:640px;border-radius:var(--r-xl) var(--r-xl) 0 0}
   .center{left:calc(50% + var(--sidenav-w)/2);width:340px}
   #timer{left:calc(50% + var(--sidenav-w)/2);right:auto;margin-left:-260px;width:520px;bottom:32px}
+  .sticky-actions{left:calc(50% + var(--sidenav-w)/2);right:auto;margin-left:-260px;width:520px;bottom:32px}
   /* 520px fits the clock, the bar and all three controls on one line again */
   #timer.rest{flex-direction:row;align-items:center;gap:14px}
   #timer.rest .head{flex:1;min-width:0}

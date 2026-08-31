@@ -20,14 +20,21 @@ const INVITE_ONLY = /^(1|true|yes|on)$/i.test(process.env.INVITE_ONLY || '');
 // out of is still the wrong front door (#42). Default ON, so existing instances are unchanged;
 // the polarity is inverted from INVITE_ONLY because the safe default here is the permissive one.
 const ALLOW_GUEST = !/^(0|false|no|off)$/i.test(process.env.ALLOW_GUEST || '');
+// Same polarity/default as ALLOW_GUEST — off only when the operator explicitly says so, since a
+// closed instance means every account after the first one is created by an admin instead (see
+// POST /api/admin/user/create), not self-service registration.
+const ALLOW_REGISTER = !/^(0|false|no|off)$/i.test(process.env.ALLOW_REGISTER || '');
 // 90 days keeps someone who trains a few times a week permanently signed in without a stolen
 // cookie staying good for a year. Overridable because a family instance and one on the open
 // internet don't want the same number. Only affects cookies minted from now on — the expiry is
 // baked into each cookie when it's issued, so lowering this never cuts an existing session short.
 const SESSION_DAYS = Math.max(1, +(process.env.SESSION_DAYS || 90) || 90);
-// Base64 inflates ~33% — 8MB comfortably fits the ~6MB compressed-photo cap enforced in
-// /api/social/upload while still bounding every other route's body too.
-const MAX_BODY = 8 * 1024 * 1024;
+// Base64 inflates ~33%, so the ~6MB compressed-photo cap enforced in /api/social/upload
+// already needs ~8MB of headroom on its own before the surrounding {"dataUrl":"data:...","}
+// JSON wrapper adds its own few dozen bytes on top — cutting MAX_BODY exactly at 8MB let that
+// wrapper push a maximum-size photo's body just past the limit, which read as the generic
+// "body too large" 500 instead of this route's proper 413. Comfortable headroom fixes both.
+const MAX_BODY = 9 * 1024 * 1024;
 // Secure cookies require HTTPS; over plain http://localhost the flag would drop the cookie
 const SECURE = /^https:/i.test(ORIGIN) ? ' Secure;' : '';
 
@@ -46,31 +53,47 @@ db.invites = db.invites || [];
 db.follows = db.follows || [];       // {followerId, followeeId, created}
 db.reactions = db.reactions || [];   // {userId, targetUid, workoutId, created} — one row = one like
 db.comments = db.comments || [];     // {id, userId, targetUid, workoutId, text, created}
-db.tasks = db.tasks || [];           // {id, name, desc, points, created} — admin-defined catalog
-db.taskCompletions = db.taskCompletions || [];  // {id, userId, taskId, points, date, created}
-const isAdmin = user => !!user && (user.admin === true || ADMIN_UIDS.includes(user.id));
+db.tasks = db.tasks || [];           // {id, name, desc, points, criteria: {type, n?, bp?}, created} — admin-defined catalog
+db.taskCompletions = db.taskCompletions || [];  // {id, userId, taskId, points, date, created} — awarded automatically, never self-reported
+db.cheatPenalties = db.cheatPenalties || [];    // {id, userId, workoutId, reasons, points, date, created}
+// A user can hold several employee types at once (e.g. both founder and admin), not one
+// flat role — employeeTypes is an array, filtered to the known set on every read so a
+// stale/tampered value in db.json can never grant something that isn't in EMPLOYEE_TYPES.
+const EMPLOYEE_TYPES = ['founder', 'admin'];
+const employeeTypesOf = user => Array.isArray(user?.employeeTypes) ? user.employeeTypes.filter(t => EMPLOYEE_TYPES.includes(t)) : [];
+const isAdmin = user => !!user && (employeeTypesOf(user).length > 0 || ADMIN_UIDS.includes(user.id));
 // The shape sent to the client for "who am I" — never the password hash/salt, just enough to
 // know what username to prefill when changing it.
-const publicUser = user => ({
-  id: user.id, name: user.name, admin: isAdmin(user), username: user.pwd?.username || null,
-  public: !!user.public, rank: rankFor(user.id), perks: perksFor(user.id),
-  bio: user.bio || '',
-  pinnedWorkoutIds: user.pinnedWorkoutIds || [], pinnedPR: user.pinnedPR || null,
-  email: user.email || null, emailVerified: !!user.emailVerified, phone: user.phone || null,
-});
+// No badge preference saved yet → default to showing rank (and prestige, once there is
+// any) in the first slots, matching what used to be shown unconditionally. Once someone
+// saves *any* selection (including clearing every slot) that explicit array wins forever.
+const defaultBadges = rank => ['rank', ...(rank.prestige > 0 ? ['prestige'] : [])];
+const badgesFor = (user, rank) => Array.isArray(user.badges) ? user.badges : defaultBadges(rank);
+
+const publicUser = user => {
+  const rank = rankFor(user.id);
+  return {
+    id: user.id, name: user.name, admin: isAdmin(user), employeeTypes: employeeTypesOf(user), username: user.pwd?.username || null,
+    public: !!user.public, rank, perks: perksFor(user.id),
+    bio: user.bio || '',
+    badges: badgesFor(user, rank),
+    pinnedWorkoutIds: user.pinnedWorkoutIds || [], pinnedPR: user.pinnedPR || null,
+    email: user.email || null, emailVerified: !!user.emailVerified, phone: user.phone || null,
+  };
+};
 // A user's social presence to OTHER users — never leaks the auth-only fields above.
 // Perks ride along here too: they're cosmetic flair, meant to be seen by other people
 // (a legend frame, an animated name) — nothing sensitive about them.
 const socialUser = user => ({
   id: user.id, name: user.name, perks: perksFor(user.id),
-  bio: user.bio || '',
+  bio: user.bio || '', badges: badgesFor(user, rankFor(user.id)),
   pinnedWorkoutIds: user.pinnedWorkoutIds || [], pinnedPR: user.pinnedPR || null,
 });
 // Shared by GET /api/social/comments and the POST /api/social/comment response, so the
-// field list (and the author's commentHighlight perk) only lives in one place.
+// field list only lives in one place.
 const publicComment = c => ({
   id: c.id, userId: c.userId, name: (db.users.find(u => u.id === c.userId) || {}).name || '?',
-  text: c.text, created: c.created, commentHighlight: perksFor(c.userId).commentHighlight,
+  text: c.text, created: c.created,
 });
 function saveDb() { atomicWrite(dbFile, JSON.stringify(db, null, 2)); }
 function atomicWrite(file, content) {
@@ -515,58 +538,288 @@ function levelFromXp(xp) {
   for (let L = 2; L <= 100; L++) { if (xp >= LEVEL_CUM[L - 1]) lvl = L; else break; }
   return lvl;
 }
-const WORKOUT_XP = 25, PR_XP = 15, GOAL_XP = 150;
+const PR_XP = 15, GOAL_XP = 150;
+// A workout's XP scales with what was actually done, not just that it happened — sets and
+// exercises are the load-independent baseline (rewards showing up and covering the body, and
+// keeps a bodyweight-only session from scoring near zero just because it has no weight to its
+// name), volume is the intensity layer on top. sqrt on volume, not linear: 4x the volume is 2x
+// the XP, so one monster deadlift set can't dwarf the rest of a balanced session, and there's
+// no reward for inflating a single number over training more. Constants are tuned so a
+// solid, unremarkable session (~4 exercises, ~12 sets, moderate load) lands close to the old
+// flat 25 XP/workout the level curve (XP_FOR_LEVEL below) was paced around — a token
+// single-set "workout" now earns much less, a genuinely big or heavy one notably more.
+const XP_PER_SET = 1, XP_PER_EXERCISE = 2, XP_PER_SQRT_1000_VOL = 2;
+function workoutXp(w) {
+  const entries = w?.entries || [];
+  let sets = 0;
+  const exercises = new Set();
+  entries.forEach(e => {
+    const done = (e.sets || []).filter(s => s?.done).length;
+    if (done > 0) exercises.add(e.id);
+    sets += done;
+  });
+  // Prefer the volume already stored on the finished workout (workoutVolume(), computed
+  // client-side the same way prs is below) — recomputing here is just the fallback for a
+  // record from before `vol` was persisted.
+  const vol = typeof w?.vol === 'number' ? w.vol
+    : entries.reduce((n, e) => n + (e.sets || []).reduce((m, s) => m + (s?.done ? (s.w || 0) * (s.r || 0) : 0), 0), 0);
+  const volumeXp = Math.round(XP_PER_SQRT_1000_VOL * Math.sqrt(Math.max(0, vol) / 1000));
+  return sets * XP_PER_SET + exercises.size * XP_PER_EXERCISE + volumeXp;
+}
+// --- anti-cheat -----------------------------------------------------------------------
+// Rank perks now include a real payoff (subscriptionDiscount, Prestige 5/10), so a
+// fabricated workout isn't just a harmless vanity number any more — it's worth actually
+// defending against, not merely nudging (setLooksOff, frontend/src/lib/history.js, is the
+// same idea but a dismissible UI hint; a client can just not show it). This runs
+// server-side, on the data actually being written, where a client can't opt out.
+const CHEAT_MAX_WEIGHT = { kg: 500, lb: 1100 };   // beyond any recorded human lift, any exercise
+const CHEAT_MAX_REPS = 100;                       // in one set, regardless of exercise
+const CHEAT_MAX_DURATION_MS = 8 * 3600 * 1000;    // longer than this in one sitting isn't training
+const CHEAT_MAX_LEVELS = 5;                       // hardest a single workout can ever dock
+
+// The detection table — this is the thing to extend when a new cheat pattern turns up, not
+// scanForCheating below. Each row's check(w, ctx) returns a severity RATIO: how far past its
+// own threshold this workout is (1.0 = right at the line, 20 = 20x over), or 0/falsy if this
+// row doesn't apply. severityTier() turns that ratio into a 1-5 level docking, so grading a new
+// rule is just "how far past the limit is bad" — no separate penalty math to write. `ctx` is
+// built once per workout (computeCtx below) with the facts most rules need, so a new row
+// usually only needs to read from it, not recompute anything.
+//
+// No pace-of-sets rule on purpose: a short real session (or a quick admin/QA pass through the
+// app) looks identical to it — "N sets in not much wall-clock time" — and there's no threshold
+// that catches fabricated speed without also catching an ordinary quick workout.
+const CHEAT_RULES = [
+  { id: 'weight', label: 'Weight beyond any recorded human lift', check: (w, ctx) => ctx.maxWeight / ctx.maxWeightAllowed },
+  { id: 'reps', label: 'More reps in one set than physically possible', check: (w, ctx) => ctx.maxReps / CHEAT_MAX_REPS },
+  { id: 'prs', label: 'More new records claimed than exercises actually trained', check: (w, ctx) => ctx.exCount > 0 ? (w.prs?.length || 0) / ctx.exCount : ((w.prs?.length || 0) > 0 ? CHEAT_MAX_LEVELS : 0) },
+  { id: 'timing', label: 'Missing or nonsensical start/end time', check: (w, ctx) => ctx.badTiming ? CHEAT_MAX_LEVELS : 0 },
+  { id: 'duration', label: 'Session longer than a real workout', check: (w, ctx) => ctx.badTiming ? 0 : ctx.durationMs / CHEAT_MAX_DURATION_MS },
+  { id: 'overlap', label: 'Overlaps another logged session for the same account', check: (w, ctx) => ctx.overlapsAnother ? 3 : 0 },
+];
+// Ratio → levels docked. Deliberately generous — 1.0-1.2x over a limit is "worth a second
+// look" (tier 1), not "definitely cheating" (tier 5 needs a full order of magnitude over).
+// A genuine elite lift, a long honest session, or a real string of PRs must never clear even
+// tier 1 — every CHEAT_* threshold above already has that headroom built in.
+function severityTier(ratio) {
+  if (!(ratio > 1)) return 0;
+  if (ratio >= 20) return 5;
+  if (ratio >= 5) return 4;
+  if (ratio >= 2) return 3;
+  if (ratio >= 1.2) return 2;
+  return 1;
+}
+function cheatCtxFor(w, unit, allWorkouts) {
+  const entries = w?.entries || [];
+  let sets = 0, maxWeight = 0, maxReps = 0;
+  const exSeen = new Set();
+  entries.forEach(e => (e.sets || []).forEach(s => {
+    if (!s?.done) return;
+    sets++;
+    exSeen.add(e.id);
+    maxWeight = Math.max(maxWeight, Number(s.w) || 0);
+    maxReps = Math.max(maxReps, Number(s.r) || 0);
+  }));
+  const start = Number(w?.start), end = Number(w?.end);
+  const durationMs = end - start;
+  const badTiming = !(start > 0) || !(end > 0) || durationMs <= 0;
+  const overlapsAnother = !badTiming && allWorkouts.some(o => o !== w && o.id !== w.id && Number(o.start) > 0 && Number(o.end) > 0 && start < Number(o.end) && Number(o.start) < end);
+  return { sets, exCount: exSeen.size, maxWeight, maxReps, maxWeightAllowed: CHEAT_MAX_WEIGHT[unit] || CHEAT_MAX_WEIGHT.kg, start, end, durationMs, badTiming, overlapsAnother };
+}
+// Every rule's finding for one workout, worst-first. A workout's overall penalty is its single
+// worst finding, not the sum of all of them — five mild oddities together aren't the same
+// judgment as one blatant one, and summing would make stacking unrelated near-misses punish
+// harder than a lone unmistakable violation.
+function cheatFindingsFor(w, unit, allWorkouts) {
+  const ctx = cheatCtxFor(w, unit, allWorkouts);
+  return CHEAT_RULES
+    .map(rule => ({ id: rule.id, label: rule.label, ratio: rule.check(w, ctx) || 0 }))
+    .filter(f => f.ratio > 1)
+    .map(f => ({ ...f, levels: severityTier(f.ratio) }))
+    .sort((a, b) => b.levels - a.levels);
+}
+// Scans everything currently stored (cheap at self-hosted scale, and it means a workout
+// logged before this existed still gets caught on the next save) but only ever penalizes a
+// given workoutId once. Called from PUT /api/data, after the write it's scoring.
+function scanForCheating(req, user, state) {
+  const workouts = state.workouts || [];
+  if (!workouts.length) return;
+  const already = new Set(db.cheatPenalties.filter(c => c.userId === user.id).map(c => c.workoutId));
+  const unit = state.unit || 'kg';
+  const today = isoOf(new Date());
+  let flaggedMsgs = [];
+  workouts.forEach(w => {
+    if (!w?.id || already.has(w.id)) return;
+    const findings = cheatFindingsFor(w, unit, workouts);
+    if (!findings.length) return;
+    const levels = Math.min(CHEAT_MAX_LEVELS, findings[0].levels);
+    // Snapshotted once, right before this penalty lands — not recomputed later — so the
+    // reveal's countdown always starts from exactly where the account really stood the moment
+    // it got caught, not wherever XP happens to sit whenever the animation finally plays.
+    const before = rankFor(user.id);
+    db.cheatPenalties.push({
+      id: crypto.randomBytes(8).toString('base64url'), userId: user.id, workoutId: w.id,
+      findings, levels, date: today, created: new Date().toISOString(),
+      status: 'active',   // 'active' | 'appealed' | 'upheld' | 'overturned'
+      appeal: null,        // { message, created } once the account holder disputes it
+      seen: false,          // flips true once the "caught you" reveal has actually played
+      beforeLevel: before.level, beforeXpInLevel: before.xpInLevel, beforeXpForLevel: before.xpForLevel,
+    });
+    flaggedMsgs.push(w.id + ':' + findings.map(f => f.id).join(',') + '=' + levels + 'lvl');
+  });
+  if (flaggedMsgs.length) {
+    saveDb();
+    audit(req, 'anticheat.flag', { user, msg: flaggedMsgs.join(' | ').slice(0, 120) });
+  }
+}
+
+// A task's catalog entry is still admin-authored text (name/desc/points), but whether it's
+// DONE is never self-reported any more — it's graded against the day's real workout data,
+// same trust model as CHEAT_RULES above. bp is one of the ten raw EXDB body-part keys; the
+// backend has no copy of the exercise catalog, so entries carry their own bp at finish time
+// (see finish-workout.js's bpFor) rather than the server resolving id → body part itself.
+const TASK_CRITERIA_TYPES = ['finish_workout', 'sets', 'minutes', 'body_part'];
+const TASK_BODY_PARTS = ['back', 'cardio', 'chest', 'lower arms', 'lower legs', 'neck', 'shoulders', 'upper arms', 'upper legs', 'waist'];
+function taskCriteriaMet(criteria, dayWorkouts) {
+  if (!criteria || !TASK_CRITERIA_TYPES.includes(criteria.type)) return false;
+  switch (criteria.type) {
+    case 'finish_workout':
+      return true; // dayWorkouts is already non-empty by the time this is checked
+    case 'sets': {
+      const sets = dayWorkouts.reduce((n, w) => n + (w.entries || []).reduce((m, e) => m + (e.sets || []).filter(s => s?.done).length, 0), 0);
+      return sets >= Math.max(1, +criteria.n || 1);
+    }
+    case 'minutes': {
+      const ms = dayWorkouts.reduce((n, w) => {
+        const start = Number(w.start), end = Number(w.end);
+        return n + (start > 0 && end > start ? end - start : 0);
+      }, 0);
+      return ms >= Math.max(1, +criteria.n || 1) * 60000;
+    }
+    case 'body_part':
+      return dayWorkouts.some(w => (w.entries || []).some(e => e.bp === criteria.bp && (e.sets || []).some(s => s?.done)));
+    default:
+      return false;
+  }
+}
+// Mirrors scanForCheating: scans what's already stored, dedupes on (userId, taskId, date) via
+// db.taskCompletions itself, called from PUT /api/data right after the write.
+function scanForTasks(req, user, state) {
+  if (!db.tasks.length) return;
+  const today = isoOf(new Date());
+  const dayWorkouts = (state.workouts || []).filter(w => w?.d === today);
+  if (!dayWorkouts.length) return;
+  const already = new Set(db.taskCompletions.filter(c => c.userId === user.id && c.date === today).map(c => c.taskId));
+  const awarded = [];
+  db.tasks.forEach(task => {
+    if (already.has(task.id) || !taskCriteriaMet(task.criteria, dayWorkouts)) return;
+    db.taskCompletions.push({ id: crypto.randomBytes(8).toString('base64url'), userId: user.id, taskId: task.id, points: task.points, date: today, created: new Date().toISOString() });
+    awarded.push(task.name);
+  });
+  if (awarded.length) {
+    saveDb();
+    audit(req, 'task.auto_complete', { user, msg: awarded.join(', ').slice(0, 120) });
+  }
+}
 // Deliberately computed fresh from what's already stored (workout count, PRs, the
 // bodyweight-goal check Home.jsx itself uses) rather than kept as a mutable counter —
 // same reasoning as statsFor/feedItemsFor: nothing to desync, nothing to migrate.
-// Only task completions are their own stored fact, since those are a real one-time
-// server-side action (a claim), not something re-derivable from workout history.
+// Only task completions and cheat penalties are their own stored fact, since those are real
+// one-time server-side actions (a claim; a ruling), not re-derivable from workout history.
+// Raw, un-docked total — anti-cheat penalties are applied in rankFor below, against the
+// level actually on screen, not against a number nobody's account is ever measured by.
 function xpFor(uid) {
   const S = readState(uid);
   const workouts = S?.workouts || [];
-  let xp = workouts.length * WORKOUT_XP;
+  let xp = workouts.reduce((n, w) => n + workoutXp(w), 0);
   xp += workouts.reduce((n, w) => n + (w.prs?.length || 0), 0) * PR_XP;
   const bw = S?.bodyweight?.length ? S.bodyweight[S.bodyweight.length - 1] : null;
   if (S?.targetW && bw && Math.abs(S.targetW - bw.w) < 0.05) xp += GOAL_XP;
   xp += db.taskCompletions.filter(c => c.userId === uid).reduce((n, c) => n + c.points, 0);
-  return xp;
+  return Math.max(0, xp);
 }
-// One full 1→100 climb's worth of XP. Crossing it rolls over automatically — level
-// resets to 1, prestige +1 — the same shape as CoD's prestige without a separate
-// "reset me" action to build: totalXp only ever grows, so this is just where in that
-// growth you currently are, recomputed fresh every time like the rest of rankFor.
+// One full 1→100 climb's worth of XP. Crossing it does NOT roll over on its own — prestige is
+// a confirmed action (POST /api/prestige), not automatic math, so it's tracked with two real
+// stored fields rather than something purely derived like the rest of this file:
+// prestigeConfirmed (the count, for display) and prestigeBaselineXp (the totalXp snapshot the
+// current cycle counts up from). Confirming re-snapshots the baseline to totalXp *at that
+// moment* — not baseline + CYCLE_XP — so any XP earned past the cap is spent on the prestige,
+// not carried into the new cycle; the new cycle always starts at exactly level 1, 0 XP, however
+// far past the cap you'd let it run. Level caps at 100 (Legend, ring full) once a whole cycle
+// has been earned past that baseline — readyToPrestige flips on, and stays on, until claimed.
 const CYCLE_XP = LEVEL_CUM[100];
 function rankFor(uid) {
   const totalXp = xpFor(uid);
-  const prestige = Math.floor(totalXp / CYCLE_XP);
-  const xp = totalXp - prestige * CYCLE_XP;
-  const level = levelFromXp(xp);
+  const user = db.users.find(u => u.id === uid);
+  const prestige = user?.prestigeConfirmed || 0;
+  const baseline = user?.prestigeBaselineXp || 0;
+  const xpInCycle = Math.max(0, totalXp - baseline);
+  const rawLevel = xpInCycle >= CYCLE_XP ? 100 : levelFromXp(xpInCycle);
+
+  // A penalty docks LEVELS, not a flat XP number, so "5 levels" means the same thing whether
+  // it lands on someone at level 3 or level 80 — applied against the level actually on screen
+  // (this cycle's, post-prestige-baseline), clamped at 1: someone already at the floor has
+  // nothing further to fall, no matter how many levels a penalty claims. Upheld penalties don't
+  // compound with themselves on every later save because this reads the level fresh each time,
+  // never a number an earlier penalty already reduced. Overturned penalties are excluded.
+  // Docking a level off the cap costs readyToPrestige too — a flagged account isn't "ready"
+  // just because the raw XP behind that cap was still there.
+  const levelsDocked = db.cheatPenalties.filter(c => c.userId === uid && c.status !== 'overturned').reduce((n, c) => n + c.levels, 0);
+  const level = Math.max(1, rawLevel - levelsDocked);
+  const readyToPrestige = level === 100;
+  // Docked accounts always sit at the exact floor of their level (the fractional progress
+  // within it is part of what got taken) — otherwise, the real xpInCycle position stands.
+  const xp = levelsDocked > 0 ? LEVEL_CUM[level - 1] : (readyToPrestige ? LEVEL_CUM[100] : xpInCycle);
+
   const floor = LEVEL_CUM[level - 1], ceil = LEVEL_CUM[level] ?? floor;
-  return { level, prestige, xp, xpInLevel: xp - floor, xpForLevel: ceil - floor, totalXp };
+  return { level, prestige, xp, xpInLevel: xp - floor, xpForLevel: ceil - floor, totalXp, readyToPrestige };
 }
+// One-time migration for penalties created before beforeLevel/beforeXpInLevel/beforeXpForLevel
+// existed (see scanForCheating above): replays each user's penalties in creation order,
+// recomputing what rankFor would have returned with only the earlier ones already applied —
+// the same snapshot a freshly-created penalty gets live, just reconstructed after the fact.
+(function backfillCheatPenaltySnapshots() {
+  const original = db.cheatPenalties;
+  const missing = original.filter(p => p.beforeLevel === undefined);
+  if (!missing.length) return;
+  const byUser = new Map();
+  for (const p of missing) {
+    if (!byUser.has(p.userId)) byUser.set(p.userId, []);
+    byUser.get(p.userId).push(p);
+  }
+  for (const [uid, list] of byUser) {
+    list.sort((a, b) => new Date(a.created) - new Date(b.created));
+    for (const p of list) {
+      const appliedIds = new Set(original.filter(c => c.userId === uid && new Date(c.created) < new Date(p.created)).map(c => c.id));
+      db.cheatPenalties = original.filter(c => c.userId !== uid || appliedIds.has(c.id));
+      const before = rankFor(uid);
+      p.beforeLevel = before.level;
+      p.beforeXpInLevel = before.xpInLevel;
+      p.beforeXpForLevel = before.xpForLevel;
+    }
+  }
+  db.cheatPenalties = original;
+  saveDb();
+  console.log(`[anticheat] backfilled beforeLevel snapshot for ${missing.length} legacy penalt${missing.length === 1 ? 'y' : 'ies'}`);
+})();
 // Perks per rank tier / prestige level — computed fresh from rankFor, same "nothing to
 // desync" reasoning as the rest of this section. Rank perks use `level` directly, so
 // they reset along with the tier display whenever a prestige rolls level back to 1;
 // prestige perks use `prestige`, which only ever grows, so they're permanent.
-// Gold (level 31) and Prestige 1 used to gate a custom badge-ring color — that perk was
-// pulled to be redefined, so those two tiers currently grant nothing extra of their own.
+//
+// Most decorative flair (crown, avatar frame, animated name, badge pulse, border-beam,
+// veteran badge) was pulled for the alpha launch — unpolished, going back in progressively
+// later, not gone for good. Bio is ungated in the meantime (was Silver/level 21) so a
+// fresh alpha account isn't staring at a locked field on day one. The Prestige-8 exclusive
+// theme (appTheme) stayed real — it's a genuine reward, not launch-blocking polish.
 function perksFor(uid) {
   const { level, prestige } = rankFor(uid);
   return {
     pinFavoritePR: level >= 11,   // Bronze
-    bio: level >= 21,             // Silver
-    animatedBadge: level >= 41,   // Platinum
+    bio: true,
     maxPhotos: prestige >= 6 ? 8 : (level >= 51 ? 6 : 4),   // Diamond / Prestige 6
     pinnedMax: (level >= 61 ? 1 : 0) + (level >= 81 ? 1 : 0) + (prestige >= 3 ? 1 : 0),   // Master + Elite + Prestige 3
-    borderBeam: level >= 71,      // Champion
-    legendFrame: level >= 91,     // Legend
-    crownBadge: prestige >= 2,
-    commentHighlight: prestige >= 4,
-    avatarFrame: prestige >= 5,
-    animatedName: prestige >= 7,
-    appTheme: prestige >= 8,
-    veteranBadge: prestige >= 9,
     subscriptionDiscount: prestige >= 10 ? 50 : (prestige >= 5 ? 25 : 0),
+    appTheme: prestige >= 8,   // Prestige 8 — exclusive app-wide color theme
   };
 }
 // Re-checked on every read, never cached from follow time — a user going private must
@@ -611,11 +864,28 @@ const routes = {
   'GET /api/health': async (req, res) => json(res, 200, { ok: true, users: db.users.length }),
 
   // Public config the login screen needs before anyone is signed in.
-  'GET /api/config': async (req, res) => json(res, 200, { invite_only: INVITE_ONLY, allow_guest: ALLOW_GUEST }),
+  'GET /api/config': async (req, res) => json(res, 200, { invite_only: INVITE_ONLY, allow_guest: ALLOW_GUEST, allow_register: ALLOW_REGISTER }),
 
   'GET /api/me': async (req, res) => {
     const user = readSession(req);
     if (!user) return json(res, 401, { error: 'not signed in' });
+    json(res, 200, { user: publicUser(user) });
+  },
+
+  // The account holder's own "upgrade mastery" action — level 100 caps and waits (rankFor's
+  // readyToPrestige) rather than rolling over by itself, so this is the only thing that ever
+  // bumps prestigeConfirmed. Re-checks readiness server-side (never trust a stale client flag);
+  // if a second cycle is already sitting there too, rankFor flips readyToPrestige straight back
+  // on for the next call, so repeated clicks walk through pending cycles one at a time.
+  'POST /api/prestige': async (req, res) => {
+    const user = readSession(req);
+    if (!user) return json(res, 401, { error: 'not signed in' });
+    const rank = rankFor(user.id);
+    if (!rank.readyToPrestige) return json(res, 400, { error: 'not ready to prestige' });
+    user.prestigeConfirmed = rank.prestige + 1;
+    user.prestigeBaselineXp = rank.totalXp;   // spends whatever was earned, surplus included
+    saveDb();
+    audit(req, 'prestige.confirm', { user, msg: 'prestige ' + user.prestigeConfirmed });
     json(res, 200, { user: publicUser(user) });
   },
 
@@ -628,14 +898,15 @@ const routes = {
     if (username.length < 3) return json(res, 400, { error: 'username must be at least 3 characters' });
     if (password.length < 8) return json(res, 400, { error: 'password must be at least 8 characters' });
     if (findByUsername(username)) return json(res, 409, { error: 'that username is taken' });
+    // A valid, unused invite code is a door of its own — it lets someone in even while
+    // ALLOW_REGISTER is off, same as it always has under INVITE_ONLY. One code, one account:
+    // usedBy is set the moment it's spent, so a second attempt with the same code fails here.
     const code = String(body.code || '').trim().toUpperCase();
-    let invite = null;
-    if (INVITE_ONLY) {
-      invite = db.invites.find(i => i.code === code && !i.usedBy && !i.revoked);
-      if (!invite) {
-        audit(req, 'auth.register.denied', { ok: false, name, msg: 'invite-rejected' });
-        return json(res, 403, { error: 'a valid invite code is required' });
-      }
+    const invite = code ? db.invites.find(i => i.code === code && !i.usedBy && !i.revoked) : null;
+    if (!ALLOW_REGISTER && !invite) return json(res, 403, { error: 'registration is closed on this instance — a valid invite code is required' });
+    if (INVITE_ONLY && !invite) {
+      audit(req, 'auth.register.denied', { ok: false, name, msg: 'invite-rejected' });
+      return json(res, 403, { error: 'a valid invite code is required' });
     }
     const user = { id: crypto.randomBytes(12).toString('base64url'), name, created: new Date().toISOString() };
     user.pwd = { username, ...hashPassword(password) };
@@ -682,6 +953,33 @@ const routes = {
     user.phone = phone || null;
     saveDb();
     audit(req, 'account.phone.set', { user });
+    json(res, 200, { user: publicUser(user) });
+  },
+
+  // Up to 3 showcase badges, chosen from whatever's actually earned right now — re-checked
+  // here rather than trusted from the client, same as every other perk gate in this file.
+  // A milestone you later fall below (there aren't any that can regress today, but a future
+  // one might) simply can't be re-selected; already-saved picks aren't retroactively pulled.
+  // Only two badge types exist today — your rank tier and your prestige medal, the two
+  // things that used to be shown unconditionally above this. They're not "earned or not"
+  // like a real achievement would be: rank always qualifies, prestige only once you have
+  // any. `picked` is positional (index = slot), nulls are empty slots, not compacted away
+  // — otherwise a badge placed in slot 3 alone would silently jump to slot 1 on reload.
+  'POST /api/account/badges': async (req, res) => {
+    const user = readSession(req);
+    if (!user) return json(res, 401, { error: 'not signed in' });
+    const body = await readBody(req);
+    const picked = (Array.isArray(body.badges) ? body.badges : []).slice(0, 3);
+    const rank = rankFor(user.id);
+    const allowed = new Set(['rank', ...(rank.prestige > 0 ? ['prestige'] : [])]);
+    const filled = picked.filter(Boolean);
+    if (filled.some(id => !allowed.has(id)) || new Set(filled).size !== filled.length) {
+      return json(res, 400, { error: 'invalid badge selection' });
+    }
+    while (picked.length < 3) picked.push(null);
+    user.badges = picked;
+    saveDb();
+    audit(req, 'account.badges.set', { user, msg: filled.join(',') || 'none' });
     json(res, 200, { user: publicUser(user) });
   },
 
@@ -842,7 +1140,54 @@ div{max-width:360px}h1{font-size:20px;margin:0 0 8px}p{color:#9db8a8;line-height
     if (!body.state || typeof body.state !== 'object') return json(res, 400, { error: 'state required' });
     delete body.state.active;              // in-progress workouts stay device-local
     atomicWrite(stateFile(user.id), JSON.stringify(body.state));
+    scanForCheating(req, user, body.state);
+    scanForTasks(req, user, body.state);
     json(res, 200, { ok: true, ts: body.state._ts || null });
+  },
+
+  // Algorithmic calls are wrong sometimes — a heavy-but-real PR, a session that ran past
+  // midnight and looks like it overlaps another. This is the account holder's own review
+  // request on a penalty already on their account (see /api/admin/anticheat/review for the
+  // admin side that actually rules on it); it doesn't lift the penalty by itself.
+  'GET /api/anticheat/status': async (req, res) => {
+    const user = readSession(req);
+    if (!user) return json(res, 401, { error: 'not signed in' });
+    const mine = db.cheatPenalties.filter(c => c.userId === user.id)
+      .map(c => ({
+        id: c.id, workoutId: c.workoutId, findings: c.findings, levels: c.levels, status: c.status, appeal: c.appeal, date: c.date, seen: c.seen !== false,
+        beforeLevel: c.beforeLevel, beforeXpInLevel: c.beforeXpInLevel, beforeXpForLevel: c.beforeXpForLevel,
+      }));
+    json(res, 200, { penalties: mine });
+  },
+  // The one-time "we caught you" reveal calls this right after it plays, so it never plays
+  // twice for the same penalty (a re-render, a reload mid-animation, a second device).
+  'POST /api/anticheat/ack': async (req, res) => {
+    const user = readSession(req);
+    if (!user) return json(res, 401, { error: 'not signed in' });
+    const body = await readBody(req);
+    const c = db.cheatPenalties.find(x => x.id === body.id && x.userId === user.id);
+    if (!c) return json(res, 404, { error: 'no such penalty' });
+    c.seen = true;
+    saveDb();
+    json(res, 200, { ok: true });
+  },
+  'POST /api/anticheat/appeal': async (req, res) => {
+    const user = readSession(req);
+    if (!user) return json(res, 401, { error: 'not signed in' });
+    const body = await readBody(req);
+    const c = db.cheatPenalties.find(x => x.id === body.id && x.userId === user.id);
+    if (!c) return json(res, 404, { error: 'no such penalty' });
+    // Only a fresh, never-touched penalty can be appealed. Once it's under review it can't be
+    // appealed again on top (there's already one pending), and once an admin has actually ruled
+    // — upheld or overturned, either way — that ruling is final, not just the overturn case.
+    if (c.status !== 'active') return json(res, 400, { error: 'not appealable' });
+    const message = String(body.message || '').trim().slice(0, 500);
+    if (!message) return json(res, 400, { error: 'message required' });
+    c.status = 'appealed';
+    c.appeal = { message, created: new Date().toISOString() };
+    saveDb();
+    audit(req, 'anticheat.appeal', { user, msg: c.workoutId });
+    json(res, 200, { ok: true });
   },
 
   'GET /api/push/public-key': async (req, res) => json(res, 200, { key: vapid.publicKey }),
@@ -918,8 +1263,8 @@ div{max-width:360px}h1{font-size:20px;margin:0 0 8px}p{color:#9db8a8;line-height
       const workouts = S.workouts || [];
       const last = workouts[workouts.length - 1];
       return {
-        id: u.id, name: u.name, created: u.created || null,
-        disabled: !!u.disabled, admin: isAdmin(u), invitedBy: u.invitedBy || null,
+        id: u.id, name: u.name, username: u.pwd?.username || null, created: u.created || null,
+        disabled: !!u.disabled, admin: isAdmin(u), employeeTypes: employeeTypesOf(u), invitedBy: u.invitedBy || null,
         workouts: workouts.length,
         lastWorkout: last ? last.d : null,
         lastSync: S._ts || null,
@@ -938,7 +1283,7 @@ div{max-width:360px}h1{font-size:20px;margin:0 0 8px}p{color:#9db8a8;line-height
     if (!u) return json(res, 404, { error: 'no such user' });
     const S = readState(u.id) || {};
     json(res, 200, {
-      user: { id: u.id, name: u.name, created: u.created || null, disabled: !!u.disabled, admin: isAdmin(u), invitedBy: u.invitedBy || null },
+      user: { id: u.id, name: u.name, created: u.created || null, disabled: !!u.disabled, admin: isAdmin(u), employeeTypes: employeeTypesOf(u), invitedBy: u.invitedBy || null },
       unit: S.unit || 'kg',
       lastSync: S._ts || null,
       routines: (S.routines || []).map(r => ({ id: r.id, name: r.name, emoji: r.emoji, count: (r.ex || []).length })),
@@ -958,6 +1303,42 @@ div{max-width:360px}h1{font-size:20px;margin:0 0 8px}p{color:#9db8a8;line-height
     saveDb();
     audit(req, u.disabled ? 'admin.user.disable' : 'admin.user.enable', { user: admin, target: u });
     json(res, 200, { ok: true, id: u.id, disabled: u.disabled });
+  },
+
+  // A user can hold several employee types at once (founder, admin) — this replaces the
+  // whole set rather than toggling one, so the client always sends the full list it wants.
+  'POST /api/admin/user/employee-types': async (req, res) => {
+    const admin = requireAdmin(req, res); if (!admin) return;
+    const body = await readBody(req);
+    const u = db.users.find(x => x.id === body.id);
+    if (!u) return json(res, 404, { error: 'no such user' });
+    const types = Array.isArray(body.employeeTypes) ? body.employeeTypes : [];
+    const invalid = types.some(t => !EMPLOYEE_TYPES.includes(t));
+    if (invalid) return json(res, 400, { error: 'unknown employee type' });
+    u.employeeTypes = [...new Set(types)];
+    saveDb();
+    audit(req, 'admin.user.employee_types', { user: admin, target: u, msg: u.employeeTypes.join(',') || '(none)' });
+    json(res, 200, { ok: true, id: u.id, employeeTypes: u.employeeTypes });
+  },
+
+  // The one door left once ALLOW_REGISTER is off: same validation as POST /api/register, but
+  // admin-gated instead of ALLOW_REGISTER/invite-gated, and it never signs the new account in.
+  'POST /api/admin/user/create': async (req, res) => {
+    const admin = requireAdmin(req, res); if (!admin) return;
+    const body = await readBody(req);
+    const name = String(body.name || '').trim().slice(0, 40);
+    const username = String(body.username || '').trim();
+    const password = String(body.password || '');
+    if (!name) return json(res, 400, { error: 'name required' });
+    if (username.length < 3) return json(res, 400, { error: 'username must be at least 3 characters' });
+    if (password.length < 8) return json(res, 400, { error: 'password must be at least 8 characters' });
+    if (findByUsername(username)) return json(res, 409, { error: 'that username is taken' });
+    const user = { id: crypto.randomBytes(12).toString('base64url'), name, created: new Date().toISOString() };
+    user.pwd = { username, ...hashPassword(password) };
+    db.users.push(user);
+    saveDb();
+    audit(req, 'admin.user.create', { user: admin, target: user });
+    json(res, 200, { user: publicUser(user) });
   },
 
   'GET /api/admin/invites': async (req, res) => {
@@ -1033,12 +1414,39 @@ div{max-width:360px}h1{font-size:20px;margin:0 0 8px}p{color:#9db8a8;line-height
     json(res, 200, { ok: true });
   },
 
+  /* ---------- anti-cheat review ---------- */
+  // Every algorithmic penalty on every account, newest first — appealed ones are what an
+  // operator actually needs to act on, but upheld/overturned stay listed too so a ruling is
+  // never silently unrecoverable from the UI.
+  'GET /api/admin/anticheat': async (req, res) => {
+    if (!requireAdmin(req, res)) return;
+    const rows = [...db.cheatPenalties].reverse().map(c => ({ ...c, userName: (db.users.find(u => u.id === c.userId) || {}).name || null }));
+    json(res, 200, { penalties: rows });
+  },
+  // The actual ruling on a review request. Overturning drops it from xpFor() on the very next
+  // read (nothing else to recompute); upholding just records that a human looked and agreed —
+  // either way the account holder's appeal message stays on the record.
+  'POST /api/admin/anticheat/review': async (req, res) => {
+    const admin = requireAdmin(req, res); if (!admin) return;
+    const body = await readBody(req);
+    const c = db.cheatPenalties.find(x => x.id === body.id);
+    if (!c) return json(res, 404, { error: 'no such penalty' });
+    if (!['uphold', 'overturn'].includes(body.decision)) return json(res, 400, { error: 'invalid decision' });
+    c.status = body.decision === 'overturn' ? 'overturned' : 'upheld';
+    c.reviewedBy = admin.id;
+    c.reviewedAt = new Date().toISOString();
+    saveDb();
+    audit(req, 'admin.anticheat.review', { user: admin, msg: c.workoutId + ':' + c.status });
+    json(res, 200, { ok: true, status: c.status });
+  },
+
   /* ---------- daily tasks (XP) ---------- */
-  // The catalog is entirely admin-authored: name, description, points, nothing the app
-  // tries to verify — same trust model as the rest of a self-hosted instance's data.
+  // The catalog's copy (name/description/points) is admin-authored, but whether a task is
+  // DONE is graded server-side by scanForTasks against real workout data — there's no
+  // "mark complete" route any more, on purpose (see taskCriteriaMet above).
   'GET /api/admin/tasks': async (req, res) => {
     const admin = requireAdmin(req, res); if (!admin) return;
-    json(res, 200, { tasks: db.tasks });
+    json(res, 200, { tasks: db.tasks, bodyParts: TASK_BODY_PARTS });
   },
   'POST /api/admin/tasks': async (req, res) => {
     const admin = requireAdmin(req, res); if (!admin) return;
@@ -1046,8 +1454,21 @@ div{max-width:360px}h1{font-size:20px;margin:0 0 8px}p{color:#9db8a8;line-height
     const name = String(body.name || '').trim().slice(0, 60);
     const desc = String(body.desc || '').trim().slice(0, 200);
     const points = Math.max(1, Math.min(500, Math.round(+body.points || 0)));
-    if (!name || !points) return json(res, 400, { error: 'name and points required' });
-    const task = { id: crypto.randomBytes(6).toString('base64url'), name, desc, points, created: new Date().toISOString() };
+    const c = body.criteria || {};
+    const type = TASK_CRITERIA_TYPES.includes(c.type) ? c.type : null;
+    if (!name || !points || !type) return json(res, 400, { error: 'name, points and a valid criteria type are required' });
+    let criteria;
+    if (type === 'sets' || type === 'minutes') {
+      const n = Math.max(1, Math.round(+c.n || 0));
+      if (!n) return json(res, 400, { error: 'criteria.n must be a positive number' });
+      criteria = { type, n };
+    } else if (type === 'body_part') {
+      if (!TASK_BODY_PARTS.includes(c.bp)) return json(res, 400, { error: 'criteria.bp must be a valid body part' });
+      criteria = { type, bp: c.bp };
+    } else {
+      criteria = { type };
+    }
+    const task = { id: crypto.randomBytes(6).toString('base64url'), name, desc, points, criteria, created: new Date().toISOString() };
     db.tasks.push(task);
     saveDb();
     audit(req, 'admin.task.add', { user: admin, msg: name });
@@ -1065,28 +1486,14 @@ div{max-width:360px}h1{font-size:20px;margin:0 0 8px}p{color:#9db8a8;line-height
 
   // Today's catalog for the signed-in user, with per-task completion state. Completions
   // are per calendar day (server-local date), so the checklist clears itself overnight
-  // with no cron job — "today" is just a different string tomorrow.
+  // with no cron job — "today" is just a different string tomorrow. done is only ever
+  // set by scanForTasks (called from PUT /api/data) — this route is read-only.
   'GET /api/tasks/today': async (req, res) => {
     const me = readSession(req);
     if (!me) return json(res, 401, { error: 'not signed in' });
     const today = isoOf(new Date());
     const done = new Set(db.taskCompletions.filter(c => c.userId === me.id && c.date === today).map(c => c.taskId));
     json(res, 200, { tasks: db.tasks.map(t => ({ ...t, done: done.has(t.id) })) });
-  },
-  'POST /api/tasks/complete': async (req, res) => {
-    const me = readSession(req);
-    if (!me) return json(res, 401, { error: 'not signed in' });
-    const body = await readBody(req);
-    const task = db.tasks.find(t => t.id === body.taskId);
-    if (!task) return json(res, 404, { error: 'no such task' });
-    const today = isoOf(new Date());
-    const already = db.taskCompletions.some(c => c.userId === me.id && c.taskId === task.id && c.date === today);
-    if (!already) {
-      db.taskCompletions.push({ id: crypto.randomBytes(8).toString('base64url'), userId: me.id, taskId: task.id, points: task.points, date: today, created: new Date().toISOString() });
-      saveDb();
-      audit(req, 'task.complete', { user: me, msg: task.name });
-    }
-    json(res, 200, { ok: true, rank: rankFor(me.id) });
   },
 
   /* ---------- social ---------- */

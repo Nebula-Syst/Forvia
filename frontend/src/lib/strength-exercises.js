@@ -11,6 +11,7 @@ import { STRENGTH_FULL_MS, STRENGTH_HALF_LIFE_MS, STRENGTH_FLOOR, halfLifeDecay 
 import { musclesOf } from './muscles.js'
 import { EXIDX } from './exercises.js'
 import { isWarmupRow } from './workout-model.js'
+import { nameFor } from './i18n-core.js'
 
 const round1 = value => Math.round(value * 10) / 10
 
@@ -65,7 +66,7 @@ function exerciseName(entry) {
   // Imported history often has no name snapshot (entries are { id, sets, topW }) - the
   // catalogue (or the registered custom) is the canonical name source.
   const ex = entry && typeof entry === 'object' ? EXIDX[entry.id] : null
-  if (ex?.n) return ex.n
+  if (ex?.n) return nameFor(ex)
   if (entry?.muscleSnapshot?.n) return entry.muscleSnapshot.n
   return entry && typeof entry === 'object' && entry.n ? entry.n : null
 }

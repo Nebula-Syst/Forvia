@@ -1,7 +1,9 @@
+import { useEffect } from 'react'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { useStore } from '../store/useStore.js'
 import { t } from '../lib/i18n.js'
 import { DEMO, REPO } from '../lib/demo.js'
-import { guestAllowed } from '../lib/guest.js'
+import { guestAllowed, registerAllowed } from '../lib/guest.js'
 import { passwordLoginSheet, passwordRegisterSheet } from '../sheets.jsx'
 import Icon from '../components/Icon.jsx'
 import { Button } from '../components/ui.jsx'
@@ -10,6 +12,18 @@ export default function Login() {
   const { setGuest } = useStore()
   const config = useStore(s => s.config)
   const canGuest = guestAllowed(config)
+  const canRegister = registerAllowed(config)
+  const loc = useLocation()
+  const nav = useNavigate()
+  // A shared invite link (Admin panel → Users → Invite codes) is /#/join/<code> — land here,
+  // open straight to the register form with the code already filled in, then clear the hash
+  // so a refresh mid-signup doesn't reopen it with a code that may already be spent.
+  const joinCode = loc.pathname.startsWith('/join/') ? decodeURIComponent(loc.pathname.slice('/join/'.length)) : null
+  useEffect(() => {
+    if (!joinCode) return
+    passwordRegisterSheet(joinCode)
+    nav('/', { replace: true })
+  }, [joinCode])
   const head = <>
     <div style={{ fontSize: 54, display: 'flex', justifyContent: 'center', color: 'var(--acc)' }}><Icon name="dumbbell" /></div>
     <h1 style={{ fontSize: 34, fontWeight: 700, letterSpacing: '-.028em', margin: '10px 0 4px' }}>Forvia</h1>
@@ -36,10 +50,15 @@ export default function Login() {
       {head}
       <div className="muted" style={{ marginBottom: 34 }}>{t('Your workouts. Your weights. Your profile.')}</div>
       <Button variant="primary" icon="person" onClick={() => passwordLoginSheet()}>{t('Sign in')}</Button>
-      <div style={{ height: 10 }} />
-      <Button icon="sparkles" onClick={() => passwordRegisterSheet()}>{t('Create account')}</Button>
+      {canRegister && <div style={{ height: 10 }} />}
+      {canRegister && <Button icon="sparkles" onClick={() => passwordRegisterSheet()}>{t('Create account')}</Button>}
       {canGuest && <div style={{ height: 10 }} />}
       {canGuest && <Button variant="ghost" className="dim" onClick={() => setGuest(true)}>{t('Continue without account')}</Button>}
+      {!canRegister && (
+        <div style={{ marginTop: 14 }}>
+          <Button variant="ghost" className="dim" size="sm" onClick={() => passwordRegisterSheet()}>{t('Have an invite code?')}</Button>
+        </div>
+      )}
       <div className="dim small" style={{ marginTop: 26, lineHeight: 1.5 }}>{t('Each profile keeps its own plan, workouts & body weight.')}</div>
     </div>
   )

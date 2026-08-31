@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useStore } from '../store/useStore.js'
-import { effectiveRoutine, effectiveRoutineId, streakWeeks, lastBW } from '../lib/history.js'
+import { effectiveRoutine, effectiveRoutineId, FREESTYLE_DAY, streakWeeks, lastBW } from '../lib/history.js'
 import { loadOfWorkouts } from '../lib/muscles.js'
 import { fmtNum, fmtDate, todayISO, isoOf, weekKey, DAYS } from '../lib/format.js'
 import { t, dateLocale } from '../lib/i18n.js'
@@ -12,26 +12,9 @@ import BodyMap, { BodyMapLegend } from '../components/BodyMap.jsx'
 import Icon from '../components/Icon.jsx'
 import RankRow from '../components/RankRow.jsx'
 import TasksCard from '../components/TasksCard.jsx'
+import Ring from '../components/Ring.jsx'
 import { Button } from '../components/ui.jsx'
 import { glyphOf } from '../lib/glyphs.js'
-
-// A ring only ever encodes a real fraction (this week's workouts done/planned) — the KPI
-// tiles below reuse it at pct=1 purely as a colored frame around their icon, never a
-// fabricated "progress toward an undefined goal".
-function Ring({ size, stroke, pct, color, children }) {
-  const r = (size - stroke) / 2, c = 2 * Math.PI * r
-  const off = c * (1 - Math.max(0, Math.min(1, pct)))
-  return (
-    <div style={{ position: 'relative', width: size, height: size, flex: 'none' }}>
-      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
-        <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="var(--glass-border)" strokeWidth={stroke} />
-        <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke={color} strokeWidth={stroke} strokeLinecap="round"
-          strokeDasharray={c} strokeDashoffset={off} transform={`rotate(-90 ${size / 2} ${size / 2})`} />
-      </svg>
-      <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{children}</div>
-    </div>
-  )
-}
 
 // Home = what to do now + a quick glance. Deep charts & history live in Stats.
 export default function Home() {
@@ -42,6 +25,7 @@ export default function Home() {
 
   const today = new Date()
   const routine = effectiveRoutine(S, todayISO())
+  const isFreestyleToday = effectiveRoutineId(S, todayISO()) === FREESTYLE_DAY
   const todayOvr = S.dayPlan[todayISO()] !== undefined
   const bw = lastBW(S)
   const prevBW = S.bodyweight.length > 1 ? S.bodyweight[S.bodyweight.length - 2] : null
@@ -71,7 +55,7 @@ export default function Home() {
   const hasHistory = S.workouts.length > 0
 
   // today's session shown right under the week strip
-  const onToday = () => { if (S.active) nav('/workout'); else if (routine) startFlow(routine.id); else dayOverrideSheet(todayISO()) }
+  const onToday = () => { if (S.active) nav('/workout'); else if (routine) startFlow(routine.id); else if (isFreestyleToday) startFlow(null); else dayOverrideSheet(todayISO()) }
 
   return <div>
     <div className="hdr">
@@ -96,21 +80,21 @@ export default function Home() {
         <div className="row" style={{ gap: 12, minWidth: 0 }}>
           {plannedPerWeek > 0
             ? <Ring size={56} stroke={6} pct={wThisWeek / plannedPerWeek} color={S.active ? 'var(--orange)' : 'var(--acc)'}>
-                <span className="ring-badge" style={{ width: 40, height: 40, fontSize: 18, '--tint': S.active ? 'var(--orange)' : routine ? 'var(--acc)' : 'var(--surface-3)' }}>
-                  <Icon name={S.active ? 'timer' : routine ? glyphOf(routine.emoji) : 'moon'} />
+                <span className="ring-badge" style={{ width: 40, height: 40, fontSize: 18, '--tint': S.active ? 'var(--orange)' : (routine || isFreestyleToday) ? 'var(--acc)' : 'var(--surface-3)' }}>
+                  <Icon name={S.active ? 'timer' : routine ? glyphOf(routine.emoji) : isFreestyleToday ? 'shuffle' : 'moon'} />
                 </span>
               </Ring>
-            : <span className="lrow-i" style={{ width: 40, height: 40, borderRadius: '50%', fontSize: 18, background: S.active ? 'var(--orange)' : routine ? 'var(--acc)' : 'var(--surface-3)' }}>
-                <Icon name={S.active ? 'timer' : routine ? glyphOf(routine.emoji) : 'moon'} />
+            : <span className="lrow-i" style={{ width: 40, height: 40, borderRadius: '50%', fontSize: 18, background: S.active ? 'var(--orange)' : (routine || isFreestyleToday) ? 'var(--acc)' : 'var(--surface-3)' }}>
+                <Icon name={S.active ? 'timer' : routine ? glyphOf(routine.emoji) : isFreestyleToday ? 'shuffle' : 'moon'} />
               </span>}
           <div style={{ minWidth: 0 }}>
             <div className="lbl2">{t('Today')}</div>
-            <div className="ttl">{S.active ? t('{0} — in progress', S.active.name) : routine ? routine.name : t('Rest day')}{todayOvr && routine ? ' · ' + t('rescheduled') : ''}</div>
+            <div className="ttl">{S.active ? t('{0} — in progress', S.active.name) : routine ? routine.name : isFreestyleToday ? t('Freestyle') : t('Rest day')}{todayOvr && (routine || isFreestyleToday) ? ' · ' + t('rescheduled') : ''}</div>
             {plannedPerWeek > 0 && <div className="sub">{t('{0}/{1} this week', wThisWeek, plannedPerWeek)}</div>}
           </div>
         </div>
         {S.active ? <span className="btn primary sm" style={{ backgroundColor: 'var(--orange)' }}>{t('Resume')}</span>
-          : routine ? <span className="btn primary sm">{t('Start')}</span>
+          : (routine || isFreestyleToday) ? <span className="btn primary sm">{t('Start')}</span>
           : <Icon name="plus" className="chev" />}
       </div>
     </div>

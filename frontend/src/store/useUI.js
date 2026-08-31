@@ -74,8 +74,11 @@ export const useUI = create((set, get) => ({
     toastTm = setTimeout(() => set({ toastMsg: '' }), 2200)
   },
 
+  // sec <= 0 means the rest timer is turned off in Settings — a no-op, same as never calling
+  // this at all, rather than a 0-second bar that flashes and disappears.
   startRest(sec) {
     get().stopRest()
+    if (!(sec > 0)) return
     const endsAt = Date.now() + sec * 1000
     set({ timer: { left: sec, total: sec, endsAt } })
     requestRestNotificationPermission()
@@ -88,7 +91,8 @@ export const useUI = create((set, get) => ({
       const snd = useStore.getState().S.sound
       if (left <= 0) {
         beep(snd, 880, 0.15); beep(snd, 880, 0.15, 0.25); beep(snd, 1320, 0.4, 0.5)
-        vibrate([200, 100, 200]); maybeRestNotification(); get().toast(t('Rest over — next set!')); get().stopRest(); return
+        if (useStore.getState().S.vibration !== false) vibrate([200, 100, 200])
+        maybeRestNotification(); get().toast(t('Rest over — next set!')); get().stopRest(); return
       }
       if (left <= 3) beep(snd, 660, 0.1)
       set({ timer: { ...tm, left } })
@@ -136,7 +140,7 @@ export const useUI = create((set, get) => ({
       const snd = useStore.getState().S.sound
       if (left <= 0) {
         beep(snd, 880, 0.15); beep(snd, 880, 0.15, 0.25); beep(snd, 1320, 0.4, 0.5)
-        vibrate([200, 100, 200])
+        if (useStore.getState().S.vibration !== false) vibrate([200, 100, 200])
         const done = workDone
         get().stopWork()
         if (done) done(wk.total)
@@ -154,7 +158,7 @@ export const useUI = create((set, get) => ({
     if (!wk) return
     const elapsed = Math.max(1, wk.total - wk.left)
     const done = workDone
-    vibrate(30)
+    if (useStore.getState().S.vibration !== false) vibrate(30)
     get().stopWork()
     if (done) done(elapsed)
   },

@@ -7,6 +7,7 @@ import { DEMO } from '../../lib/demo.js'
 import { MOBILE, shareExport } from '../../lib/mobile.js'
 import { importFromApp, confirmSheet } from '../../sheets.jsx'
 import Icon from '../../components/Icon.jsx'
+import Ring from '../../components/Ring.jsx'
 import { Section, Row } from '../../components/ui.jsx'
 
 export default function SettingsData() {
@@ -77,21 +78,48 @@ export default function SettingsData() {
       <div style={{ flex: 1, marginLeft: 10 }}><h1>{t('Data')}</h1></div>
     </div>
 
-    <Section title={t('Import from another app')}>
+    {/* What you'd actually be exporting/losing, at a glance — before you go pick an action
+        below. Purely computed from S, nothing new to store or sync. Same "Progress Rings"
+        tile idiom as Home's weekly KPIs, and same layout too — a bare .tiles grid with its
+        own label, not nested in a Section (that would double up the glass card behind
+        already-glass tiles). */}
+    <h4 className="sec" style={{ marginTop: 0 }}>{t('Your data')}</h4>
+    <div className="tiles">
+      <div className="tile k-blue">
+        <div className="ringwrap"><Ring size={34} stroke={4} pct={1} color="var(--blue)"><Icon name="clipboard" style={{ fontSize: 14 }} /></Ring></div>
+        <div className="v">{S.routines.length}</div><div className="l">{t('Routines')}</div>
+      </div>
+      <div className="tile k-green">
+        <div className="ringwrap"><Ring size={34} stroke={4} pct={1} color="var(--green)"><Icon name="dumbbell" style={{ fontSize: 14 }} /></Ring></div>
+        <div className="v">{S.workouts.length}</div><div className="l">{t('Workouts')}</div>
+      </div>
+      <div className="tile k-violet">
+        <div className="ringwrap"><Ring size={34} stroke={4} pct={1} color="var(--purple)"><Icon name="scale" style={{ fontSize: 14 }} /></Ring></div>
+        <div className="v">{S.bodyweight.length}</div><div className="l">{t('Weigh-ins')}</div>
+      </div>
+    </div>
+
+    <Section title={t('Import')}>
       <Row icon="upload" iconTint="var(--blue)" title={t('Import from another app')}
         subtitle={t('FitNotes, Strong, Hevy — or body weight from Apple Health')} accessory="chevron"
         onClick={() => importAppInput.current?.click()} />
-    </Section>
-
-    <Section title={t('Data')} footer={!MOBILE && !user ? t('Guest data stays on this device — export a backup now and then!') : null}>
-      <Row icon="download" iconTint="var(--teal)" title={t('Export backup (JSON)')} accessory="chevron" onClick={doExport} />
       {!MOBILE && (
         <Row icon="upload" iconTint="var(--indigo)" title={t('Import backup')} accessory="chevron"
           onClick={() => importBackupInput.current?.click()} />
       )}
-      {!DEMO && !MOBILE && !hasData(S) && (
+    </Section>
+
+    <Section title={t('Backup')} footer={!MOBILE && !user ? t('Guest data stays on this device — export a backup now and then!') : null}>
+      <Row icon="download" iconTint="var(--teal)" title={t('Export backup (JSON)')} accessory="chevron" onClick={doExport} />
+    </Section>
+
+    {!DEMO && !MOBILE && !hasData(S) && (
+      <Section title={t('Demo')}>
         <Row icon="sparkles" iconTint="var(--acc)" title={t('Load demo data')} accessory="chevron" onClick={doLoadDemo} />
-      )}
+      </Section>
+    )}
+
+    <Section title={t('Danger zone')}>
       <Row icon="trash" iconTint="var(--red)" title={t('Reset everything')} danger accessory="chevron" onClick={doReset} />
     </Section>
 

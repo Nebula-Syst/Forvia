@@ -251,7 +251,10 @@ export function Row({ icon, iconTint, title, subtitle, value, accessory = 'none'
 // theme entirely — on dark mode it flashes a white sheet — and can't show more
 // than a bare label per option. This opens our own sheet with a checkmark on the
 // current value, which is also how iOS itself handles a long option list.
-export function SelectRow({ icon, iconTint, title, value, options, onChange, sheetTitle }) {
+// hideValue: for a picker whose current pick already IS the title (e.g. "which exercise",
+// passed in as `title` by the caller) — skips the redundant "field name: current value"
+// value column on the right, since the title already says it.
+export function SelectRow({ icon, iconTint, title, value, options, onChange, sheetTitle, hideValue }) {
   const cur = options.find(o => o.value === value)
   const open = () => {
     const { openSheet } = require_ui()
@@ -273,7 +276,7 @@ export function SelectRow({ icon, iconTint, title, value, options, onChange, she
     return h
   }
   return (
-    <Row icon={icon} iconTint={iconTint} title={title} value={cur ? cur.label : value} accessory="chevron" onClick={open} />
+    <Row icon={icon} iconTint={iconTint} title={title} value={hideValue ? null : (cur ? cur.label : value)} accessory="chevron" onClick={open} />
   )
 }
 

@@ -13,3 +13,8 @@
  * @returns {boolean} true when the guest entrance may be shown and used.
  */
 export const guestAllowed = config => !(config && config.allow_guest === false)
+
+// Same fail-open reasoning as guestAllowed, for the "Create account" entrance — a config we
+// couldn't fetch is not the same answer as allow_register: false, and older servers that
+// predate the flag mean "allowed" by omission.
+export const registerAllowed = config => !(config && config.allow_register === false)

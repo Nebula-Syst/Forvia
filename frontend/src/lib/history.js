@@ -104,8 +104,11 @@ const effortTail = s => {
 }
 
 // One-line summary of a logged set. `cfg` carries the mode when the caller has it (a routine
-// entry or a workout entry); passing an id alone keeps the old body-part behaviour.
-export function setLabel(id, s, cfg) {
+// entry or a workout entry); passing an id alone keeps the old body-part behaviour. Pass
+// `{ effort: false }` where the caller's own layout already has a column for RIR/RPE (the
+// active-workout table's "Previous" cell) — leaving it in there duplicates it right next to
+// itself instead of adding information.
+export function setLabel(id, s, cfg, { effort = true } = {}) {
   const c = cfg || { id }
   const mode = modeOf(c)
   if (mode === 'cardio') return `${s.min || 0} min @ ${fmtNum(s.speed || 0)} km/h`
@@ -117,9 +120,9 @@ export function setLabel(id, s, cfg) {
   const reps = s.r || 0
   if (isBw({ ...c, id: c.id ?? id })) {
     const load = s.w > 0 ? `+${fmtNum(s.w)} × ` : ''
-    return `${load}${reps}` + effortTail(s)
+    return `${load}${reps}` + (effort ? effortTail(s) : '')
   }
-  return `${fmtNum(s.w || 0)}×${reps}` + effortTail(s)
+  return `${fmtNum(s.w || 0)}×${reps}` + (effort ? effortTail(s) : '')
 }
 // Default config for a freshly added exercise.
 export function defaultConfig(id, mode) {
@@ -238,12 +241,39 @@ export function bestWeightFor(S, exId) {
   }))
   return best
 }
+// A likely mistyped set — an extra digit (100 kg instead of 10, 50 reps instead of 5), not a
+// judgment on what's too much to actually lift. Weight is judged against the lifter's OWN best
+// for this exact exercise (`best`, from bestWeightFor — the caller passes it in rather than
+// this function re-deriving it, since it doesn't change per set and re-scanning S.workouts on
+// every row of every render adds up) where there is one — "normal" varies by exercise and by
+// lifter far more than any fixed number could capture, so a strong lifter's real numbers on a
+// big compound never trip this. Reps, and a first-ever weight with nothing to compare against
+// yet, fall back to flat ceilings nobody legitimately clears in one set, regardless of exercise.
+const ABS_REPS_CEIL = 60
+const ABS_WEIGHT_CEIL = { kg: 500, lb: 1100 }
+const ABS_ADDED_CEIL = { kg: 150, lb: 330 } // a bodyweight exercise's belt/vest addition, not the lift itself
+export function setLooksOff(unit, set, cfg, best) {
+  const r = Number(set?.r)
+  const w = Number(set?.w)
+  const repsOff = Number.isFinite(r) && r > ABS_REPS_CEIL
+  const ceilTable = isBw(cfg) ? ABS_ADDED_CEIL : ABS_WEIGHT_CEIL
+  const fallbackCeil = ceilTable[unit] || ceilTable.kg
+  const weightOff = Number.isFinite(w) && w > 0 && (best > 0 ? (w > best * 1.75 && w > best + 5) : w > fallbackCeil)
+  return { weightOff, repsOff }
+}
+// A day planned as "train, but no fixed routine" rather than a real routine id or rest —
+// same sentinel in S.week[] (weekly recurring plan) and S.dayPlan[] (one-off override).
+// effectiveRoutineId returns it as-is (never resolves to a S.routines entry, by design);
+// callers that need to tell it apart from rest compare against this constant directly.
+export const FREESTYLE_DAY = 'freestyle'
 export function effectiveRoutineId(S, iso) {
   const ov = S.dayPlan[iso]
   if (ov === 'rest') return null
+  if (ov === FREESTYLE_DAY) return FREESTYLE_DAY
   if (ov && S.routines.some(r => r.id === ov)) return ov
   const wd = new Date(iso + 'T12:00:00').getDay()
-  return S.week[wd] || null
+  const wk = S.week[wd]
+  return wk === FREESTYLE_DAY ? FREESTYLE_DAY : (wk || null)
 }
 export function effectiveRoutine(S, iso) {
   const id = effectiveRoutineId(S, iso)
@@ -292,6 +322,26 @@ export function workoutVolume(w) {
   // already in the rep count that arrives here.
   w.entries.forEach(e => e.sets.forEach(s => { if (s.done) v += (s.w || 0) * (s.r || 0) }))
   return v
+}
+// Mirrors api/server.js's workoutXp() exactly (same constants, same shape) — there's no shared
+// module between this app and the vanilla-Node API, so the number shown right after finishing
+// (no round trip needed) and the authoritative one rankFor() computes server-side from the same
+// stored fields are two independent implementations of the same formula, not one shared by
+// reference. Keep them in sync if either changes.
+export const PR_XP = 15
+const XP_PER_SET = 1, XP_PER_EXERCISE = 2, XP_PER_SQRT_1000_VOL = 2
+export function workoutXp(w) {
+  const entries = w?.entries || []
+  let sets = 0
+  const exercises = new Set()
+  entries.forEach(e => {
+    const done = (e.sets || []).filter(s => s?.done).length
+    if (done > 0) exercises.add(e.id)
+    sets += done
+  })
+  const vol = typeof w?.vol === 'number' ? w.vol : workoutVolume(w)
+  const volumeXp = Math.round(XP_PER_SQRT_1000_VOL * Math.sqrt(Math.max(0, vol) / 1000))
+  return sets * XP_PER_SET + exercises.size * XP_PER_EXERCISE + volumeXp
 }
 export function setsDone(w) {
   let n = 0

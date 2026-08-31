@@ -15,11 +15,13 @@ import ErrorBoundary from './components/ErrorBoundary.jsx'
 import Modals from './components/Modals.jsx'
 import Toast from './components/Toast.jsx'
 import RestTimer from './components/RestTimer.jsx'
+import CheatRevealTrigger from './components/CheatCaughtReveal.jsx'
+import LevelUpRevealTrigger from './components/LevelUpReveal.jsx'
 import Login from './views/Login.jsx'
 import Home from './views/Home.jsx'
 import Plan from './views/Plan.jsx'
 import RoutineEdit from './views/RoutineEdit.jsx'
-import Workout from './views/Workout.jsx'
+import Workout, { WorkoutStartActions } from './views/Workout.jsx'
 import Stats from './views/Stats.jsx'
 import History from './views/History.jsx'
 import Library from './views/Library.jsx'
@@ -30,20 +32,25 @@ import SettingsWorkout from './views/settings/SettingsWorkout.jsx'
 import SettingsAppearance from './views/settings/SettingsAppearance.jsx'
 import SettingsNotifications from './views/settings/SettingsNotifications.jsx'
 import SettingsData from './views/settings/SettingsData.jsx'
+import SettingsFairPlay from './views/settings/SettingsFairPlay.jsx'
 import Social, { UserProfile } from './views/Social.jsx'
 import Rank from './views/Rank.jsx'
+import Penalties from './views/Penalties.jsx'
 import Admin from './views/Admin.jsx'
+import AdminUsers from './views/admin/AdminUsers.jsx'
+import AdminTasks from './views/admin/AdminTasks.jsx'
+import AdminLog from './views/admin/AdminLog.jsx'
 import { DEFAULT_ACCENT } from './lib/palette.js'
 
 bindUI(useUI)   // lets the shared controls open sheets without importing the store at module scope
 
-// 'prestige' is the Prestige-8 perk's exclusive theme (perksFor().appTheme, api/server.js)
-// — Settings.jsx only offers it once unlocked, and prestige perks are permanent, so no
-// extra gate is needed here.
-function applyPrefs(theme, accent) {
+// 'prestige' is the Prestige-8 perk's exclusive theme (gated in SettingsAppearance.jsx
+// on perks.appTheme) — the palette itself lives here and in index.css.
+function applyPrefs(theme, accent, reduceMotion) {
   const de = document.documentElement
   de.dataset.theme = theme === 'light' ? 'light' : theme === 'prestige' ? 'prestige' : 'dark'
   de.dataset.accent = ACCENTS[accent] ? accent : DEFAULT_ACCENT
+  de.toggleAttribute('data-reduce-motion', !!reduceMotion)
   const meta = document.querySelector('meta[name="theme-color"]')
   if (meta) meta.content = de.dataset.theme === 'light' ? '#f2f2f7' : de.dataset.theme === 'prestige' ? '#0d0221' : '#000000'
 }
@@ -55,7 +62,7 @@ function Shell() {
   const isGuest = useStore(s => s.isGuest())
   const langV = useLang()   // re-renders the whole shell when the language (pack) changes
   useEffect(() => { setNav(navigate) }, [navigate])
-  useEffect(() => { applyPrefs(S.theme, S.accent) }, [S.theme, S.accent])
+  useEffect(() => { applyPrefs(S.theme, S.accent, S.reduceMotion) }, [S.theme, S.accent, S.reduceMotion])
   useEffect(() => { setLang(S.lang || 'en') }, [S.lang])
   useEffect(() => { document.documentElement.lang = S.lang || 'en' }, [langV, S.lang])
   // every tab/route change starts at the top of the page
@@ -76,7 +83,11 @@ function Shell() {
     <>
       {/* keyed on the route: a view that throws is contained, and switching tabs
           re-mounts the boundary, so the tab bar is always a way out */}
-      <div id="app" className="vfade" key={loc.pathname}>
+      {/* The active-workout sticky bar bleeds to the viewport edge and sits right where #app's
+          own top padding would otherwise leave a gap — just enough for the body's top-left
+          accent glow to show through as a stray coloured line above it (issue #68). Trimmed to
+          just the safe-area inset on this one screen; every other page keeps the normal padding. */}
+      <div id="app" className={'vfade' + (loc.pathname === '/workout' && S.active ? ' notop' : '')} key={loc.pathname}>
         <ErrorBoundary>
           {!authed ? <Login /> : (
             <Routes>
@@ -94,10 +105,15 @@ function Shell() {
               <Route path="/settings/appearance" element={<SettingsAppearance />} />
               <Route path="/settings/notifications" element={<SettingsNotifications />} />
               <Route path="/settings/data" element={<SettingsData />} />
+              <Route path="/settings/fair-play" element={<SettingsFairPlay />} />
               <Route path="/social" element={<Social />} />
               <Route path="/social/u/:uid" element={<UserProfile />} />
               <Route path="/rank" element={<Rank />} />
+              <Route path="/penalties" element={<Penalties />} />
               <Route path="/admin" element={user?.admin ? <Admin /> : <Navigate to="/home" replace />} />
+              <Route path="/admin/users" element={user?.admin ? <AdminUsers /> : <Navigate to="/home" replace />} />
+              <Route path="/admin/tasks" element={user?.admin ? <AdminTasks /> : <Navigate to="/home" replace />} />
+              <Route path="/admin/log" element={user?.admin ? <AdminLog /> : <Navigate to="/home" replace />} />
               <Route path="*" element={<Navigate to="/home" replace />} />
             </Routes>
           )}
@@ -105,8 +121,11 @@ function Shell() {
       </div>
       <TabBar onStart={startFlow} />
       <RestTimer />
+      <WorkoutStartActions />
       <Modals />
       <Toast />
+      <CheatRevealTrigger />
+      <LevelUpRevealTrigger />
     </>
   )
 }

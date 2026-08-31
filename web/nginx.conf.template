@@ -7,6 +7,10 @@ server {
 
     # API → backend container
     location /api/ {
+        # nginx's own default (1m) is well under a base64-encoded photo — every upload past
+        # roughly 700KB was hitting nginx's 413 (an HTML page, not JSON) before ever reaching
+        # the backend's own, friendlier size check. Match the backend's MAX_BODY headroom.
+        client_max_body_size 9m;
         proxy_pass http://${BACKEND}:${PORT};
         proxy_http_version 1.1;
         proxy_set_header Host $host;

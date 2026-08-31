@@ -15,7 +15,9 @@ const TIMES = Array.from({ length: 34 }, (_, i) => {
   return `${hh}:${mm}`
 })
 
-function ReminderSection() {
+// Native app: the reminder is scheduled on-device (Capacitor local notifications) — no
+// server, no push subscription, works offline.
+function NativeReminderSection() {
   const S = useStore(s => s.S)
   const { update } = useStore()
   const toast = useUI(s => s.toast)
@@ -31,7 +33,7 @@ function ReminderSection() {
   }
 
   return <Section footer={on ? t('Timezone: {0} (auto-detected, updates if you travel).', S.reminder?.tz || localTZ()) : null}>
-    <Row icon="bell" iconTint="var(--red)" title={t('Workout day reminder')}
+    <Row icon="calendar" iconTint="var(--indigo)" title={t('Workout day reminder')}
       subtitle={t("Only sent on days you have a routine planned and haven't logged a workout yet.")}>
       <Switch checked={on} onChange={setOn} />
     </Row>
@@ -42,22 +44,35 @@ function ReminderSection() {
   </Section>
 }
 
-function PushSection() {
-  const [busy, setBusy] = useState(false)
+// Web: the exact same `S.reminder` shape, but delivered server-side over Web Push — the
+// backend's day-reminder loop (api/server.js) only fires for a user with a live push
+// subscription, so the toggle stays locked until Push notifications is on.
+function WebReminderSection({ pushOn }) {
+  const S = useStore(s => s.S)
+  const { update } = useStore()
+  const toast = useUI(s => s.toast)
+  const on = !!S.reminder?.on
+
+  const setOn = v => {
+    update(s => { s.reminder = { ...(s.reminder || {}), on: v, tz: localTZ() } })
+    toast(v ? t('Notifications on') : t('Notifications off'))
+  }
+
+  return <Section footer={on && pushOn ? t('Timezone: {0} (auto-detected, updates if you travel).', S.reminder?.tz || localTZ()) : null}>
+    <Row icon="calendar" iconTint="var(--indigo)" title={t('Workout day reminder')}
+      subtitle={pushOn ? t("Only sent on days you have a routine planned and haven't logged a workout yet.") : t('Turn on push notifications first.')}>
+      <Switch checked={on} disabled={!pushOn} onChange={setOn} />
+    </Row>
+    {on && pushOn && <SelectRow icon="clock" iconTint="var(--orange)" title={t('Reminder time')}
+      value={S.reminder?.time || '08:00'}
+      onChange={v => update(s => { s.reminder = { ...(s.reminder || {}), time: v } })}
+      options={TIMES.map(v => ({ value: v, label: v }))} />}
+  </Section>
+}
+
+function PushSection({ on, setOn, busy }) {
   const toast = useUI(s => s.toast)
   const supported = pushSupported()
-  const [perm, setPerm] = useState(pushPermission())
-  const on = perm === 'granted'
-
-  const setOn = async v => {
-    setBusy(true)
-    try {
-      if (v) await enablePush(); else await disablePush()
-      setPerm(pushPermission())
-      toast(v ? t('Notifications on') : t('Notifications off'))
-    } catch (e) { toast(e.message || t('Could not change notification settings')) }
-    finally { setBusy(false) }
-  }
 
   const test = async () => {
     try { await sendTestPush(); toast(t('Test sent — should arrive any second')) }
@@ -73,6 +88,28 @@ function PushSection() {
   </Section>
 }
 
+function WebNotifications() {
+  const [busy, setBusy] = useState(false)
+  const toast = useUI(s => s.toast)
+  const [perm, setPerm] = useState(pushPermission())
+  const pushOn = perm === 'granted'
+
+  const setPushOn = async v => {
+    setBusy(true)
+    try {
+      if (v) await enablePush(); else await disablePush()
+      setPerm(pushPermission())
+      toast(v ? t('Notifications on') : t('Notifications off'))
+    } catch (e) { toast(e.message || t('Could not change notification settings')) }
+    finally { setBusy(false) }
+  }
+
+  return <>
+    <PushSection on={pushOn} setOn={setPushOn} busy={busy} />
+    <WebReminderSection pushOn={pushOn} />
+  </>
+}
+
 export default function SettingsNotifications() {
   const nav = useNavigate()
 
@@ -82,6 +119,6 @@ export default function SettingsNotifications() {
       <div style={{ flex: 1, marginLeft: 10 }}><h1>{t('Notifications')}</h1></div>
     </div>
 
-    {MOBILE ? <ReminderSection /> : <PushSection />}
+    {MOBILE ? <NativeReminderSection /> : <WebNotifications />}
   </div>
 }

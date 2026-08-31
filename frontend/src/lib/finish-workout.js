@@ -1,17 +1,23 @@
 // The persisted boundary for a finished session. Keep this pure so compatibility tests can
 // exercise the exact shape the UI writes without mounting React or mutating store state.
-export function buildCompletedWorkout(active, { end = Date.now(), prs = [], snapshotFor } = {}) {
+export function buildCompletedWorkout(active, { end = Date.now(), prs = [], snapshotFor, bpFor } = {}) {
   const entries = (active?.entries || []).map(entry => {
     const completed = {
       id: entry.id,
       sets: entry.sets,
       topW: entry.topW || null,
       target: entry.target || null,
+      notes: entry.notes || null,
     }
     const snapshot = typeof snapshotFor === 'function' ? snapshotFor(entry) : null
     if (snapshot && typeof snapshot === 'object' && !Array.isArray(snapshot) && Object.keys(snapshot).length) {
       completed.muscleSnapshot = { ...snapshot }
     }
+    // Real body part, honestly resolved from the catalog at finish time — same trust level
+    // as the sets/weights beside it. The backend has no copy of the exercise catalog, so this
+    // is what lets a "train legs today" task be graded server-side instead of self-reported.
+    const bp = typeof bpFor === 'function' ? bpFor(entry) : null
+    if (bp) completed.bp = bp
     return completed
   }).filter(entry => entry.sets.some(set => set.done))
 
