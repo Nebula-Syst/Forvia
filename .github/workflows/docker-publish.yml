@@ -108,6 +108,19 @@ jobs:
           sed -i "s/^FORVIA_VERSION=.*/FORVIA_VERSION=${{ github.ref_name }}/" .env
           docker compose pull api web
           docker compose up -d
-          sleep 3
-          set -a; source .env; set +a
-          curl -fsS "http://localhost:${WEB_PORT:-13027}/api/health"
+
+      # The runner container has its own network namespace, so "localhost:$WEB_PORT" from
+      # inside it is not the host — check container health straight off the socket instead
+      # of trying to reach the published port over the network.
+      - name: Wait for api + web to report healthy
+        working-directory: /home/josemgl/Proyectos/forvia-prod
+        run: |
+          for i in $(seq 1 20); do
+            api=$(docker inspect -f '{{.State.Health.Status}}' forvia-prod-api-1 2>/dev/null)
+            web=$(docker inspect -f '{{.State.Health.Status}}' forvia-prod-web-1 2>/dev/null)
+            echo "api=$api web=$web"
+            [ "$api" = "healthy" ] && [ "$web" = "healthy" ] && exit 0
+            sleep 2
+          done
+          echo "::error::api/web never became healthy after redeploy"
+          exit 1
