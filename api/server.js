@@ -7,6 +7,7 @@ import path from 'node:path';
 import net from 'node:net';
 import tls from 'node:tls';
 import webpush from 'web-push';
+import { ensureSchema, loadAll, saveAll, loadAllStates, saveState, deleteState, appendAudit, auditAll, auditDeleteIds, auditClearAll } from './db.js';
 
 const PORT = +(process.env.PORT || 3000);
 const DATA = process.env.DATA_DIR || '/data';
@@ -45,17 +46,11 @@ const secretFile = path.join(DATA, 'secret');
 if (!fs.existsSync(secretFile)) fs.writeFileSync(secretFile, crypto.randomBytes(32).toString('hex'), { mode: 0o600 });
 const SECRET = fs.readFileSync(secretFile, 'utf8').trim();
 
-const dbFile = path.join(DATA, 'db.json');
-let db = { users: [], subs: [], invites: [], follows: [], reactions: [], comments: [] };
-try { db = JSON.parse(fs.readFileSync(dbFile, 'utf8')); } catch {}
-db.subs = db.subs || [];
-db.invites = db.invites || [];
-db.follows = db.follows || [];       // {followerId, followeeId, created}
-db.reactions = db.reactions || [];   // {userId, targetUid, workoutId, created} — one row = one like
-db.comments = db.comments || [];     // {id, userId, targetUid, workoutId, text, created}
-db.tasks = db.tasks || [];           // {id, name, desc, points, criteria: {type, n?, bp?}, created} — admin-defined catalog
-db.taskCompletions = db.taskCompletions || [];  // {id, userId, taskId, points, date, created} — awarded automatically, never self-reported
-db.cheatPenalties = db.cheatPenalties || [];    // {id, userId, workoutId, reasons, points, date, created}
+// Loaded from Postgres once boot()/main() runs, at the bottom of this file — see db.js for
+// why this stays one big in-memory object instead of being queried per-request. Same shape
+// db.json's arrays always had: users, subs (push), invites, follows, reactions, comments
+// (social), tasks/taskCompletions (daily-task catalog + awards), cheatPenalties (anti-cheat).
+let db = { users: [], subs: [], invites: [], follows: [], reactions: [], comments: [], tasks: [], taskCompletions: [], cheatPenalties: [] };
 // A user can hold several employee types at once (e.g. both founder and admin), not one
 // flat role — employeeTypes is an array, filtered to the known set on every read so a
 // stale/tampered value in db.json can never grant something that isn't in EMPLOYEE_TYPES.
@@ -95,15 +90,22 @@ const publicComment = c => ({
   id: c.id, userId: c.userId, name: (db.users.find(u => u.id === c.userId) || {}).name || '?',
   text: c.text, created: c.created,
 });
-function saveDb() { atomicWrite(dbFile, JSON.stringify(db, null, 2)); }
-function atomicWrite(file, content) {
-  const tmp = file + '.tmp';
-  fs.writeFileSync(tmp, content);
-  fs.renameSync(tmp, file);
+// Fire-and-forget, same as the old atomicWrite(dbFile,...) call it replaces: every one of the
+// ~40 call sites below just does `saveDb();` with no await and no return value, so this stays
+// safe to call bare — a failed write is logged, never thrown, never blocks the response.
+function saveDb() { saveAll(db).catch(e => console.error('saveDb failed:', e.message)); }
+
+// Per-user training state (routines, workouts, bodyweight...) — same in-memory-mirror pattern
+// as `db` above, backed by the user_state table instead of state-<uid>.json.
+const stateCache = new Map();
+function readState(uid) { return stateCache.get(uid) || null; }
+function writeState(uid, state) {
+  stateCache.set(uid, state);
+  saveState(uid, state).catch(e => console.error('saveState failed:', uid, e.message));
 }
-const stateFile = uid => path.join(DATA, 'state-' + uid.replace(/[^a-zA-Z0-9_-]/g, '') + '.json');
-function readState(uid) {
-  try { return JSON.parse(fs.readFileSync(stateFile(uid), 'utf8')); } catch { return null; }
+function removeState(uid) {
+  stateCache.delete(uid);
+  deleteState(uid).catch(e => console.error('deleteState failed:', uid, e.message));
 }
 
 /* ---------- workout photos ---------- */
@@ -181,7 +183,7 @@ function userNow(tz) {
     return { date: `${g('year')}-${g('month')}-${g('day')}`, hhmm: `${g('hour')}:${g('minute')}` };
   } catch { return null; } // unknown/invalid tz string — skip this user rather than guess
 }
-setInterval(() => {
+function reminderTick() {
   for (const user of db.users) {
     if (!db.subs.some(s => s.userId === user.id)) continue;
     const S = readState(user.id);
@@ -202,9 +204,10 @@ setInterval(() => {
       tag: 'day-reminder'
     });
   }
+}
 // Checked every 10s (not 60s) — ticks aren't aligned to the top of the minute, so a 60s
 // interval could sit on your target minute for up to 59s before noticing. 10s caps that at ~9s.
-}, 10000).unref();
+// Registered from main() below, once boot has loaded db/stateCache from Postgres.
 
 /* ---------- sessions (signed cookie) ---------- */
 function sign(payload) {
@@ -418,9 +421,9 @@ const AUDIT_MAX = Math.max(0, +(process.env.AUDIT_MAX || 5000) || 0);     // 0 =
 const AUDIT_DAYS = Math.max(0, +(process.env.AUDIT_DAYS || 90) || 0);     // 0 = no age cap
 const AUDIT_IP = /^full$/i.test(process.env.AUDIT_IP || '') ? 'full'
   : /^(1|true|yes|on|net)$/i.test(process.env.AUDIT_IP || '') ? 'net' : 'off';
-const auditFile = path.join(DATA, 'audit.log');
 let auditSeq = 0;      // never reset, not even by a clear — a wiped log leaves a visible id gap
 let auditCount = 0;
+let auditCache = [];   // in-memory mirror of the audit_log table, same pattern as db/stateCache
 
 // Which header holds the caller depends on what is in front of the API. CF-Connecting-IP comes
 // first because a Cloudflare tunnel does NOT forward the client in X-Forwarded-For — that header
@@ -442,16 +445,6 @@ function clientIp(req) {
   return g ? g + '::/48' : null;
 }
 
-function auditLines() {
-  let text;
-  try { text = fs.readFileSync(auditFile, 'utf8'); } catch { return []; }
-  const rows = [];
-  for (const line of text.split('\n')) {
-    if (!line) continue;
-    try { const r = JSON.parse(line); if (r && r.id && r.ev) rows.push(r); } catch { /* torn line */ }
-  }
-  return rows;
-}
 // Retention is a cap, not an archive: age first, then the newest AUDIT_MAX of what's left.
 function auditKeep(rows) {
   let out = rows;
@@ -459,17 +452,21 @@ function auditKeep(rows) {
   if (AUDIT_MAX && out.length > AUDIT_MAX) out = out.slice(out.length - AUDIT_MAX);
   return out;
 }
-function compactAudit() {
-  const rows = auditLines();
-  for (const r of rows) if (+r.id > auditSeq) auditSeq = +r.id;
-  const keep = auditKeep(rows);
+// Called from main() at boot (seeds auditCache/auditSeq/auditCount from Postgres) and hourly
+// after that, same cadence the old file-compaction pass ran on.
+function pruneAudit() {
+  const keep = auditKeep(auditCache);
   auditCount = keep.length;
-  if (keep.length === rows.length) return;
-  try { atomicWrite(auditFile, keep.map(r => JSON.stringify(r)).join('\n') + (keep.length ? '\n' : '')); }
-  catch (e) { console.error('audit compact failed', e.message); }
+  if (keep.length === auditCache.length) return;
+  const keepIds = new Set(keep.map(r => r.id));
+  const dropIds = auditCache.filter(r => !keepIds.has(r.id)).map(r => r.id);
+  auditCache = keep;
+  auditDeleteIds(dropIds).catch(e => console.error('audit prune failed:', e.message));
 }
 
-// Never throws: a log that can't be written must not break signing in.
+// Never throws: a log that can't be written must not break signing in. The Postgres write is
+// fire-and-forget (see saveDb above) — auditCache itself is updated synchronously first, so a
+// GET /api/admin/audit right after this always sees the new row regardless of write timing.
 function audit(req, ev, f = {}) {
   if (!AUDIT_ON) return;
   const rec = { id: ++auditSeq, ts: Date.now(), ev, ok: f.ok !== false };
@@ -482,14 +479,11 @@ function audit(req, ev, f = {}) {
   if (f.msg) rec.msg = String(f.msg).slice(0, 120);
   const ip = clientIp(req);
   if (ip) rec.ip = ip;
-  try { fs.appendFileSync(auditFile, JSON.stringify(rec) + '\n'); }
-  catch (e) { return console.error('audit write failed', e.message); }
-  // Amortized: a 5000-event cap rewrites the file once per ~1250 events.
-  if (AUDIT_MAX && ++auditCount > AUDIT_MAX * 1.25) compactAudit();
-}
-if (AUDIT_ON) {
-  compactAudit();                                // prune on boot, seed auditSeq/auditCount
-  setInterval(compactAudit, 3600000).unref();    // honour AUDIT_DAYS on an idle instance too
+  auditCache.push(rec);
+  auditCount++;
+  appendAudit(rec).catch(e => console.error('audit write failed:', e.message));
+  // Amortized: a 5000-event cap prunes once per ~1250 events.
+  if (AUDIT_MAX && auditCount > AUDIT_MAX * 1.25) pruneAudit();
 }
 
 /* ---------- social (opt-in: follow, feed, reactions, comments, leaderboard) ---------- */
@@ -805,7 +799,9 @@ function rankFor(uid) {
 // existed (see scanForCheating above): replays each user's penalties in creation order,
 // recomputing what rankFor would have returned with only the earlier ones already applied —
 // the same snapshot a freshly-created penalty gets live, just reconstructed after the fact.
-(function backfillCheatPenaltySnapshots() {
+// Called from main() below, once db is loaded from Postgres — was a top-level IIFE back when
+// db.json was read synchronously at require-time; now it just has to run after loadAll().
+function backfillCheatPenaltySnapshots() {
   const original = db.cheatPenalties;
   const missing = original.filter(p => p.beforeLevel === undefined);
   if (!missing.length) return;
@@ -828,7 +824,7 @@ function rankFor(uid) {
   db.cheatPenalties = original;
   saveDb();
   console.log(`[anticheat] backfilled beforeLevel snapshot for ${missing.length} legacy penalt${missing.length === 1 ? 'y' : 'ies'}`);
-})();
+}
 // Perks per rank tier / prestige level — computed fresh from rankFor, same "nothing to
 // desync" reasoning as the rest of this section. Rank perks use `level` directly, so
 // they reset along with the tier display whenever a prestige rolls level back to 1;
@@ -1126,7 +1122,7 @@ div{max-width:360px}h1{font-size:20px;margin:0 0 8px}p{color:#9db8a8;line-height
     db.comments = db.comments.filter(c => c.userId !== id);
     db.taskCompletions = db.taskCompletions.filter(c => c.userId !== id);
     saveDb();
-    try { fs.unlinkSync(stateFile(id)); } catch {}
+    removeState(id);
     try { fs.rmSync(uploadsDir(id), { recursive: true, force: true }); } catch {}
     json(res, 200, { ok: true }, { 'Set-Cookie': clearCookie });
   },
@@ -1155,10 +1151,7 @@ div{max-width:360px}h1{font-size:20px;margin:0 0 8px}p{color:#9db8a8;line-height
   'GET /api/data': async (req, res) => {
     const user = readSession(req);
     if (!user) return json(res, 401, { error: 'not signed in' });
-    try {
-      const state = JSON.parse(fs.readFileSync(stateFile(user.id), 'utf8'));
-      json(res, 200, { state });
-    } catch { json(res, 200, { state: null }); }
+    json(res, 200, { state: readState(user.id) });
   },
 
   'PUT /api/data': async (req, res) => {
@@ -1167,7 +1160,7 @@ div{max-width:360px}h1{font-size:20px;margin:0 0 8px}p{color:#9db8a8;line-height
     const body = await readBody(req);
     if (!body.state || typeof body.state !== 'object') return json(res, 400, { error: 'state required' });
     delete body.state.active;              // in-progress workouts stay device-local
-    atomicWrite(stateFile(user.id), JSON.stringify(body.state));
+    writeState(user.id, body.state);
     scanForCheating(req, user, body.state);
     scanForTasks(req, user, body.state);
     json(res, 200, { ok: true, ts: body.state._ts || null });
@@ -1417,7 +1410,7 @@ div{max-width:360px}h1{font-size:20px;margin:0 0 8px}p{color:#9db8a8;line-height
     const limit = Math.max(1, Math.min(200, +q.get('limit') || 100));
     const before = +q.get('before') || Infinity;
     const cat = q.get('cat') || '';
-    let rows = auditKeep(auditLines()).reverse();
+    let rows = auditKeep(auditCache).slice().reverse();
     if (cat === 'fail') rows = rows.filter(r => !r.ok);
     else if (cat) rows = rows.filter(r => String(r.ev).startsWith(cat + '.'));
     const page = rows.filter(r => r.id < before).slice(0, limit);
@@ -1436,8 +1429,11 @@ div{max-width:360px}h1{font-size:20px;margin:0 0 8px}p{color:#9db8a8;line-height
   // ./data/audit.log already is the export, in a format jq reads directly.
   'POST /api/admin/audit/clear': async (req, res) => {
     const admin = requireAdmin(req, res); if (!admin) return;
-    try { fs.unlinkSync(auditFile); } catch { /* nothing logged yet */ }
+    auditCache = [];
     auditCount = 0;
+    // Awaited (unlike every other write in this file) so the clear-event record appended by
+    // audit() just below can never race a slower fire-and-forget DELETE and get wiped with it.
+    try { await auditClearAll(); } catch (e) { console.error('audit clear failed:', e.message); }
     audit(req, 'admin.audit.clear', { user: admin });
     json(res, 200, { ok: true });
   },
@@ -1814,14 +1810,34 @@ div{max-width:360px}h1{font-size:20px;margin:0 0 8px}p{color:#9db8a8;line-height
   }
 };
 
-http.createServer(async (req, res) => {
-  const url = new URL(req.url, 'http://x');
-  const key = req.method + ' ' + url.pathname;
-  const handler = routes[key];
-  if (!handler) return json(res, 404, { error: 'not found' });
-  try { await handler(req, res); }
-  catch (e) {
-    console.error(key, e);
-    if (!res.headersSent) json(res, 500, { error: 'server error' });
+/* ---------- boot ---------- */
+// Nothing above this point talks to Postgres — db/stateCache/auditCache are just declared, and
+// the HTTP server doesn't start listening until they're actually populated, so no request can
+// ever observe an empty in-memory mirror.
+async function main() {
+  await ensureSchema();
+  db = await loadAll();
+  for (const [uid, state] of await loadAllStates()) stateCache.set(uid, state);
+  if (AUDIT_ON) {
+    auditCache = await auditAll();
+    auditSeq = auditCache.length ? auditCache[auditCache.length - 1].id : 0;
+    auditCount = auditCache.length;
+    pruneAudit();                                // prune on boot, mirrors the old file-compaction pass
+    setInterval(pruneAudit, 3600000).unref();    // honour AUDIT_DAYS on an idle instance too
   }
-}).listen(PORT, () => console.log(`gym-api on :${PORT} (origin=${ORIGIN})`));
+  backfillCheatPenaltySnapshots();
+  setInterval(reminderTick, 10000).unref();
+
+  http.createServer(async (req, res) => {
+    const url = new URL(req.url, 'http://x');
+    const key = req.method + ' ' + url.pathname;
+    const handler = routes[key];
+    if (!handler) return json(res, 404, { error: 'not found' });
+    try { await handler(req, res); }
+    catch (e) {
+      console.error(key, e);
+      if (!res.headersSent) json(res, 500, { error: 'server error' });
+    }
+  }).listen(PORT, () => console.log(`gym-api on :${PORT} (origin=${ORIGIN})`));
+}
+main().catch(e => { console.error('boot failed:', e); process.exit(1); });

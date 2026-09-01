@@ -127,22 +127,23 @@ a build step locally either way.
                        └──────────────────────────────┘│
                                                         ▼
                                         ┌──────────────────────────┐
-                                        │  api  (Node + WebAuthn)  │
-                                        │   └─ ./data (JSON files) │
+                                        │      api  (Node)         │
+                                        │   └─ PostgreSQL          │
                                         └──────────────────────────┘
 ```
 
 - **frontend/** — React + Vite (React Router + Zustand), built to static files **inside Docker**
-- **api/** — Node with no framework, two dependencies (`@simplewebauthn/server` for passkeys, `web-push` for notifications), storing everything as plain JSON files under `./data`
-- **web/** — a multi-stage image that builds the frontend and serves it with nginx, proxying `/api` to the backend so it's all on **one origin** (passkeys require this)
+- **api/** — Node with no framework, storing everything in a bundled PostgreSQL container (`api/db.js`)
+- **web/** — a multi-stage image that builds the frontend and serves it with nginx, proxying `/api` to the backend so it's all on **one origin**
 
 ## Your data
 
-Lives in `./data` on your host: `db.json` (profiles + public passkeys), `state-<user>.json`
-(each user's plan, workouts, body weight, settings), `audit.log` (the admin activity log — sign-ins
-and admin actions, no IP addresses unless you ask for them) and `secret` (the session-cookie key).
-**Back up `./data` and you've backed up everything.** Passkey private keys never touch the
-server — they stay in your phone's secure hardware / your password manager.
+Lives in a `db` PostgreSQL container, on a named Docker volume (`docker compose down` keeps it;
+`docker volume rm` doesn't) — profiles, workout history, social graph, tasks, the admin activity
+log, all queryable with plain SQL (`docker compose exec db psql -U forvia`, see `api/db.js` for
+the table layout). Only the session-cookie key, VAPID push keys and uploaded photos still live
+as files under `./data`. **Back up both the `pgdata` volume and `./data` and you've backed up
+everything** — `docker compose exec db pg_dump -U forvia forvia > backup.sql` for the database side.
 
 ## Configuration
 

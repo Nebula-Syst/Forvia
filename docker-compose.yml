@@ -32,6 +32,25 @@ services:
         fi
     restart: "no"
 
+  # PostgreSQL — users, workout history, social graph, tasks, activity log. See api/db.js.
+  # Only ./data/secret (session HMAC key), ./data/vapid.json (push keys) and uploaded photos
+  # stay on the bind mount below; everything else that used to be db.json/state-*.json/
+  # audit.log now lives here instead.
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER:-forvia}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-forvia}
+      - POSTGRES_DB=${POSTGRES_DB:-forvia}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-forvia} -d ${POSTGRES_DB:-forvia}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
   # Passkey auth + per-user data (Node, no framework).
   # image: prebuilt (docker compose pull). build: from source (docker compose up --build).
   api:
@@ -39,13 +58,17 @@ services:
     build: ./api
     restart: unless-stopped
     env_file: .env
+    depends_on:
+      db:
+        condition: service_healthy
     environment:
       # The port the API listens on. web proxies to this same value, so the two
       # cannot drift — change it in .env and both follow.
       - PORT=${PORT:-3000}
       - DATA_DIR=/data
+      - DATABASE_URL=postgres://${POSTGRES_USER:-forvia}:${POSTGRES_PASSWORD:-forvia}@db:5432/${POSTGRES_DB:-forvia}
     volumes:
-      - ./data:/data         # users, passkeys, per-user state, session secret — BACK THIS UP
+      - ./data:/data         # session secret, VAPID push keys, uploaded photos — BACK THIS UP
 
   # Builds the React frontend (multi-stage) and serves it, proxying /api → api
   # and the exercise media from the shared volume. Single origin for passkeys.
@@ -72,3 +95,6 @@ services:
     volumes:
       - ./media/img:/usr/share/nginx/html/img:ro
       - ./media/gif:/usr/share/nginx/html/gif:ro
+
+volumes:
+  pgdata:

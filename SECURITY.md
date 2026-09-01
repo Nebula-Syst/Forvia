@@ -96,29 +96,30 @@ Read this before hosting Forvia for anyone other than yourself.
   issued for the account — on every device, including a copy someone walked off with — stops
   verifying at once. Passkeys are untouched; signing back in works immediately.
 - **Data is isolated per user by the session's uid.** `GET`/`PUT /api/data` only ever touch
-  `state-<uid>.json` for the caller (`api/server.js:517-534`); no route lets a normal user name
-  another user.
+  the caller's own row in Postgres's `user_state` table (`api/db.js`); no route lets a normal
+  user name another user.
 - **Disabling an account takes effect immediately.** Every authenticated request and every login
   is rejected for a disabled user (`api/server.js:189`, `api/server.js:488`).
 - **There is an activity log.** Sign-ins, sign-outs, failed and refused attempts, and every admin
-  action are appended to `./data/audit.log`, one JSON object per line, and shown in the admin
+  action are appended to the `audit_log` table in Postgres, and shown in the admin
   dashboard. It is on by default (`AUDIT_LOG=0` disables it) and capped at `AUDIT_MAX` events /
   `AUDIT_DAYS` days. Clearing it from the dashboard is itself recorded and the event ids keep
   counting, so an erased stretch always leaves a visible gap.
 
 ### What it does not do
 
-- **Nothing in `./data` is encrypted.** It holds `db.json` (users, passkey public keys, push
-  subscriptions, invite codes), one `state-<uid>.json` per user with their complete workout
-  history and body-weight log, `audit.log`, `secret`, and `vapid.json`. Anyone who can read that folder — you,
-  whoever holds the backups, whoever gets into the host — can read every user's data, and with
-  `secret` can mint a valid session cookie for any account. **If you host Forvia for other
-  people, they are trusting you exactly as much as they'd trust any server operator.** With the
-  activity log on, `./data/audit.log` adds everyone's sign-in times to that — worth remembering
-  before an archive of `./data` goes somewhere you don't run.
-- **Admins can read everything.** A user listed in `ADMIN_UIDS` (or flagged `admin: true` in
-  `db.json`) gets every user's full history and body weight, can disable accounts, and can create
-  or revoke invite codes (`api/server.js:600-722`). Off by default — a fresh instance has no admin.
+- **Nothing in Postgres (or `./data`) is encrypted.** The database holds users, invite codes, the
+  social graph, the daily-task catalog and every user's complete workout history and body-weight
+  log; `./data` still holds the session-cookie key (`secret`), VAPID push keys, and uploaded
+  photos. Anyone who can read the `pgdata` volume or that folder — you, whoever holds the
+  backups, whoever gets into the host — can read every user's data, and with `secret` can mint a
+  valid session cookie for any account. **If you host Forvia for other people, they are trusting
+  you exactly as much as they'd trust any server operator.** With the activity log on, that
+  includes everyone's sign-in times — worth remembering before a `pg_dump` or an archive of
+  `./data` goes somewhere you don't run.
+- **Admins can read everything.** A user listed in `ADMIN_UIDS` (or with an employee type set from
+  the admin dashboard) gets every user's full history and body weight, can disable accounts, and
+  can create or revoke invite codes. Off by default — a fresh instance has no admin.
 - **Sessions can't be revoked one device at a time.** Revocation is per *account*, not per
   session: `POST /api/logout/all` kills all of them at once and there is no device list to pick
   from. `POST /api/logout` on its own only clears the cookie in that one browser
@@ -163,9 +164,9 @@ Read this before hosting Forvia for anyone other than yourself.
   admin can clear the whole log from the dashboard. And four of the paths that write to it —
   the invite check on `POST /api/register/options`, and the expired-challenge and unknown-passkey
   branches of the register/login handshakes — are reachable **without a session**, so with no rate
-  limit in front (see below) anyone can fill the log with noise. It is an append of ~110 bytes per
-  event to a capped file, never a rewrite of `db.json`, so the cost is a log full of noise rather
-  than a full disk or a slow server.
+  limit in front (see below) anyone can fill the log with noise. It is one small capped-table
+  insert per event, never a rewrite of the users/workouts tables, so the cost is a log full of
+  noise rather than a full disk or a slow server.
 - **A few endpoints answer without a session:** `/api/health` (which includes the total user
   count), `/api/config` (whether invite-only is on), `/api/push/public-key`, and the
   register/login handshakes.

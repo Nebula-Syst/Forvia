@@ -99,8 +99,9 @@ INVITE_ONLY=1              # new profiles need an invite code
 ALLOW_GUEST=0              # remove "Continue without account"
 ```
 
-Register your own passkey profile first, then find your id in `./data/db.json` under `users[].id`
-and put it in `ADMIN_UIDS`. You'll get an **Admin dashboard** link in Settings: who's training
+Register your own profile first, then find your id with
+`docker compose exec db psql -U forvia -c "select id, name from kv_users"` and put it in
+`ADMIN_UIDS`. You'll get an **Admin dashboard** link in Settings: who's training
 right now, each user's workout history and body weight, the ability to disable an account (signed
 out and locked out everywhere until you re-enable it), and — with `INVITE_ONLY=1` — generating and
 revoking invite codes. Existing accounts keep working when you switch invite-only on. Admin access
@@ -110,8 +111,8 @@ is gated by your passkey and enforced server-side, so it needs no separate login
 
 The dashboard also keeps an **activity log**: sign-ins, sign-outs, failed attempts, refused
 signups, and every admin action (disabling an account, creating or revoking an invite code). It
-lives in `./data/audit.log` as one JSON object per line, so `tail -f data/audit.log` and `jq`
-work on it directly, and the dashboard reads the same file.
+lives in the `audit_log` table in Postgres — query it directly with
+`docker compose exec db psql -U forvia -c "select data from audit_log order by id"`.
 
 It is on by default and keeps the last 5,000 events or 90 days, whichever comes first
 (`AUDIT_LOG=0` turns it off entirely; `AUDIT_MAX` and `AUDIT_DAYS` change the caps). **IP
