@@ -33,6 +33,7 @@ import SettingsAppearance from './views/settings/SettingsAppearance.jsx'
 import SettingsNotifications from './views/settings/SettingsNotifications.jsx'
 import SettingsData from './views/settings/SettingsData.jsx'
 import SettingsFairPlay from './views/settings/SettingsFairPlay.jsx'
+import SettingsMobileApp from './views/settings/SettingsMobileApp.jsx'
 import Social, { UserProfile } from './views/Social.jsx'
 import Rank from './views/Rank.jsx'
 import Penalties from './views/Penalties.jsx'
@@ -106,6 +107,7 @@ function Shell() {
               <Route path="/settings/notifications" element={<SettingsNotifications />} />
               <Route path="/settings/data" element={<SettingsData />} />
               <Route path="/settings/fair-play" element={<SettingsFairPlay />} />
+              <Route path="/settings/mobile-app" element={<SettingsMobileApp />} />
               <Route path="/social" element={<Social />} />
               <Route path="/social/u/:uid" element={<UserProfile />} />
               <Route path="/rank" element={<Rank />} />

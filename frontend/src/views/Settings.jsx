@@ -53,6 +53,10 @@ export default function Settings() {
       )}
       <Tile icon="folder" tint="var(--teal)" title={t('Data')} subtitle={t('Backup, import, reset')}
         onClick={() => nav('/settings/data')} />
+      {!MOBILE && (
+        <Tile icon="download" tint="var(--green)" title={t('Mobile app')} subtitle={t('Get it for Android')}
+          onClick={() => nav('/settings/mobile-app')} />
+      )}
       {user && (
         <Tile icon="info" tint="var(--grey)" title={t('How it works')} subtitle={t('Rank, prestige, penalties')}
           onClick={() => nav('/settings/fair-play')} />
