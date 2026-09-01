@@ -17,6 +17,7 @@ export default function AdminTasks() {
   const toast = useUI(s => s.toast)
   const [tasks, setTasks] = useState(null)
   const [bodyParts, setBodyParts] = useState([])
+  const [todayIds, setTodayIds] = useState([])
   const [name, setName] = useState('')
   const [desc, setDesc] = useState('')
   const [points, setPoints] = useState('10')
@@ -24,7 +25,7 @@ export default function AdminTasks() {
   const [critN, setCritN] = useState('3')
   const [critBp, setCritBp] = useState('')
 
-  const load = () => adminTasks().then(d => { setTasks(d.tasks); setBodyParts(d.bodyParts || []) }).catch(() => {})
+  const load = () => adminTasks().then(d => { setTasks(d.tasks); setBodyParts(d.bodyParts || []); setTodayIds(d.todayIds || []) }).catch(() => {})
   useEffect(() => { load() }, [])
 
   const add = () => {
@@ -58,18 +59,19 @@ export default function AdminTasks() {
     <div className="hdr">
       <button className="iconbtn" onClick={() => nav('/admin')} aria-label="Back"><Icon name="chevronLeft" /></button>
       <div style={{ flex: 1, marginLeft: 8 }}><h1 style={{ margin: 0 }}>Daily tasks (XP)</h1>
-        <div className="sub">Auto-completed server-side when a finished workout meets the criteria.</div></div>
+        <div className="sub">Auto-completed server-side when a finished workout meets the criteria. Only 3 of {(tasks || []).length} rotate in on any given day.</div></div>
     </div>
 
     <div className="dtable-wrap">
       <table className="dtable">
-        <thead><tr><th>Task</th><th>XP</th><th>Criteria</th><th>Description</th><th></th></tr></thead>
+        <thead><tr><th>Task</th><th>XP</th><th>Criteria</th><th>Description</th><th></th><th></th></tr></thead>
         <tbody>
           {(tasks || []).map(t => <tr key={t.id}>
             <td>{t.name}</td>
             <td className="dim-cell">+{t.points}</td>
             <td className="dim-cell">{criteriaText(t.criteria)}</td>
             <td className="dim-cell" style={{ whiteSpace: 'normal' }}>{t.desc || '—'}</td>
+            <td>{todayIds.includes(t.id) && <span className="tag acc">Today</span>}</td>
             <td><button className="iconbtn" style={{ width: 28, height: 28, borderRadius: 7, fontSize: 13, color: 'var(--red)' }} onClick={() => remove(t.id)} aria-label="remove"><Icon name="trash" /></button></td>
           </tr>)}
         </tbody>

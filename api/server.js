@@ -701,16 +701,44 @@ function taskCriteriaMet(criteria, dayWorkouts) {
       return false;
   }
 }
+// The catalog can hold as many tasks as an admin adds, but only DAILY_TASKS_LIMIT are ever
+// live on a given day — same rotating set for every account, deterministic from the date
+// alone, so it's stable across requests within the day and identical for everyone (no
+// per-user random state to store). A task not in today's rotation is invisible AND
+// uncompletable today — scanForTasks below filters through this too, so "only 3 a day" is
+// a real cap, not just what the list happens to show.
+const DAILY_TASKS_LIMIT = 3;
+function hashStr(s) {
+  let h = 0;
+  for (let i = 0; i < s.length; i++) h = (Math.imul(31, h) + s.charCodeAt(i)) | 0;
+  return h >>> 0;
+}
+function seededShuffle(arr, seed) {
+  const a = arr.slice();
+  let s = seed || 1;
+  const rand = () => { s = (Math.imul(s, 1664525) + 1013904223) >>> 0; return s / 4294967296; };
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(rand() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+function tasksForToday() {
+  const today = isoOf(new Date());
+  return seededShuffle(db.tasks, hashStr(today)).slice(0, DAILY_TASKS_LIMIT);
+}
+
 // Mirrors scanForCheating: scans what's already stored, dedupes on (userId, taskId, date) via
 // db.taskCompletions itself, called from PUT /api/data right after the write.
 function scanForTasks(req, user, state) {
-  if (!db.tasks.length) return;
+  const todaysTasks = tasksForToday();
+  if (!todaysTasks.length) return;
   const today = isoOf(new Date());
   const dayWorkouts = (state.workouts || []).filter(w => w?.d === today);
   if (!dayWorkouts.length) return;
   const already = new Set(db.taskCompletions.filter(c => c.userId === user.id && c.date === today).map(c => c.taskId));
   const awarded = [];
-  db.tasks.forEach(task => {
+  todaysTasks.forEach(task => {
     if (already.has(task.id) || !taskCriteriaMet(task.criteria, dayWorkouts)) return;
     db.taskCompletions.push({ id: crypto.randomBytes(8).toString('base64url'), userId: user.id, taskId: task.id, points: task.points, date: today, created: new Date().toISOString() });
     awarded.push(task.name);
@@ -1443,10 +1471,12 @@ div{max-width:360px}h1{font-size:20px;margin:0 0 8px}p{color:#9db8a8;line-height
   /* ---------- daily tasks (XP) ---------- */
   // The catalog's copy (name/description/points) is admin-authored, but whether a task is
   // DONE is graded server-side by scanForTasks against real workout data — there's no
-  // "mark complete" route any more, on purpose (see taskCriteriaMet above).
+  // "mark complete" route any more, on purpose (see taskCriteriaMet above). GET /api/admin/tasks
+  // returns the whole catalog either way — only GET /api/tasks/today caps it to
+  // DAILY_TASKS_LIMIT, so an admin can stock up a big catalog and let it rotate.
   'GET /api/admin/tasks': async (req, res) => {
     const admin = requireAdmin(req, res); if (!admin) return;
-    json(res, 200, { tasks: db.tasks, bodyParts: TASK_BODY_PARTS });
+    json(res, 200, { tasks: db.tasks, bodyParts: TASK_BODY_PARTS, todayIds: tasksForToday().map(t => t.id) });
   },
   'POST /api/admin/tasks': async (req, res) => {
     const admin = requireAdmin(req, res); if (!admin) return;
@@ -1493,7 +1523,7 @@ div{max-width:360px}h1{font-size:20px;margin:0 0 8px}p{color:#9db8a8;line-height
     if (!me) return json(res, 401, { error: 'not signed in' });
     const today = isoOf(new Date());
     const done = new Set(db.taskCompletions.filter(c => c.userId === me.id && c.date === today).map(c => c.taskId));
-    json(res, 200, { tasks: db.tasks.map(t => ({ ...t, done: done.has(t.id) })) });
+    json(res, 200, { tasks: tasksForToday().map(t => ({ ...t, done: done.has(t.id) })) });
   },
 
   /* ---------- social ---------- */
