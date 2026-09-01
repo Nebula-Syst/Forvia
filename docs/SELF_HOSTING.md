@@ -9,10 +9,10 @@ server and an API) plus a folder of your data. This guide takes you from "just c
 Requirements: [Docker](https://docs.docker.com/get-docker/) with the Compose plugin.
 
 ```bash
-git clone https://gitlab.com/DuarteSantos8/forvia
-cd Forvia
+git clone https://github.com/Nebula-Syst/forvia
+cd forvia
 cp .env.example .env
-docker compose pull   # prebuilt images from GitLab (amd64 + arm64) — or skip and build from source
+docker compose pull   # prebuilt images from GitHub Container Registry (amd64 + arm64) — or skip and build from source
 docker compose up -d
 ```
 

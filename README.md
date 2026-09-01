@@ -87,8 +87,6 @@ as a home-screen app, passkey sign-in, offline support, sync across your phone a
 - 🌍 **12 languages** — full UI translation (EN, DE, ES, FR, IT, PT, PL, TR, RU, ZH, KO, HI); exercise instructions localized in 10 of them, loaded on demand so the app stays fast
 - 📥 **Bring your history with you** — import from **FitNotes** (Android and iOS), **Strong** and **Hevy**, or body weight straight out of an **Apple Health** export. Exercise names are matched against the library and anything unrecognised becomes one of your own exercises, so nothing in the file is dropped
 - 📦 **Yours to keep** — one-tap JSON export/import, guest mode, **no telemetry**
-- 🤖 **Ask an AI about your training** (optional) — an [MCP server](mcp/README.md) lets a client like Claude Desktop or Cursor read your history in your own words: *"what did I bench last week?"*. Read-only, spawned locally by the client, nothing leaves your box. Not in the Docker build — if you don't use an AI assistant, it isn't there
-- 📱 **Standalone Android app** — the whole tracker as a sideloadable APK: no account, no server, data on the phone, native workout reminders ([download](https://forvia.duarte-santos.ch))
 
 ## Quick start (self-host)
 
@@ -118,19 +116,6 @@ a build step locally either way.
 
 > Want it reachable from your phone over the internet with passkeys? You'll need an HTTPS
 > domain — a two-line change in `.env`. See **[docs/SELF_HOSTING.md](docs/SELF_HOSTING.md)**.
-
-## Mobile app (no server at all)
-
-The same codebase also builds a **standalone mobile app** (Capacitor): no account, no sync,
-no backend — everything stays on the phone, with native workout-day reminders and share-sheet
-backups. Self-hosting gets you multi-device sync and profiles for friends & family; the
-mobile app is the install-and-done flavor.
-
-- **Android:** build the APK yourself — **[docs/MOBILE.md](docs/MOBILE.md)**. Forvia is
-  deliberately not on the Play Store; this fork doesn't currently publish signed prebuilt APKs.
-- **iPhone:** Apple doesn't allow installing apps outside the App Store, so there is no iOS
-  download. Self-host and add it to your home screen from Safari (it's a full PWA), or build
-  the native app onto your own device from Xcode — see **[docs/MOBILE.md](docs/MOBILE.md)**.
 
 ## How it works
 
@@ -190,7 +175,6 @@ host side of that volume, not the variable.
 
 Rough, community-driven — ideas and PRs welcome:
 
-- [x] Standalone mobile app — Android APK to sideload ([download](https://forvia.duarte-santos.ch)); on iOS as a self-hosted PWA (no store listings planned)
 - [x] Automatic progression programs (linear, Greyskull LP, double progression) with stalls and deloads
 - [x] Estimated 1RM per exercise
 - [ ] Percentage / training-max programming (5/3/1-style) on top of the progression engine
@@ -213,10 +197,6 @@ The training logic — progression rules, 1RM estimation, how a logged session i
 lives in pure functions under `frontend/src/lib/` with tests next to them: `npm test` in
 `frontend/`. Vitest is a dev dependency; the app itself ships no runtime dependencies beyond
 React, the router and Zustand.
-
-The same pure helpers power an optional MCP server (`mcp/`) that lets an LLM client like
-Claude Desktop read your data over stdio — see [mcp/README.md](mcp/README.md). Opt-in, not
-in the Docker build.
 
 ## Community
 

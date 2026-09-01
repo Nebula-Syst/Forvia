@@ -7,14 +7,10 @@ to keep it that way — easy to read, easy to self-host.
 
 ```
 frontend/  React + Vite app (src/views, src/components, src/store, src/lib). Builds to static files.
-           android/ + ios/ are the Capacitor shells for the standalone mobile app (docs/MOBILE.md).
 api/       backend — server.js (Node, no framework), one dependency (@simplewebauthn/server).
 web/       multi-stage Dockerfile (builds frontend → nginx) + nginx.conf (serves app, proxies /api).
 media/     exercise img/gif (gitignored, fetched at runtime).
 docs/      self-hosting guide.
-mcp/       optional Model Context Protocol server — read-only stdio bridge for LLM apps
-           (Claude Desktop, Cursor, …) to query a user's workouts/1RM/muscle balance. Not in
-           the Docker build; only runs when an LLM client spawns it. See mcp/README.md.
 ```
 
 ## Running for development
@@ -37,7 +33,7 @@ cd frontend && npm test
   State lives in the Zustand store (`src/store`); pure helpers in `src/lib`.
 - **Don't commit** the exercise media (`media/`) or `data/` — they're gitignored.
 - **Test the flow** you touched — click through the affected screens (and the workout flow) in a
-  browser before opening a merge request.
+  browser before opening a pull request.
 - **Training logic gets a unit test.** Anything deciding what you lift next, or reading a logged
   session back, belongs in a pure helper in `src/lib` with tests beside it (`npm test`). These
   rules are easy to get subtly wrong and nearly impossible to verify by clicking — the
@@ -56,16 +52,16 @@ cd frontend && npm test
 | You have | Goes to |
 | --- | --- |
 | A quick question, or you'd rather just chat | [The Discord](https://discord.gg/e62jY6fwVb) |
-| A question, or self-hosting that won't behave | [An issue labelled `question`](https://gitlab.com/DuarteSantos8/forvia/-/issues) |
-| An idea you're not sure about yet | [An issue labelled `idea`](https://gitlab.com/DuarteSantos8/forvia/-/issues) |
-| A reproducible bug | [Issues](https://gitlab.com/DuarteSantos8/forvia/-/issues) |
-| A change you've already built | A merge request |
+| A question, or self-hosting that won't behave | [An issue labelled `question`](https://github.com/Nebula-Syst/forvia/issues) |
+| An idea you're not sure about yet | [An issue labelled `idea`](https://github.com/Nebula-Syst/forvia/issues) |
+| A reproducible bug | [Issues](https://github.com/Nebula-Syst/forvia/issues) |
+| A change you've already built | A pull request |
 
-GitLab has no Discussions, so questions and ideas are issues too — just labelled, so nobody
-mistakes a question for agreed-on work. An answered question is worth more than the same answer
-in a chat log: the next person searching "passkey login fails behind my reverse proxy" finds it.
-That is the one thing the Discord can't do, so if an answer there turns out to be worth keeping,
-it belongs in an issue afterwards.
+GitHub Discussions isn't used here, so questions and ideas are issues too — just labelled, so
+nobody mistakes a question for agreed-on work. An answered question is worth more than the same
+answer in a chat log: the next person searching "passkey login fails behind my reverse proxy"
+finds it. That is the one thing the Discord can't do, so if an answer there turns out to be worth
+keeping, it belongs in an issue afterwards.
 
 ## Reporting bugs
 
