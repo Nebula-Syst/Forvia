@@ -78,3 +78,27 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha,scope=${{ matrix.image }}
           cache-to: type=gha,mode=max,scope=${{ matrix.image }}
+
+  # Runs only for a real release (never a plain push to main), and only after both images
+  # (api, web) are already pushed to GHCR — so there's never a window where this pulls a tag
+  # that isn't there yet. `runs-on: forvia-deploy` targets the self-hosted runner in
+  # ~/Proyectos/forvia-deploy on the production host (see its docker-compose.yml for what it
+  # can and can't do) — nothing here reaches the server over the network, the job just *is*
+  # a process running on it.
+  deploy:
+    needs: build
+    if: github.event_name == 'release'
+    runs-on: [self-hosted, forvia-deploy]
+    steps:
+      - name: Ensure docker CLI is on the runner
+        run: command -v docker || (apt-get update && apt-get install -y docker-ce-cli docker-compose-plugin)
+
+      - name: Pull ${{ github.ref_name }} and redeploy
+        working-directory: /home/josemgl/Proyectos/forvia-prod
+        run: |
+          sed -i "s/^FORVIA_VERSION=.*/FORVIA_VERSION=${{ github.ref_name }}/" .env
+          docker compose pull api web
+          docker compose up -d
+          sleep 3
+          set -a; source .env; set +a
+          curl -fsS "http://localhost:${WEB_PORT:-13027}/api/health"
