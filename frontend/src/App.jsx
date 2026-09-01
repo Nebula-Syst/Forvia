@@ -41,6 +41,7 @@ import Admin from './views/Admin.jsx'
 import AdminUsers from './views/admin/AdminUsers.jsx'
 import AdminTasks from './views/admin/AdminTasks.jsx'
 import AdminLog from './views/admin/AdminLog.jsx'
+import AdminAlpha from './views/admin/AdminAlpha.jsx'
 import { DEFAULT_ACCENT } from './lib/palette.js'
 
 bindUI(useUI)   // lets the shared controls open sheets without importing the store at module scope
@@ -116,6 +117,7 @@ function Shell() {
               <Route path="/admin/users" element={user?.admin ? <AdminUsers /> : <Navigate to="/home" replace />} />
               <Route path="/admin/tasks" element={user?.admin ? <AdminTasks /> : <Navigate to="/home" replace />} />
               <Route path="/admin/log" element={user?.admin ? <AdminLog /> : <Navigate to="/home" replace />} />
+              <Route path="/admin/alpha" element={user?.admin ? <AdminAlpha /> : <Navigate to="/home" replace />} />
               <Route path="*" element={<Navigate to="/home" replace />} />
             </Routes>
           )}

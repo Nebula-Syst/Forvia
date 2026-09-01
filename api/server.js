@@ -1,4 +1,4 @@
-/* forvia-api — username/password auth + per-user state storage for Forvia
+/* forvia-api — email/password auth + per-user state storage for Forvia
    No framework, JSON-file storage, signed session cookies.               */
 import http from 'node:http';
 import crypto from 'node:crypto';
@@ -38,6 +38,16 @@ const SESSION_DAYS = Math.max(1, +(process.env.SESSION_DAYS || 90) || 90);
 const MAX_BODY = 9 * 1024 * 1024;
 // Secure cookies require HTTPS; over plain http://localhost the flag would drop the cookie
 const SECURE = /^https:/i.test(ORIGIN) ? ' Secure;' : '';
+// The only cross-origin request this API answers: the "apply for the alpha" form on the
+// landing page, a *different* origin from the app itself (forvia.fit vs app.forvia.fit) with
+// no session to prove it's really that page — CORS is the whole guard, so it's an explicit
+// allowlist, never a wildcard, and only the one route below sets these headers at all.
+const LANDING_ORIGINS = (process.env.LANDING_ORIGINS || 'https://forvia.fit,https://www.forvia.fit').split(',').map(s => s.trim()).filter(Boolean);
+function corsHeaders(req) {
+  const origin = req.headers.origin;
+  if (!origin || !LANDING_ORIGINS.includes(origin)) return {};
+  return { 'Access-Control-Allow-Origin': origin, 'Access-Control-Allow-Methods': 'POST, OPTIONS', 'Access-Control-Allow-Headers': 'Content-Type', 'Vary': 'Origin' };
+}
 
 fs.mkdirSync(DATA, { recursive: true });
 
@@ -50,7 +60,7 @@ const SECRET = fs.readFileSync(secretFile, 'utf8').trim();
 // why this stays one big in-memory object instead of being queried per-request. Same shape
 // db.json's arrays always had: users, subs (push), invites, follows, reactions, comments
 // (social), tasks/taskCompletions (daily-task catalog + awards), cheatPenalties (anti-cheat).
-let db = { users: [], subs: [], invites: [], follows: [], reactions: [], comments: [], tasks: [], taskCompletions: [], cheatPenalties: [] };
+let db = { users: [], subs: [], invites: [], follows: [], reactions: [], comments: [], tasks: [], taskCompletions: [], cheatPenalties: [], alphaRequests: [] };
 // A user can hold several employee types at once (e.g. both founder and admin), not one
 // flat role — employeeTypes is an array, filtered to the known set on every read so a
 // stale/tampered value in db.json can never grant something that isn't in EMPLOYEE_TYPES.
@@ -58,7 +68,7 @@ const EMPLOYEE_TYPES = ['founder', 'admin'];
 const employeeTypesOf = user => Array.isArray(user?.employeeTypes) ? user.employeeTypes.filter(t => EMPLOYEE_TYPES.includes(t)) : [];
 const isAdmin = user => !!user && (employeeTypesOf(user).length > 0 || ADMIN_UIDS.includes(user.id));
 // The shape sent to the client for "who am I" — never the password hash/salt, just enough to
-// know what username to prefill when changing it.
+// know what email to prefill when changing it.
 // No badge preference saved yet → default to showing rank (and prestige, once there is
 // any) in the first slots, matching what used to be shown unconditionally. Once someone
 // saves *any* selection (including clearing every slot) that explicit array wins forever.
@@ -68,7 +78,7 @@ const badgesFor = (user, rank) => Array.isArray(user.badges) ? user.badges : def
 const publicUser = user => {
   const rank = rankFor(user.id);
   return {
-    id: user.id, name: user.name, admin: isAdmin(user), employeeTypes: employeeTypesOf(user), username: user.pwd?.username || null,
+    id: user.id, name: user.name, admin: isAdmin(user), employeeTypes: employeeTypesOf(user),
     public: !!user.public, rank, perks: perksFor(user.id),
     bio: user.bio || '',
     badges: badgesFor(user, rank),
@@ -280,9 +290,10 @@ function verifyPassword(password, salt, hash) {
   const want = Buffer.from(hash, 'hex');
   return got.length === want.length && crypto.timingSafeEqual(got, want);
 }
-const findByUsername = name => {
-  const norm = String(name || '').trim().toLowerCase();
-  return norm ? db.users.find(u => u.pwd?.username?.toLowerCase() === norm) : null;
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const findByEmail = email => {
+  const norm = String(email || '').trim().toLowerCase();
+  return norm ? db.users.find(u => (u.email || '').toLowerCase() === norm) : null;
 };
 
 /* ---------- outbound email (account email verification only) ---------- */
@@ -890,6 +901,30 @@ const routes = {
   // Public config the login screen needs before anyone is signed in.
   'GET /api/config': async (req, res) => json(res, 200, { invite_only: INVITE_ONLY, allow_guest: ALLOW_GUEST, allow_register: ALLOW_REGISTER }),
 
+  /* ---------- alpha waitlist (public, cross-origin from the landing page) ---------- */
+  // Preflight for the one browser-originated cross-origin POST this API answers.
+  'OPTIONS /api/alpha/apply': async (req, res) => { res.writeHead(204, corsHeaders(req)); res.end(); },
+  // No session, no auth — this is the landing page's "request access" form. Re-submitting the
+  // same email updates the existing request instead of piling up duplicates, so someone fixing
+  // a typo or adding a note doesn't need the admin to sort through repeats. Dismissed requests
+  // are left alone (a defence against them just resubmitting through a "dismiss" — they'd need
+  // a *new* email, not just a resend of a rejected one).
+  'POST /api/alpha/apply': async (req, res) => {
+    const headers = corsHeaders(req);
+    const body = await readBody(req);
+    const name = String(body.name || '').trim().slice(0, 60);
+    const email = String(body.email || '').trim().toLowerCase().slice(0, 254);
+    const message = String(body.message || '').trim().slice(0, 500);
+    if (!name) return json(res, 400, { error: 'name required' }, headers);
+    if (!EMAIL_RE.test(email)) return json(res, 400, { error: 'enter a valid email address' }, headers);
+    const existing = db.alphaRequests.find(r => r.email === email && r.status !== 'dismissed');
+    if (existing) { existing.name = name; existing.message = message; existing.updated = new Date().toISOString(); }
+    else db.alphaRequests.push({ id: crypto.randomBytes(8).toString('base64url'), name, email, message, status: 'pending', created: new Date().toISOString() });
+    saveDb();
+    audit(req, 'alpha.apply', { name, msg: email });
+    json(res, 200, { ok: true }, headers);
+  },
+
   'GET /api/me': async (req, res) => {
     const user = readSession(req);
     if (!user) return json(res, 401, { error: 'not signed in' });
@@ -916,12 +951,12 @@ const routes = {
   'POST /api/register': async (req, res) => {
     const body = await readBody(req);
     const name = String(body.name || '').trim().slice(0, 40);
-    const username = String(body.username || '').trim();
+    const email = String(body.email || '').trim().toLowerCase().slice(0, 254);
     const password = String(body.password || '');
     if (!name) return json(res, 400, { error: 'name required' });
-    if (username.length < 3) return json(res, 400, { error: 'username must be at least 3 characters' });
+    if (!EMAIL_RE.test(email)) return json(res, 400, { error: 'enter a valid email address' });
     if (password.length < 8) return json(res, 400, { error: 'password must be at least 8 characters' });
-    if (findByUsername(username)) return json(res, 409, { error: 'that username is taken' });
+    if (findByEmail(email)) return json(res, 409, { error: 'an account already exists for that email' });
     // A valid, unused invite code is a door of its own — it lets someone in even while
     // ALLOW_REGISTER is off, same as it always has under INVITE_ONLY. One code, one account:
     // usedBy is set the moment it's spent, so a second attempt with the same code fails here.
@@ -932,22 +967,32 @@ const routes = {
       audit(req, 'auth.register.denied', { ok: false, name, msg: 'invite-rejected' });
       return json(res, 403, { error: 'a valid invite code is required' });
     }
-    const user = { id: crypto.randomBytes(12).toString('base64url'), name, created: new Date().toISOString() };
-    user.pwd = { username, ...hashPassword(password) };
+    const user = { id: crypto.randomBytes(12).toString('base64url'), name, email, created: new Date().toISOString() };
+    user.pwd = hashPassword(password);
     if (invite) { user.invitedBy = invite.code; invite.usedBy = user.id; invite.usedAt = user.created; }
     db.users.push(user);
     saveDb();
     audit(req, 'auth.register.ok', { user, msg: invite ? invite.code : null });
+    // Best-effort, same as changing your email later from Settings — a fresh account isn't
+    // blocked on this, it just starts out unverified if no SMTP is configured.
+    if (SMTP_CONFIGURED) {
+      user.emailVerifyToken = { token: crypto.randomBytes(24).toString('base64url'), expires: Date.now() + 86400000 };
+      saveDb();
+      await sendMail({
+        to: email, subject: 'Verify your email — Forvia',
+        text: `Confirm this is your email address for your Forvia account (${name}):\n\n${ORIGIN}/api/account/verify-email?token=${user.emailVerifyToken.token}\n\nIf you didn't request this, you can ignore this message — nothing changes until the link above is opened.`,
+      });
+    }
     json(res, 200, { user: publicUser(user) }, { 'Set-Cookie': sessionCookie(user) });
   },
 
   'POST /api/login': async (req, res) => {
     const body = await readBody(req);
-    const user = findByUsername(body.username);
-    // Same generic error either way — a username is guessable, so "no such user" vs "wrong
-    // password" would let an attacker enumerate accounts.
-    const fail = msg => { audit(req, 'auth.login.fail', { ok: false, uid: user?.id, msg }); return json(res, 401, { error: 'incorrect username or password' }) }
-    if (!user || !verifyPassword(String(body.password || ''), user.pwd.salt, user.pwd.hash)) return fail(user ? 'bad-password' : 'unknown-username');
+    const user = findByEmail(body.email);
+    // Same generic error either way — knowing an email is registered would let an attacker
+    // enumerate accounts.
+    const fail = msg => { audit(req, 'auth.login.fail', { ok: false, uid: user?.id, msg }); return json(res, 401, { error: 'incorrect email or password' }) }
+    if (!user || !verifyPassword(String(body.password || ''), user.pwd.salt, user.pwd.hash)) return fail(user ? 'bad-password' : 'unknown-email');
     if (user.disabled) { audit(req, 'auth.login.fail', { ok: false, user, msg: 'account-disabled' }); return json(res, 403, { error: 'this account has been disabled' }) }
     audit(req, 'auth.login.ok', { user });
     json(res, 200, { user: publicUser(user) }, { 'Set-Cookie': sessionCookie(user) });
@@ -1007,22 +1052,6 @@ const routes = {
     json(res, 200, { user: publicUser(user) });
   },
 
-  // Username only — no password required alongside it (that used to be one combined route;
-  // splitting means changing your handle doesn't force picking a new password too).
-  'POST /api/account/username': async (req, res) => {
-    const user = readSession(req);
-    if (!user) return json(res, 401, { error: 'not signed in' });
-    const body = await readBody(req);
-    const username = String(body.username || '').trim();
-    if (username.length < 3) return json(res, 400, { error: 'username must be at least 3 characters' });
-    const other = findByUsername(username);
-    if (other && other.id !== user.id) return json(res, 409, { error: 'that username is taken' });
-    user.pwd.username = username;
-    saveDb();
-    audit(req, 'account.username.set', { user });
-    json(res, 200, { user: publicUser(user) });
-  },
-
   // Password only. No "remove" route: with password as the only way in, deleting it would
   // lock the account out — this only ever replaces it.
   'POST /api/account/password': async (req, res) => {
@@ -1041,26 +1070,31 @@ const routes = {
     json(res, 200, { user: publicUser(user) });
   },
 
-  // Sets a pending email and fires off a verification link — best-effort: if this instance
-  // has no SMTP_HOST configured, the address is still saved (unverified) so it's there once
-  // an admin sets one up, and `mailConfigured:false` tells the frontend not to promise a mail
+  // Email is the login identifier now, so — unlike the old username route — this can't be
+  // cleared to blank, and it has to stay unique. Changing it fires a verification link the
+  // same way registration does; best-effort, same reasoning as before: if this instance has
+  // no SMTP_HOST configured, the address is still saved (unverified) so it's there once an
+  // admin sets one up, and `mailConfigured:false` tells the frontend not to promise a mail
   // that can't be sent.
   'POST /api/account/email': async (req, res) => {
     const user = readSession(req);
     if (!user) return json(res, 401, { error: 'not signed in' });
     const body = await readBody(req);
     const email = String(body.email || '').trim().toLowerCase().slice(0, 254);
-    if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return json(res, 400, { error: 'enter a valid email address' });
-    user.email = email || null;
+    if (!email) return json(res, 400, { error: 'email required' });
+    if (!EMAIL_RE.test(email)) return json(res, 400, { error: 'enter a valid email address' });
+    if (email === user.email) return json(res, 200, { user: publicUser(user), mailSent: false, mailConfigured: SMTP_CONFIGURED });
+    const other = findByEmail(email);
+    if (other && other.id !== user.id) return json(res, 409, { error: 'that email is already in use' });
+    user.email = email;
     user.emailVerified = false;
     delete user.emailVerifyToken;
-    if (!email) { saveDb(); audit(req, 'account.email.cleared', { user }); return json(res, 200, { user: publicUser(user), mailSent: false, mailConfigured: SMTP_CONFIGURED }); }
     user.emailVerifyToken = { token: crypto.randomBytes(24).toString('base64url'), expires: Date.now() + 86400000 };
     saveDb();
     audit(req, 'account.email.set', { user });
     const mailSent = SMTP_CONFIGURED && await sendMail({
       to: email, subject: 'Verify your email — Forvia',
-      text: `Confirm this is your email address for your Forvia account (${user.pwd?.username || user.name}):\n\n${ORIGIN}/api/account/verify-email?token=${user.emailVerifyToken.token}\n\nIf you didn't request this, you can ignore this message — nothing changes until the link above is opened.`,
+      text: `Confirm this is your email address for your Forvia account (${user.name}):\n\n${ORIGIN}/api/account/verify-email?token=${user.emailVerifyToken.token}\n\nIf you didn't request this, you can ignore this message — nothing changes until the link above is opened.`,
     });
     json(res, 200, { user: publicUser(user), mailSent, mailConfigured: SMTP_CONFIGURED });
   },
@@ -1074,7 +1108,7 @@ const routes = {
     saveDb();
     const mailSent = SMTP_CONFIGURED && await sendMail({
       to: user.email, subject: 'Verify your email — Forvia',
-      text: `Confirm this is your email address for your Forvia account (${user.pwd?.username || user.name}):\n\n${ORIGIN}/api/account/verify-email?token=${user.emailVerifyToken.token}\n\nIf you didn't request this, you can ignore this message — nothing changes until the link above is opened.`,
+      text: `Confirm this is your email address for your Forvia account (${user.name}):\n\n${ORIGIN}/api/account/verify-email?token=${user.emailVerifyToken.token}\n\nIf you didn't request this, you can ignore this message — nothing changes until the link above is opened.`,
     });
     json(res, 200, { mailSent, mailConfigured: SMTP_CONFIGURED });
   },
@@ -1284,7 +1318,7 @@ div{max-width:360px}h1{font-size:20px;margin:0 0 8px}p{color:#9db8a8;line-height
       const workouts = S.workouts || [];
       const last = workouts[workouts.length - 1];
       return {
-        id: u.id, name: u.name, username: u.pwd?.username || null, created: u.created || null,
+        id: u.id, name: u.name, email: u.email || null, created: u.created || null,
         disabled: !!u.disabled, admin: isAdmin(u), employeeTypes: employeeTypesOf(u), invitedBy: u.invitedBy || null,
         workouts: workouts.length,
         lastWorkout: last ? last.d : null,
@@ -1304,7 +1338,7 @@ div{max-width:360px}h1{font-size:20px;margin:0 0 8px}p{color:#9db8a8;line-height
     if (!u) return json(res, 404, { error: 'no such user' });
     const S = readState(u.id) || {};
     json(res, 200, {
-      user: { id: u.id, name: u.name, created: u.created || null, disabled: !!u.disabled, admin: isAdmin(u), employeeTypes: employeeTypesOf(u), invitedBy: u.invitedBy || null },
+      user: { id: u.id, name: u.name, email: u.email || null, created: u.created || null, disabled: !!u.disabled, admin: isAdmin(u), employeeTypes: employeeTypesOf(u), invitedBy: u.invitedBy || null },
       unit: S.unit || 'kg',
       lastSync: S._ts || null,
       routines: (S.routines || []).map(r => ({ id: r.id, name: r.name, emoji: r.emoji, count: (r.ex || []).length })),
@@ -1348,14 +1382,14 @@ div{max-width:360px}h1{font-size:20px;margin:0 0 8px}p{color:#9db8a8;line-height
     const admin = requireAdmin(req, res); if (!admin) return;
     const body = await readBody(req);
     const name = String(body.name || '').trim().slice(0, 40);
-    const username = String(body.username || '').trim();
+    const email = String(body.email || '').trim().toLowerCase().slice(0, 254);
     const password = String(body.password || '');
     if (!name) return json(res, 400, { error: 'name required' });
-    if (username.length < 3) return json(res, 400, { error: 'username must be at least 3 characters' });
+    if (!EMAIL_RE.test(email)) return json(res, 400, { error: 'enter a valid email address' });
     if (password.length < 8) return json(res, 400, { error: 'password must be at least 8 characters' });
-    if (findByUsername(username)) return json(res, 409, { error: 'that username is taken' });
-    const user = { id: crypto.randomBytes(12).toString('base64url'), name, created: new Date().toISOString() };
-    user.pwd = { username, ...hashPassword(password) };
+    if (findByEmail(email)) return json(res, 409, { error: 'an account already exists for that email' });
+    const user = { id: crypto.randomBytes(12).toString('base64url'), name, email, created: new Date().toISOString() };
+    user.pwd = hashPassword(password);
     db.users.push(user);
     saveDb();
     audit(req, 'admin.user.create', { user: admin, target: user });
@@ -1396,6 +1430,42 @@ div{max-width:360px}h1{font-size:20px;margin:0 0 8px}p{color:#9db8a8;line-height
     db.invites = db.invites.filter(i => i.code !== inv.code);
     saveDb();
     audit(req, 'admin.invite.revoke', { user: admin, msg: inv.code });
+    json(res, 200, { ok: true });
+  },
+
+  /* ---------- alpha waitlist (admin side) ---------- */
+  'GET /api/admin/alpha': async (req, res) => {
+    if (!requireAdmin(req, res)) return;
+    json(res, 200, { requests: [...db.alphaRequests].reverse() });
+  },
+  // Generates a real single-use invite code (same table, same rules as Users → Invite codes)
+  // tied to this request, but doesn't send anything itself — there's no SMTP-independent way
+  // to know the admin actually wants to reach out today, so this just hands back the code and
+  // a mailto: link's worth of information for them to send by hand.
+  'POST /api/admin/alpha/invite': async (req, res) => {
+    const admin = requireAdmin(req, res); if (!admin) return;
+    const body = await readBody(req);
+    const reqRow = db.alphaRequests.find(r => r.id === body.id);
+    if (!reqRow) return json(res, 404, { error: 'no such request' });
+    let code;
+    do { code = crypto.randomBytes(8).toString('hex').toUpperCase(); } while (db.invites.some(i => i.code === code));
+    const invite = { code, note: 'alpha: ' + reqRow.email, createdBy: admin.id, created: new Date().toISOString() };
+    db.invites.push(invite);
+    reqRow.status = 'invited';
+    reqRow.invitedAt = new Date().toISOString();
+    reqRow.inviteCode = code;
+    saveDb();
+    audit(req, 'admin.alpha.invite', { user: admin, msg: reqRow.email });
+    json(res, 200, { invite, request: reqRow });
+  },
+  'POST /api/admin/alpha/dismiss': async (req, res) => {
+    const admin = requireAdmin(req, res); if (!admin) return;
+    const body = await readBody(req);
+    const reqRow = db.alphaRequests.find(r => r.id === body.id);
+    if (!reqRow) return json(res, 404, { error: 'no such request' });
+    reqRow.status = 'dismissed';
+    saveDb();
+    audit(req, 'admin.alpha.dismiss', { user: admin, msg: reqRow.email });
     json(res, 200, { ok: true });
   },
 

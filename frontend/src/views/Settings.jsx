@@ -33,7 +33,7 @@ export default function Settings() {
 
     <div className="settings-grid">
       <Tile icon="personCircle" tint="var(--blue)" title={t('Account')}
-        subtitle={MOBILE ? t('About this app') : DEMO ? t('Demo') : t('Sign-in, username, sessions')}
+        subtitle={MOBILE ? t('About this app') : DEMO ? t('Demo') : t('Sign-in, email, sessions')}
         onClick={() => nav('/settings/account')} />
       {showProfile && (
         <Tile icon="sparkles" tint="var(--purple)" title={t('Profile')} subtitle={t('Bio, badges')}

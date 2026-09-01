@@ -29,6 +29,8 @@ export default function Admin() {
         onClick={() => nav('/admin/users')} />
       <Tile icon="checkCircle" tint="var(--green)" title="Daily tasks" subtitle="XP criteria"
         onClick={() => nav('/admin/tasks')} />
+      <Tile icon="sparkles" tint="var(--acc)" title="Alpha requests" subtitle="Access requests from the landing page" full
+        onClick={() => nav('/admin/alpha')} />
       <Tile icon="clipboard" tint="var(--grey)" title="Activity log" subtitle="Sign-ins, admin actions" full
         onClick={() => nav('/admin/log')} />
     </div>

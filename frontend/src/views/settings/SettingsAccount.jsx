@@ -5,7 +5,7 @@ import { useUI } from '../../store/useUI.js'
 import { t, LANGS, INSTR_LANGS } from '../../lib/i18n.js'
 import { DEMO, REPO } from '../../lib/demo.js'
 import { MOBILE } from '../../lib/mobile.js'
-import { setPublic, setName, setPhone, setUsername, setEmail, resendEmailVerification } from '../../lib/api.js'
+import { setPublic, setName, setPhone, setEmail, resendEmailVerification } from '../../lib/api.js'
 import { confirmSheet, passwordLoginSheet, passwordRegisterSheet, changePasswordSheet, deleteAccountSheet } from '../../sheets.jsx'
 import Icon from '../../components/Icon.jsx'
 import PenaltiesRow from '../../components/PenaltiesRow.jsx'
@@ -41,7 +41,7 @@ function EmailField({ user, setUser, toast }) {
     try {
       const res = await setEmail(email)
       setUser(res.user)
-      if (email) reportSend(res); else toast(t('Email removed'))
+      reportSend(res)
     } catch (e) { toast(e.message || t('Could not save')); setV(user.email || '') }
     finally { setBusy(false) }
   }
@@ -86,7 +86,7 @@ export default function SettingsAccount() {
 
   const signOutEverywhere = () => confirmSheet({
     title: t('Sign out everywhere?'),
-    message: t('Signs this profile out on every device, including this one. Sign in with your username and password again anytime.'),
+    message: t('Signs this profile out on every device, including this one. Sign in with your email and password again anytime.'),
     confirmText: t('Sign out everywhere'), danger: true,
     onConfirm: async () => {
       try { await signOutAll(); nav('/home'); toast(t('Signed out on all devices')) }
@@ -144,8 +144,6 @@ export default function SettingsAccount() {
     <PenaltiesRow />
 
     <Section title={t('Account info')}>
-      <Field label={t('Username')} value={user.username} placeholder={t('Username')}
-        onSave={v => { if (v.length < 3) { toast(t('Username must be at least 3 characters')); return } save(setUsername)(v) }} />
       <Field label={t('First name')} value={first} placeholder={t('First name')}
         onSave={v => { if (!v) { toast(t('Enter a name')); return } save(setName)(last ? v + ' ' + last : v) }} />
       <Field label={t('Last name')} value={last} placeholder={t('Last name')}

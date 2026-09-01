@@ -51,16 +51,16 @@ export function confirmSheet(opts) {
 // Opened from two places — Login (no session yet) and Settings (already signed in) — so it lives
 // here rather than inline in either view, same reason bwSheet/calendarSheet do.
 function PasswordLoginForm({ close }) {
-  const [username, setUsername] = useState('')
+  const [email, setEmailField] = useState('')
   const [pw, setPw] = useState('')
   const [busy, setBusy] = useState(false)
   const ref = useRef(null)
   useEffect(() => { setTimeout(() => ref.current?.focus(), 250) }, [])
   const go = async () => {
-    if (!username.trim() || !pw) { toast(t('Enter your username and password')); return }
+    if (!email.trim() || !pw) { toast(t('Enter your email and password')); return }
     setBusy(true)
     try {
-      const u = await passwordLogin(username.trim(), pw)
+      const u = await passwordLogin(email.trim(), pw)
       useStore.getState().setUser(u); close()
       await useStore.getState().pullState()
       toast(t('Welcome back, {0}', u.name))
@@ -69,9 +69,9 @@ function PasswordLoginForm({ close }) {
   }
   return <>
     <h3>{t('Sign in')}</h3>
-    <input ref={ref} className="input" placeholder={t('Username')} value={username} onChange={e => setUsername(e.target.value)} />
+    <input ref={ref} className="input" type="email" autoComplete="email" placeholder={t('Email')} value={email} onChange={e => setEmailField(e.target.value)} />
     <div style={{ height: 10 }} />
-    <input className="input" type="password" placeholder={t('Password')} value={pw} onChange={e => setPw(e.target.value)}
+    <input className="input" type="password" autoComplete="current-password" placeholder={t('Password')} value={pw} onChange={e => setPw(e.target.value)}
       onKeyDown={e => e.key === 'Enter' && go()} />
     <div style={{ height: 12 }} />
     <Button variant="primary" onClick={go} disabled={busy}>{t('Sign in')}</Button>
@@ -87,7 +87,7 @@ function PasswordRegisterForm({ close, prefillCode }) {
   const registerClosed = config?.allow_register === false
   const codeRequired = inviteOnly || registerClosed || !!prefillCode
   const [name, setName] = useState('')
-  const [username, setUsername] = useState('')
+  const [email, setEmailField] = useState('')
   const [pw, setPw] = useState('')
   const [code, setCode] = useState(prefillCode || '')
   const [busy, setBusy] = useState(false)
@@ -97,12 +97,12 @@ function PasswordRegisterForm({ close, prefillCode }) {
   const go = async () => {
     const n = name.trim()
     if (!n) { toast(t('Enter a name')); return }
-    if (username.trim().length < 3) { toast(t('Username must be at least 3 characters')); return }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) { toast(t('Enter a valid email address')); return }
     if (pw.length < 8) { toast(t('Password must be at least 8 characters')); return }
     if (codeRequired && !code.trim()) { toast(t('An invite code is required')); return }
     setBusy(true)
     try {
-      const u = await passwordRegister(n, username.trim(), pw, code.trim())
+      const u = await passwordRegister(n, email.trim(), pw, code.trim())
       useStore.getState().setUser(u); close()
       if (hasData(useStore.getState().S)) { await useStore.getState().pushState(); toast(t('Profile created — data from this device moved into it')) }
       else { await useStore.getState().pullState(); toast(t('Welcome, {0}', u.name)) }
@@ -113,9 +113,9 @@ function PasswordRegisterForm({ close, prefillCode }) {
     <h3>{t('Create account')}</h3>
     <input ref={ref} className="input" placeholder={t('Your name')} maxLength={40} value={name} onChange={e => setName(e.target.value)} />
     <div style={{ height: 10 }} />
-    <input className="input" placeholder={t('Username')} value={username} onChange={e => setUsername(e.target.value)} />
+    <input className="input" type="email" autoComplete="email" placeholder={t('Email')} value={email} onChange={e => setEmailField(e.target.value)} />
     <div style={{ height: 10 }} />
-    <input className="input" type="password" placeholder={t('Password (min 8 characters)')} value={pw} onChange={e => setPw(e.target.value)} />
+    <input className="input" type="password" autoComplete="new-password" placeholder={t('Password (min 8 characters)')} value={pw} onChange={e => setPw(e.target.value)} />
     {codeRequired && <>
       <div style={{ height: 10 }} />
       <input className="input" placeholder={t('Invite code')} maxLength={40} value={code}

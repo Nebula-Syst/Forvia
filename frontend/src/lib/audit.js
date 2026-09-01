@@ -26,7 +26,10 @@ const LABELS = {
   'admin.invite.create': 'Created an invite code',
   'admin.invite.revoke': 'Revoked an invite code',
   'admin.audit.clear': 'Cleared the activity log',
-  'admin.denied': 'Blocked from the admin dashboard'
+  'admin.denied': 'Blocked from the admin dashboard',
+  'alpha.apply': 'Requested alpha access',
+  'admin.alpha.invite': 'Invited an alpha request',
+  'admin.alpha.dismiss': 'Dismissed an alpha request'
 }
 // An unknown event is shown raw rather than dropped or rendered as "undefined": a dashboard
 // that is one version behind the server should still say *something* truthful.

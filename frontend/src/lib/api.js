@@ -9,19 +9,18 @@ export async function api(path, opts) {
   return data
 }
 
-export async function passwordLogin(username, password) {
-  const res = await api('/api/login', { method: 'POST', body: JSON.stringify({ username, password }) })
+export async function passwordLogin(email, password) {
+  const res = await api('/api/login', { method: 'POST', body: JSON.stringify({ email, password }) })
   return res.user
 }
-export async function passwordRegister(name, username, password, code) {
-  const res = await api('/api/register', { method: 'POST', body: JSON.stringify({ name, username, password, code: code || '' }) })
+export async function passwordRegister(name, email, password, code) {
+  const res = await api('/api/register', { method: 'POST', body: JSON.stringify({ name, email, password, code: code || '' }) })
   return res.user
 }
 /* ---------- account ---------- */
 export const setName = name => api('/api/account/name', { method: 'POST', body: JSON.stringify({ name }) }).then(r => r.user)
 export const setPhone = phone => api('/api/account/phone', { method: 'POST', body: JSON.stringify({ phone }) }).then(r => r.user)
 export const setBadges = badges => api('/api/account/badges', { method: 'POST', body: JSON.stringify({ badges }) }).then(r => r.user)
-export const setUsername = username => api('/api/account/username', { method: 'POST', body: JSON.stringify({ username }) }).then(r => r.user)
 export const setPassword = (currentPassword, password) => api('/api/account/password', { method: 'POST', body: JSON.stringify({ currentPassword, password }) }).then(r => r.user)
 export const setEmail = email => api('/api/account/email', { method: 'POST', body: JSON.stringify({ email }) })
 export const resendEmailVerification = () => api('/api/account/email/resend', { method: 'POST', body: '{}' })
@@ -59,8 +58,14 @@ export const tasksToday = () => api('/api/tasks/today').then(r => r.tasks)
 export const adminTasks = () => api('/api/admin/tasks')
 export const adminTaskAdd = (name, desc, points, criteria) => api('/api/admin/tasks', { method: 'POST', body: JSON.stringify({ name, desc, points, criteria }) }).then(r => r.task)
 export const adminTaskRemove = id => api('/api/admin/tasks/remove', { method: 'POST', body: JSON.stringify({ id }) })
-export const adminUserCreate = (name, username, password) => api('/api/admin/user/create', { method: 'POST', body: JSON.stringify({ name, username, password }) }).then(r => r.user)
+export const adminUserCreate = (name, email, password) => api('/api/admin/user/create', { method: 'POST', body: JSON.stringify({ name, email, password }) }).then(r => r.user)
 export const adminSetEmployeeTypes = (id, employeeTypes) => api('/api/admin/user/employee-types', { method: 'POST', body: JSON.stringify({ id, employeeTypes }) })
+
+/* ---------- alpha waitlist ---------- */
+export const alphaApply = (name, email, message) => api('/api/alpha/apply', { method: 'POST', body: JSON.stringify({ name, email, message }) })
+export const adminAlpha = () => api('/api/admin/alpha').then(r => r.requests)
+export const adminAlphaInvite = id => api('/api/admin/alpha/invite', { method: 'POST', body: JSON.stringify({ id }) })
+export const adminAlphaDismiss = id => api('/api/admin/alpha/dismiss', { method: 'POST', body: JSON.stringify({ id }) })
 
 /* ---------- anti-cheat review ---------- */
 export const anticheatStatus = () => api('/api/anticheat/status').then(r => r.penalties)

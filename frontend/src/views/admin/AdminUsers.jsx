@@ -42,6 +42,7 @@ function UserDetail({ id, onChanged, close }) {
   }
   return <>
     <h3 className="capitalize">{u.name}</h3>
+    <div className="small muted" style={{ margin: '-4px 0 8px' }}>{u.email || '—'}</div>
     <div className="row" style={{ gap: 6, flexWrap: 'wrap', margin: '8px 0 12px' }}>
       {(u.employeeTypes || []).map(t => <span key={t} className="tag acc">{t}</span>)}
       {u.disabled && <span className="tag" style={{ color: 'var(--red)' }}>disabled</span>}
@@ -107,14 +108,14 @@ function InvitesCard({ invites, reload }) {
 function CreateUserCard({ reload }) {
   const toast = useUI(s => s.toast)
   const [name, setName] = useState('')
-  const [username, setUsername] = useState('')
+  const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const create = () => {
     if (!name.trim()) return toast('Name is required')
-    if (username.trim().length < 3) return toast('Username must be at least 3 characters')
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) return toast('Enter a valid email address')
     if (password.length < 8) return toast('Password must be at least 8 characters')
-    adminUserCreate(name.trim(), username.trim(), password)
-      .then(u => { setName(''); setUsername(''); setPassword(''); toast(u.name + ' created'); reload() })
+    adminUserCreate(name.trim(), email.trim(), password)
+      .then(u => { setName(''); setEmail(''); setPassword(''); toast(u.name + ' created'); reload() })
       .catch(e => toast(e.message))
   }
   return <div className="card">
@@ -122,7 +123,7 @@ function CreateUserCard({ reload }) {
     <div className="small muted" style={{ marginBottom: 10 }}>Registration is closed on this instance — this is the only way to add an account.</div>
     <div style={{ display: 'grid', gap: 6 }}>
       <input className="input" placeholder="Name" value={name} onChange={e => setName(e.target.value)} />
-      <input className="input" placeholder="Username" value={username} onChange={e => setUsername(e.target.value)} />
+      <input className="input" type="email" placeholder="Email" value={email} onChange={e => setEmail(e.target.value)} />
       <input className="input" type="password" placeholder="Password" value={password} onChange={e => setPassword(e.target.value)} />
       <Button variant="primary" size="sm" icon="plus" onClick={create}>Create user</Button>
     </div>
@@ -148,7 +149,7 @@ export default function AdminUsers() {
   const activeCount = (users || []).filter(u => u.lastSync && Date.now() - u.lastSync < 7 * 86400000).length
   const disabledCount = (users || []).filter(u => u.disabled).length
   const ql = q.trim().toLowerCase()
-  const shownUsers = (users || []).filter(u => !ql || u.name.toLowerCase().includes(ql) || (u.username || '').toLowerCase().includes(ql) || (u.employeeTypes || []).some(t => t.includes(ql)))
+  const shownUsers = (users || []).filter(u => !ql || u.name.toLowerCase().includes(ql) || (u.email || '').toLowerCase().includes(ql) || (u.employeeTypes || []).some(t => t.includes(ql)))
 
   return <div className="narrow">
     <div className="hdr">
@@ -179,18 +180,18 @@ export default function AdminUsers() {
 
     <h4 className="sec">Users</h4>
     <div className="search" style={{ marginBottom: 10 }}><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7" /><path d="m21 21-4.3-4.3" /></svg>
-      <input className="input" placeholder="Search name, username or role…" value={q} onChange={e => setQ(e.target.value)} /></div>
+      <input className="input" placeholder="Search name, email or role…" value={q} onChange={e => setQ(e.target.value)} /></div>
 
     <div className="dtable-wrap">
       <table className="dtable">
         <thead><tr>
-          <th>Name</th><th>Username</th><th>Roles</th><th>Workouts</th><th>Last workout</th><th>Synced</th><th></th>
+          <th>Name</th><th>Email</th><th>Roles</th><th>Workouts</th><th>Last workout</th><th>Synced</th><th></th>
         </tr></thead>
         <tbody>
           {shownUsers.map(u => (
             <tr key={u.id} className="tap" onClick={() => openUser(u.id)} style={u.disabled ? { opacity: .5 } : null}>
               <td>{u.live && <Icon name="dot" style={{ fontSize: 8, color: 'var(--green)', marginRight: 5 }} />}{u.name}</td>
-              <td className="dim-cell">{u.username || '—'}</td>
+              <td className="dim-cell">{u.email || '—'}</td>
               <td>
                 {(u.employeeTypes || []).map(t => <span key={t} className="tag acc" style={{ marginRight: 4 }}>{t}</span>)}
                 {u.disabled && <span className="tag" style={{ color: 'var(--red)' }}>off</span>}
