@@ -93,6 +93,15 @@ jobs:
       - name: Ensure docker CLI is on the runner
         run: command -v docker || (apt-get update && apt-get install -y docker-ce-cli docker-compose-plugin)
 
+      # The runner container's own docker CLI needs its own GHCR login to pull a private
+      # image — a login on the host doesn't carry over, docker credentials live client-side.
+      # Same token the build job already uses to push; it can read what it just pushed.
+      - uses: docker/login-action@v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Pull ${{ github.ref_name }} and redeploy
         working-directory: /home/josemgl/Proyectos/forvia-prod
         run: |
