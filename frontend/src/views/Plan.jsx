@@ -3,7 +3,7 @@ import { useStore } from '../store/useStore.js'
 import { DAYN, exCount, uid } from '../lib/format.js'
 import { FREESTYLE_DAY } from '../lib/history.js'
 import { t } from '../lib/i18n.js'
-import { dayAssignSheet, planToolsSheet } from '../sheets.jsx'
+import { dayAssignSheet, planToolsSheet, confirmSheet } from '../sheets.jsx'
 import Icon from '../components/Icon.jsx'
 import { glyphOf, DEFAULT_GLYPH } from '../lib/glyphs.js'
 
@@ -46,6 +46,17 @@ export default function Plan() {
         <div key={r.id} className="item" onClick={() => nav('/plan/r/' + r.id)}>
           <span className="lrow-i"><Icon name={glyphOf(r.emoji)} /></span>
           <div className="grow"><div className="tt">{r.name}</div><div className="ss">{exCount(r.ex.length)}</div></div>
+          <button className="iconbtn" aria-label={t('Delete routine')} onClick={e => {
+            e.stopPropagation()
+            confirmSheet({
+              title: t('Delete routine?'), message: t('“{0}” and its exercises will be removed.', r.name), confirmText: t('Delete'), danger: true,
+              onConfirm: () => update(s => {
+                s.routines = s.routines.filter(x => x.id !== r.id)
+                Object.keys(s.week).forEach(k => { if (s.week[k] === r.id) delete s.week[k] })
+                Object.keys(s.dayPlan).forEach(k => { if (s.dayPlan[k] === r.id) delete s.dayPlan[k] })
+              })
+            })
+          }}><Icon name="trash" /></button>
           <Icon name="chevronRight" className="chev" />
         </div>
       ))}
