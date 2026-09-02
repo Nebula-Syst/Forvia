@@ -686,8 +686,9 @@ export default {
   "{0}/{1} this week": "{0}/{1} esta semana",
 // --- account settings (added 2026-08-26) ---
   "Account info": "Información de la cuenta",
-  "First name": "Nombre",
-  "Last name": "Apellidos",
+  "Change photo": "Cambiar foto",
+  "Name": "Nombre",
+  "Remove photo": "Quitar foto",
   "Phone number (optional)": "Número de teléfono (opcional)",
   "Email": "Correo electrónico",
   "you@example.com": "tucorreo@ejemplo.com",

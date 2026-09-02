@@ -23,6 +23,8 @@ export const setPhone = phone => api('/api/account/phone', { method: 'POST', bod
 export const setBadges = badges => api('/api/account/badges', { method: 'POST', body: JSON.stringify({ badges }) }).then(r => r.user)
 export const setPassword = (currentPassword, password) => api('/api/account/password', { method: 'POST', body: JSON.stringify({ currentPassword, password }) }).then(r => r.user)
 export const setEmail = email => api('/api/account/email', { method: 'POST', body: JSON.stringify({ email }) })
+export const setAvatar = dataUrl => api('/api/account/avatar', { method: 'POST', body: JSON.stringify({ dataUrl }) }).then(r => r.user)
+export const removeAvatar = () => api('/api/account/avatar/remove', { method: 'POST', body: '{}' }).then(r => r.user)
 export const resendEmailVerification = () => api('/api/account/email/resend', { method: 'POST', body: '{}' })
 export const deleteAccount = password => api('/api/account/delete', { method: 'POST', body: JSON.stringify({ password }) })
 

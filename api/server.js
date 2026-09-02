@@ -75,12 +75,16 @@ const isAdmin = user => !!user && (employeeTypesOf(user).length > 0 || ADMIN_UID
 const defaultBadges = rank => ['rank', ...(rank.prestige > 0 ? ['prestige'] : [])];
 const badgesFor = (user, rank) => Array.isArray(user.badges) ? user.badges : defaultBadges(rank);
 
+// Same URL shape GET /api/uploads already serves workout photos through — an avatar is just
+// another file in that user's uploads dir, so it inherits that route's visibility rule for
+// free (owner, or a currently-public account) without a new endpoint.
+const avatarUrlOf = user => user.avatarFile ? `/api/uploads?uid=${encodeURIComponent(user.id)}&file=${encodeURIComponent(user.avatarFile)}` : null;
 const publicUser = user => {
   const rank = rankFor(user.id);
   return {
     id: user.id, name: user.name, admin: isAdmin(user), employeeTypes: employeeTypesOf(user),
     public: !!user.public, rank, perks: perksFor(user.id),
-    bio: user.bio || '',
+    bio: user.bio || '', avatarUrl: avatarUrlOf(user),
     badges: badgesFor(user, rank),
     pinnedWorkoutIds: user.pinnedWorkoutIds || [], pinnedPR: user.pinnedPR || null,
     email: user.email || null, emailVerified: !!user.emailVerified, phone: user.phone || null,
@@ -91,7 +95,7 @@ const publicUser = user => {
 // (a legend frame, an animated name) — nothing sensitive about them.
 const socialUser = user => ({
   id: user.id, name: user.name, perks: perksFor(user.id),
-  bio: user.bio || '', badges: badgesFor(user, rankFor(user.id)),
+  bio: user.bio || '', avatarUrl: avatarUrlOf(user), badges: badgesFor(user, rankFor(user.id)),
   pinnedWorkoutIds: user.pinnedWorkoutIds || [], pinnedPR: user.pinnedPR || null,
 });
 // Shared by GET /api/social/comments and the POST /api/social/comment response, so the
@@ -878,7 +882,7 @@ function feedItemsFor(uids, me) {
       const reactions = db.reactions.filter(r => r.targetUid === uid && r.workoutId === w.id);
       const comments = db.comments.filter(c => c.targetUid === uid && c.workoutId === w.id);
       items.push({
-        uid, name: u.name, level, prestige, perks,
+        uid, name: u.name, avatarUrl: avatarUrlOf(u), level, prestige, perks,
         workout: {
           id: w.id, d: w.d, start: w.start, end: w.end, name: w.name, prs: w.prs || [],
           desc: w.desc || '', images: w.images || [], vol: w.vol || 0,
@@ -1049,6 +1053,44 @@ const routes = {
     user.badges = picked;
     saveDb();
     audit(req, 'account.badges.set', { user, msg: filled.join(',') || 'none' });
+    json(res, 200, { user: publicUser(user) });
+  },
+
+  // A profile picture — same upload shape as POST /api/social/upload (data: URL, capped at
+  // MAX_IMAGE_BYTES, written under this user's own uploads dir). Unlike workout photos, an
+  // avatar replaces itself: the previous file is deleted right after the new one is written
+  // and the user record is saved, so a crash between those two steps leaves an orphaned file
+  // rather than a broken reference — the safer order.
+  'POST /api/account/avatar': async (req, res) => {
+    const user = readSession(req);
+    if (!user) return json(res, 401, { error: 'not signed in' });
+    const body = await readBody(req);
+    const m = /^data:(image\/(?:jpeg|png|webp));base64,([a-zA-Z0-9+/=]+)$/.exec(String(body.dataUrl || ''));
+    if (!m) return json(res, 400, { error: 'unsupported image' });
+    const buf = Buffer.from(m[2], 'base64');
+    if (buf.length > MAX_IMAGE_BYTES) return json(res, 413, { error: 'image too large' });
+    const ext = UPLOAD_MIME[m[1]];
+    const file = crypto.randomBytes(10).toString('base64url') + '.' + ext;
+    fs.mkdirSync(uploadsDir(user.id), { recursive: true });
+    fs.writeFileSync(path.join(uploadsDir(user.id), file), buf);
+    const old = user.avatarFile;
+    user.avatarFile = file;
+    saveDb();
+    if (old) { try { fs.unlinkSync(path.join(uploadsDir(user.id), old)); } catch {} }
+    audit(req, 'account.avatar.set', { user });
+    json(res, 200, { user: publicUser(user) });
+  },
+
+  'POST /api/account/avatar/remove': async (req, res) => {
+    const user = readSession(req);
+    if (!user) return json(res, 401, { error: 'not signed in' });
+    if (user.avatarFile) {
+      const old = user.avatarFile;
+      user.avatarFile = null;
+      saveDb();
+      try { fs.unlinkSync(path.join(uploadsDir(user.id), old)); } catch {}
+      audit(req, 'account.avatar.remove', { user });
+    }
     json(res, 200, { user: publicUser(user) });
   },
 

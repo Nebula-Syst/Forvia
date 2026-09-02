@@ -11,11 +11,10 @@ import { Thumb } from '../components/Media.jsx'
 import Icon from '../components/Icon.jsx'
 import RankBadge from '../components/RankBadge.jsx'
 import ProfileBadge from '../components/ProfileBadge.jsx'
+import Avatar from '../components/Avatar.jsx'
 import { Segmented } from '../components/ui.jsx'
 import { nav } from '../lib/nav.js'
 import { useParams } from 'react-router-dom'
-
-const initials = name => (name || '').trim().split(/\s+/).slice(0, 2).map(w => w[0]).join('').toUpperCase()
 
 function ExerciseRow({ id, sets, starred }) {
   const ex = EXIDX[id] || {}
@@ -120,8 +119,7 @@ function FeedCard({ item, onReact, onFollow, unit, pinned }) {
     <MediaStrip item={item} onOpen={open} />
     {pinned && <div className="row accent small" style={{ gap: 5, marginBottom: 8 }}><Icon name="flag" style={{ fontSize: 13 }} />{t('Pinned')}</div>}
     <div className="row" style={{ gap: 12 }}>
-      <span className={'avatar' + (p?.avatarFrame ? ' avatar-frame' : p?.legendFrame ? ' avatar-frame-legend' : '')}
-        style={{ width: 46, height: 46, fontSize: 17, cursor: 'pointer' }} onClick={openProfile}>{initials(item.name)}</span>
+      <Avatar name={item.name} avatarUrl={item.avatarUrl} perks={p} size={46} fontSize={17} onClick={openProfile} />
       <div style={{ minWidth: 0, flex: 1, cursor: 'pointer' }} onClick={openProfile}>
         <div className="row" style={{ gap: 7 }}>
           <div className={'tt' + (p?.animatedName ? ' name-animated' : '')} style={{ fontWeight: 600, fontSize: 16 }}>{item.name}</div>
@@ -221,8 +219,7 @@ export function UserProfile() {
   return <div className="narrow social-narrow">
     <div className="hdr"><button className="iconbtn" onClick={() => nav('/social')} aria-label={t('Previous')}><Icon name="chevronLeft" /></button></div>
     <div className={'card' + (data.perks?.borderBeam ? ' border-beam' : '')} style={{ textAlign: 'center' }}>
-      <span className={'avatar' + (data.perks?.avatarFrame ? ' avatar-frame' : data.perks?.legendFrame ? ' avatar-frame-legend' : '')}
-        style={{ width: 64, height: 64, fontSize: 22, margin: '0 auto 10px' }}>{initials(data.user.name)}</span>
+      <Avatar name={data.user.name} avatarUrl={data.user.avatarUrl} perks={data.perks} size={64} fontSize={22} style={{ margin: '0 auto 10px' }} />
       <div className="row" style={{ justifyContent: 'center', gap: 6 }}>
         <div className={'tt' + (data.perks?.animatedName ? ' name-animated' : '')} style={{ fontWeight: 700, fontSize: 18 }}>{data.user.name}</div>
         {data.perks?.crownBadge && <Icon name="crown" style={{ color: 'var(--gold, var(--yellow))', fontSize: 16 }} />}

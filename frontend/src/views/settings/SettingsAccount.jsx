@@ -132,9 +132,6 @@ export default function SettingsAccount() {
     </div>
   }
 
-  const [first, ...rest] = (user.name || '').trim().split(/\s+/)
-  const last = rest.join(' ')
-
   return <div className="narrow">
     <div className="hdr">
       <button className="iconbtn" onClick={() => nav('/settings')} aria-label={t('Settings')}><Icon name="chevronLeft" /></button>
@@ -144,10 +141,11 @@ export default function SettingsAccount() {
     <PenaltiesRow />
 
     <Section title={t('Account info')}>
-      <Field label={t('First name')} value={first} placeholder={t('First name')}
-        onSave={v => { if (!v) { toast(t('Enter a name')); return } save(setName)(last ? v + ' ' + last : v) }} />
-      <Field label={t('Last name')} value={last} placeholder={t('Last name')}
-        onSave={v => save(setName)(v ? first + ' ' + v : first)} />
+      {/* One field, not split into first/last — a compound name ("Jose Maria") isn't "first
+          name Jose, last name Maria", and splitting on the first space silently moved half of
+          whatever was typed into a separate field the person never meant to fill in. */}
+      <Field label={t('Name')} value={user.name} placeholder={t('Your name')}
+        onSave={v => { if (!v) { toast(t('Enter a name')); return } save(setName)(v) }} />
       <EmailField user={user} setUser={setUser} toast={toast} />
       <Field label={t('Phone number (optional)')} value={user.phone} type="tel" placeholder={t('Phone number (optional)')}
         onSave={save(setPhone)} />
