@@ -342,12 +342,13 @@ function ExerciseBlock({ entryIdx, onToggle, onField, onAddSet, onRemoveSetAt, o
   // lifter's real numbers on a big compound never get flagged.
   const bestW = mode === 'reps' ? bestWeightFor(S, entry.id) : 0
   // Just a narrow typed value — no +/- either side of it. A set is a couple of digits,
-  // tapped and typed directly; three characters covers anything anyone actually logs.
+  // tapped and typed directly; six characters covers a decimal weight like "137.5" with
+  // room to spare (three used to be the cap, which silently blocked any decimal at all).
   const cell = (s, i, col, cls, off) => (
     <div className={'setcell ' + cls + (col.ghost ? ' wghost' : '')}>
       {!col.ghost && <NumberField decimal={col.dec} nullable={col.opt} value={s[col.f] ?? ''}
         onChange={v => onField(i, col.f, col.eff ? capEffort(col.eff, v) : v)}
-        className="setval" maxLength={3} />}
+        className="setval" maxLength={6} />}
       {off && <button className="cellwarn" aria-label={t('Unusual value')}
         onClick={ev => { ev.stopPropagation(); unusualDialog(cls, s, bestW, S.unit) }}>
         <Icon name="warnTriangle" />

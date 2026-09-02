@@ -38,7 +38,7 @@ function RoutineExBlock({ e, S, onField, onAddSet, onRemoveSet, onMenu }) {
   const cell = col => (
     <div className={'setcell ' + (col === col1 ? 'w' : 'r') + (col.ghost ? ' wghost' : '')}>
       {!col.ghost && <NumberField decimal={col.dec} value={e[col.f] ?? ''}
-        onChange={v => onField(col.f, v)} className="setval" maxLength={3} />}
+        onChange={v => onField(col.f, v)} className="setval" maxLength={6} />}
     </div>
   )
   return <>

@@ -1131,9 +1131,9 @@ button.wstat:active{transform:scale(.95)}
    they didn't earn their width, and a set is a couple of digits, not a dial to spin.
    .setcell keeps the same flex ratio the old three-part stepper used, so the header labels
    above still land centred over the right span of the row; .setval is the actual box, sized
-   for 3 characters ("100") since nobody logs a set past that. Deliberately its own class,
-   not a reuse of the shared .stp stepper (exercise-config, body-weight, …), which keeps its
-   +/- buttons everywhere else. */
+   for a decimal weight like "137.5" (used to be 3 characters/44px, which silently rejected
+   any decimal at all). Deliberately its own class, not a reuse of the shared .stp stepper
+   (exercise-config, body-weight, …), which keeps its +/- buttons everywhere else. */
 .setcell{display:flex;align-items:center;justify-content:center;min-width:0;position:relative}
 .setrow .setcell.w{flex:1.3}
 .setrow .setcell.r{flex:.9}
@@ -1153,7 +1153,7 @@ button.wstat:active{transform:scale(.95)}
    in the app invisible (issue #63). */
 .wghost{visibility:hidden}
 .setval{
-  width:44px;height:40px;box-sizing:border-box;flex:none;text-align:center;
+  width:58px;height:40px;box-sizing:border-box;flex:none;text-align:center;
   background:var(--glass-bg-2);border:1px solid var(--glass-border);
   border-radius:8px;padding:0 2px;font-size:16px;font-weight:500;letter-spacing:-.012em;
 }
