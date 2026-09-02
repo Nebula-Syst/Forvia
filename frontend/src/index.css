@@ -1257,6 +1257,17 @@ button.wstat:active{transform:scale(.95)}
 @keyframes sheetup{from{transform:translateY(100%)}to{transform:none}}
 .sheet .grab{width:36px;height:5px;border-radius:99px;background:var(--label-4);margin:6px auto 14px}
 .sheet h3{font-size:20px;font-weight:600;letter-spacing:-.021em;margin-bottom:14px}
+/* A sheet's own title+action row, pinned to the top of ITS scroll — for a sheet whose list is
+   long enough that scrolling back up just to tap a header button (multi-select "Add", mainly)
+   is real friction. Own opaque-ish background so the scrolled list doesn't show through. */
+.sheet-hdr-sticky{
+  position:sticky;top:-8px;z-index:5;margin:-8px -18px 14px;padding:16px 18px 12px;
+  background:var(--sheet-bg);background-image:var(--glass-sheen);
+  backdrop-filter:saturate(var(--glass-sat)) blur(var(--glass-blur));
+  -webkit-backdrop-filter:saturate(var(--glass-sat)) blur(var(--glass-blur));
+  border-bottom:1px solid var(--sep-op);
+}
+.sheet-hdr-sticky h3{margin-bottom:0}
 .center{
   position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);
   width:min(84vw,300px);

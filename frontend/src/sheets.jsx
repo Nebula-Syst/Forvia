@@ -16,7 +16,7 @@ import { Button, Slider, Switch, Segmented, SelectRow, Row } from './components/
 import { glyphOf, GLYPH_GROUPS, DEFAULT_GLYPH } from './lib/glyphs.js'
 import BodyMap from './components/BodyMap.jsx'
 import { exerciseMuscleSnapshot, loadOfWorkouts } from './lib/muscles.js'
-import { parseImport, mergeImport } from './lib/import-csv.js'
+import { parseImport, mergeImport, preloadTranslatedNames } from './lib/import-csv.js'
 import { buildPlanBundle, parsePlan, mergePlan, printPlan } from './lib/plan-share.js'
 import { estimate1RM, best1RM, is1RMRecord, REP_CAP } from './lib/onerm.js'
 import { nextPrescription, applyPrescription, policyFor, defaultIncrement, POLICIES_FOR, POLICY_NAME, POLICY_DESC, MAX_BW_SETS } from './lib/progression.js'
@@ -450,7 +450,12 @@ function ImportSummary({ parsed, close }) {
 /** Read a CSV/XML export, then show what it would do. */
 export function importFromApp(file, onDone) {
   const rd = new FileReader()
-  rd.onload = () => {
+  // Kicked off in parallel with the file read, not awaited up front — by the time the (much
+  // slower, user-picked) file finishes reading, the ~60KB name pack has almost always already
+  // landed, so this never feels like an extra loading step.
+  const names = preloadTranslatedNames().catch(() => {})
+  rd.onload = async () => {
+    await names
     let parsed
     try { parsed = parseImport(String(rd.result), { unit: S().unit }) }
     catch (e) { toast(t('Could not read that file')); return }
@@ -727,9 +732,11 @@ function ExercisePicker({ onPick, multi, close }) {
     ))
   }
   return <>
-    <div className="row between" style={{ marginBottom: 14 }}>
+    {/* Sticky — in multi-select mode this is the only way to confirm a pick, and scrolling
+        back to the top of a 700-exercise list just to tap it was the actual complaint. */}
+    <div className="row between sheet-hdr-sticky">
       <h3 style={{ margin: 0 }}>{t('Add exercise')}</h3>
-      {multi && <Button size="sm" variant="primary" disabled={!picked.length} onClick={() => { close(); onPick(picked) }}>{t('Add')}</Button>}
+      {multi && <Button size="sm" variant="primary" disabled={!picked.length} onClick={() => { close(); onPick(picked) }}>{t('Add')}{picked.length > 0 ? ` (${picked.length})` : ''}</Button>}
     </div>
     <div className="search"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7" /><path d="m21 21-4.3-4.3" /></svg>
       <input className="input" placeholder={t('Search {0} exercises…', all.length)} value={q} onChange={e => { setQ(e.target.value); setShown(50) }} /></div>

@@ -7,6 +7,7 @@ import { t } from '../../lib/i18n.js'
 import { setBio, setBadges, setAvatar, removeAvatar } from '../../lib/api.js'
 import Icon from '../../components/Icon.jsx'
 import Avatar from '../../components/Avatar.jsx'
+import ImageCropper from '../../components/ImageCropper.jsx'
 import ProfileBadge from '../../components/ProfileBadge.jsx'
 import RankBadge from '../../components/RankBadge.jsx'
 import { Section, Row } from '../../components/ui.jsx'
@@ -80,12 +81,17 @@ export default function SettingsProfile() {
     e.target.value = ''
     if (!f) return
     if (f.size > MAX_AVATAR_MB * 1024 * 1024) { toast(t('{0} is too large — max {1} MB', f.name, MAX_AVATAR_MB)); return }
-    setAvatarBusy(true)
-    try {
-      const dataUrl = await new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result); r.onerror = rej; r.readAsDataURL(f) })
-      setUser(await setAvatar(dataUrl))
-    } catch (err) { toast(err.message || t('Could not upload image')) }
-    finally { setAvatarBusy(false) }
+    // Crop/zoom first — a phone photo is rarely already a clean square of just your face —
+    // then upload the cropped square, not the original file.
+    openSheet(close => (
+      <ImageCropper file={f} onCancel={close} onDone={async dataUrl => {
+        close()
+        setAvatarBusy(true)
+        try { setUser(await setAvatar(dataUrl)) }
+        catch (err) { toast(err.message || t('Could not upload image')) }
+        finally { setAvatarBusy(false) }
+      }} />
+    ), { kind: 'center' })
   }
   const onRemoveAvatar = async () => {
     setAvatarBusy(true)

@@ -772,6 +772,11 @@ function xpFor(uid) {
   const bw = S?.bodyweight?.length ? S.bodyweight[S.bodyweight.length - 1] : null;
   if (S?.targetW && bw && Math.abs(S.targetW - bw.w) < 0.05) xp += GOAL_XP;
   xp += db.taskCompletions.filter(c => c.userId === uid).reduce((n, c) => n + c.points, 0);
+  // The one thing here that isn't derived from something the user actually did — an admin
+  // nudge (POST /api/admin/user/level), on top of everything earned normally rather than
+  // replacing it. Can go negative (docking XP), same as a cheat penalty already can.
+  const user = db.users.find(u => u.id === uid);
+  xp += user?.adminXpAdjust || 0;
   return Math.max(0, xp);
 }
 // One full 1→100 climb's worth of XP. Crossing it does NOT roll over on its own — prestige is
@@ -1373,6 +1378,9 @@ div{max-width:360px}h1{font-size:20px;margin:0 0 8px}p{color:#9db8a8;line-height
   },
 
   // Drill-down: full workout history + body-weight log for one user.
+  // Everything about one account, for the admin drill-down — publicUser() already carries
+  // name/email/phone/bio/avatarUrl/rank/perks/badges, so this only adds the fields that are
+  // admin-only (created, disabled, invitedBy, the raw XP adjustment) plus their training data.
   'GET /api/admin/user': async (req, res) => {
     if (!requireAdmin(req, res)) return;
     const id = new URL(req.url, 'http://x').searchParams.get('id');
@@ -1380,13 +1388,45 @@ div{max-width:360px}h1{font-size:20px;margin:0 0 8px}p{color:#9db8a8;line-height
     if (!u) return json(res, 404, { error: 'no such user' });
     const S = readState(u.id) || {};
     json(res, 200, {
-      user: { id: u.id, name: u.name, email: u.email || null, created: u.created || null, disabled: !!u.disabled, admin: isAdmin(u), employeeTypes: employeeTypesOf(u), invitedBy: u.invitedBy || null },
+      user: {
+        ...publicUser(u),
+        created: u.created || null, disabled: !!u.disabled, invitedBy: u.invitedBy || null,
+        adminXpAdjust: u.adminXpAdjust || 0,
+      },
       unit: S.unit || 'kg',
       lastSync: S._ts || null,
       routines: (S.routines || []).map(r => ({ id: r.id, name: r.name, emoji: r.emoji, count: (r.ex || []).length })),
       bodyweight: S.bodyweight || [],
       workouts: (S.workouts || []).slice().reverse()   // newest first for display
     });
+  },
+
+  // Nudge a level up or down without inventing fake workouts — adjusts the same admin-only XP
+  // offset xpFor() already adds in, snapped to exactly the target level's floor so the result
+  // reads cleanly (no half-earned sliver of the level either side of the move).
+  'POST /api/admin/user/level': async (req, res) => {
+    const admin = requireAdmin(req, res); if (!admin) return;
+    const body = await readBody(req);
+    const u = db.users.find(x => x.id === body.id);
+    if (!u) return json(res, 404, { error: 'no such user' });
+    const delta = body.delta === -1 ? -1 : 1;
+    const before = rankFor(u.id);
+    const targetLevel = Math.max(1, Math.min(100, before.level + delta));
+    if (targetLevel === before.level) return json(res, 400, { error: 'already at the limit' });
+    // The *displayed* level is rawLevel minus any active cheat-penalty docking (see rankFor) —
+    // moving the number the admin actually sees by one means moving the underlying raw level
+    // by one, docking included, not landing the raw level itself on the target.
+    const levelsDocked = db.cheatPenalties.filter(c => c.userId === u.id && c.status !== 'overturned').reduce((n, c) => n + c.levels, 0);
+    const targetRawLevel = Math.max(1, Math.min(100, targetLevel + levelsDocked));
+    // rankFor's xpInCycle is xpFor(uid) - baseline; landing exactly on the target level's
+    // floor means: adjust so that (currentTotalXp + newAdjust - oldAdjust) - baseline == floor.
+    const floor = LEVEL_CUM[targetRawLevel - 1];
+    const baseline = u.prestigeBaselineXp || 0;
+    const xpWithoutAdjust = before.totalXp - (u.adminXpAdjust || 0);
+    u.adminXpAdjust = floor + baseline - xpWithoutAdjust;
+    saveDb();
+    audit(req, 'admin.user.level', { user: admin, target: u, msg: `${before.level} -> ${targetLevel}` });
+    json(res, 200, { rank: rankFor(u.id) });
   },
 
   'POST /api/admin/user/disable': async (req, res) => {
@@ -1775,10 +1815,12 @@ div{max-width:360px}h1{font-size:20px;margin:0 0 8px}p{color:#9db8a8;line-height
 
   // Recent workouts from everyone I follow who's still public, newest first, capped both by
   // age and count so this stays cheap however long someone's been using the instance.
+  // "For you" — who you follow, plus your own workouts. Your own posts don't depend on your
+  // account being public (that rule is about who ELSE can see you); it's just your feed.
   'GET /api/social/feed': async (req, res) => {
     const me = readSession(req);
     if (!me) return json(res, 401, { error: 'not signed in' });
-    json(res, 200, { items: feedItemsFor(followingOf(me.id), me) });
+    json(res, 200, { items: feedItemsFor([me.id, ...followingOf(me.id)], me) });
   },
 
   // Discover's own feed: recent posts from public accounts I *don't* follow yet — same

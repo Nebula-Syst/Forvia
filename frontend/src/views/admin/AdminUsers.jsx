@@ -2,11 +2,14 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useStore } from '../../store/useStore.js'
 import { useUI } from '../../store/useUI.js'
-import { api, adminUserCreate, adminSetEmployeeTypes } from '../../lib/api.js'
+import { api, adminUserCreate, adminSetEmployeeTypes, adminUserLevel } from '../../lib/api.js'
 import { fmtDate, fmtVol, fmtDur } from '../../lib/format.js'
 import { workoutVolume, setsDone } from '../../lib/history.js'
 import { confirmSheet } from '../../sheets.jsx'
+import { tierFor } from '../../lib/rank.js'
 import Icon from '../../components/Icon.jsx'
+import Avatar from '../../components/Avatar.jsx'
+import RankIcon, { PrestigeIcon } from '../../components/RankIcon.jsx'
 import { Button } from '../../components/ui.jsx'
 
 // Admin-only. Deliberately English-only — it isn't part of the translated end-user surface.
@@ -25,6 +28,7 @@ const EMPLOYEE_TYPES = ['founder', 'admin']
 
 function UserDetail({ id, onChanged, close }) {
   const [d, setD] = useState(null)
+  const [busy, setBusy] = useState(false)
   const toast = useUI(s => s.toast)
   const load = () => api('/api/admin/user?id=' + encodeURIComponent(id)).then(setD).catch(e => toast(e.message))
   useEffect(() => { load() }, [id])
@@ -40,15 +44,46 @@ function UserDetail({ id, onChanged, close }) {
     const next = cur.includes(type) ? cur.filter(t => t !== type) : [...cur, type]
     adminSetEmployeeTypes(u.id, next).then(() => { toast('Updated'); load(); onChanged() }).catch(e => toast(e.message))
   }
+  const nudgeLevel = delta => {
+    setBusy(true)
+    adminUserLevel(u.id, delta).then(() => { load(); onChanged() }).catch(e => toast(e.message)).finally(() => setBusy(false))
+  }
+  const rank = u.rank || {}
+  const tier = tierFor(rank.level || 1)
   return <>
-    <h3 className="capitalize">{u.name}</h3>
-    <div className="small muted" style={{ margin: '-4px 0 8px' }}>{u.email || '—'}</div>
+    <div className="row" style={{ gap: 12, marginBottom: 4 }}>
+      <Avatar name={u.name} avatarUrl={u.avatarUrl} size={52} fontSize={19} />
+      <div className="grow">
+        <h3 className="capitalize" style={{ margin: 0 }}>{u.name}</h3>
+        <div className="small muted">{u.email || '—'}</div>
+      </div>
+    </div>
+    {u.bio && <div className="small" style={{ margin: '8px 0', fontStyle: 'italic', color: 'var(--label-2)' }}>“{u.bio}”</div>}
     <div className="row" style={{ gap: 6, flexWrap: 'wrap', margin: '8px 0 12px' }}>
       {(u.employeeTypes || []).map(t => <span key={t} className="tag acc">{t}</span>)}
       {u.disabled && <span className="tag" style={{ color: 'var(--red)' }}>disabled</span>}
+      <span className="tag">{u.public ? 'public profile' : 'private profile'}</span>
+      {u.phone && <span className="tag">{u.phone}</span>}
       {u.invitedBy && <span className="tag">invite {u.invitedBy}</span>}
       <span className="tag">joined {u.created ? fmtDate(u.created.slice(0, 10)) : '—'}</span>
     </div>
+
+    <div className="small muted" style={{ margin: '0 0 6px' }}>Rank</div>
+    <div className="row between" style={{ marginBottom: 12, padding: '8px 10px', background: 'var(--surface-2)', borderRadius: 12 }}>
+      <div className="row" style={{ gap: 8 }}>
+        <RankIcon tier={tier.name} size={30} />
+        {rank.prestige > 0 && <PrestigeIcon level={rank.prestige} size={22} />}
+        <div>
+          <div className="small" style={{ fontWeight: 600 }}>Level {rank.level} · {tier.name}{rank.prestige > 0 ? ` · Prestige ${rank.prestige}` : ''}</div>
+          <div className="dim" style={{ fontSize: '.72rem' }}>{rank.xpInLevel}/{rank.xpForLevel} XP this level · {rank.totalXp} total{u.adminXpAdjust ? ` (${u.adminXpAdjust > 0 ? '+' : ''}${u.adminXpAdjust} admin adjust)` : ''}</div>
+        </div>
+      </div>
+      <div className="row" style={{ gap: 4 }}>
+        <button className="iconbtn" style={{ width: 28, height: 28, borderRadius: 7 }} disabled={busy || rank.level <= 1} onClick={() => nudgeLevel(-1)} aria-label="level down"><Icon name="minus" /></button>
+        <button className="iconbtn" style={{ width: 28, height: 28, borderRadius: 7 }} disabled={busy || rank.level >= 100} onClick={() => nudgeLevel(1)} aria-label="level up"><Icon name="plus" /></button>
+      </div>
+    </div>
+
     <div className="small muted" style={{ margin: '0 0 6px' }}>Employee types</div>
     <div className="row" style={{ gap: 6, flexWrap: 'wrap', marginBottom: 12 }}>
       {EMPLOYEE_TYPES.map(t => <button key={t} className={'chip' + ((u.employeeTypes || []).includes(t) ? ' on' : '')} onClick={() => toggleEmployeeType(t)}>{t}</button>)}

@@ -885,4 +885,25 @@ export default {
   "stationary bike": "Bicicleta estática", "stepmill machine": "Escalera mecánica", "tire": "Neumático",
   "trap bar": "Barra hexagonal", "upper body ergometer": "Ergómetro de brazos", "weighted": "Con peso",
   "wheel roller": "Rueda abdominal",
+
+// --- routines list + mobile app install guide (added 2026-09-02) ---
+  "Adjust photo": "Ajustar foto",
+  "My routines": "Mis rutinas",
+  "No routines yet.": "Aún no hay rutinas.",
+  "Android will warn you before installing it": "Android te avisará antes de instalarla",
+  "This is normal — read why": "Es normal — lee por qué",
+  "Android shows this warning for every app that doesn’t come from the Play Store — not just this one. It has nothing to do with what the app actually does; it just means Google hasn’t scanned or has no history for this particular file, because it never went through their store. Self-hosted, open-source apps like this one almost always look like this to Android.":
+    "Android muestra este aviso para cualquier app que no venga de la Play Store — no es algo específico de esta. No tiene nada que ver con lo que hace la app en realidad; solo significa que Google no ha escaneado este fichero concreto ni tiene historial de él, porque nunca ha pasado por su tienda. Las apps autoalojadas y de código abierto como esta casi siempre le parecen así a Android.",
+  "How to know it’s really this app and nothing else:": "Cómo saber que es realmente esta app y nada más:",
+  "The download always comes straight from GitHub — github.com/Nebula-Syst/forvia-mobile — a public repository whose full source code (including the exact steps GitHub itself used to build the file) is right there for anyone to read. It never passes through any other server on the way to your phone.":
+    "La descarga viene siempre directamente de GitHub — github.com/Nebula-Syst/forvia-mobile — un repositorio público cuyo código fuente completo (incluidos los pasos exactos que usó el propio GitHub para generar el fichero) está ahí para que cualquiera lo lea. Nunca pasa por ningún otro servidor de camino a tu teléfono.",
+  "Installing it, step by step:": "Instalarla, paso a paso:",
+  "Tap “Download” above — it opens in your browser.": "Toca “Descargar” arriba — se abre en tu navegador.",
+  "When it finishes, tap the downloaded file. Android may first ask to allow your browser to install unknown apps — allow it (this is a one-time, per-app permission, not a global setting).":
+    "Cuando termine, toca el fichero descargado. Android puede pedirte primero permitir que tu navegador instale apps desconocidas — permítelo (es un permiso puntual para esa app, no un ajuste general).",
+  "Play Protect may scan the file and show a warning screen. Tap “More details”, then “Install anyway”.":
+    "Play Protect puede escanear el fichero y mostrar una pantalla de aviso. Toca “Más detalles” y luego “Instalar de todos modos”.",
+  "That’s it — it installs like any other app, with its own icon on your home screen.": "Y ya está — se instala como cualquier otra app, con su propio icono en tu pantalla de inicio.",
+  "If any of this makes you uneasy, that instinct is a good one to keep — don’t install APKs from places you don’t trust. The point of all this is so you can check for yourself, not so you take it on faith.":
+    "Si algo de esto te da mala espina, hazle caso — no instales APKs de sitios en los que no confías. La idea de todo esto es que puedas comprobarlo tú mismo, no que te lo tengas que creer sin más.",
 }

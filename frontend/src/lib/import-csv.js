@@ -21,6 +21,24 @@
 import { EXDB, EXIDX } from './exercises.js'
 import { uid } from './format.js'
 import { isWarmupRow } from './workout-model.js'
+// Translated catalogue names (see src/names/*.js — src/lib/i18n-core.js's NAME_LANGS lists
+// which exist) go into the match index too, not just the English catalogue name (e.n) —
+// otherwise a French/Spanish/etc. export can never match at all, no matter how exact the
+// name is, since nothing on the English-only side could ever equal it. Hand-add an entry
+// here when a new language joins NAME_LANGS.
+//
+// Loaded lazily, not a static import: this file is pulled in by the main app bundle (via
+// sheets.jsx), and a static import of a ~60KB name pack would ship it to every visitor,
+// including everyone who never imports anything and never touches Spanish. The importer UI
+// calls preloadTranslatedNames() before it actually parses a file; matchExercise() itself
+// stays synchronous and just sees an empty list until that resolves.
+let TRANSLATED_NAMES = []
+export async function preloadTranslatedNames() {
+  if (TRANSLATED_NAMES.length) return
+  const namesEs = (await import('../names/es.js')).default
+  TRANSLATED_NAMES = [namesEs]
+  INDEX = null   // force a rebuild so the names just loaded actually take effect
+}
 
 /* ----------------------------------------------------------------- CSV ---- */
 
@@ -104,6 +122,11 @@ export function detectSource(header) {
 
 /* ------------------------------------------------------ exercise matching -- */
 
+// Unicode's combining-diacritical-marks block — built from a code-point range rather than a
+// literal character class so the source file never has to carry raw combining characters
+// (those render invisibly/ambiguously in a diff or an editor and are easy to corrupt silently).
+const DIACRITIC_MARKS = new RegExp(String.fromCharCode(91, 0x0300, 45, 0x036f, 93), 'g')
+
 // Other apps bolt qualifiers onto names — Hevy writes "Leg Press (Machine)", Strong
 // "Snatch (Barbell)", FitNotes "Lat Pulldown (Pulley)" — while the dataset writes
 // "barbell snatch". Strip the parentheses, expand the shorthand, then compare as a
@@ -116,14 +139,30 @@ const SYN = [
   [/\bsit ups?\b/g, 'sit up'], [/\bdips?\b/g, 'dip'], [/\braises?\b/g, 'raise'],
   [/\bcurls?\b/g, 'curl'], [/\bpresses\b/g, 'press'], [/\bextensions?\b/g, 'extension'],
   [/\bcables?\b/g, 'cable'], [/\bseated\b/g, 'seated'], [/\bassisted\b/g, 'assisted'],
+  // Spanish equipment words -> the same English ones above, so a Spanish export's qualifier
+  // ("Máquina", "Mancuerna"...) lines up with the catalogue's real Spanish name too — both
+  // sides go through this same table, so it only has to be consistent, not "correct English".
+  [/\bmancuernas?\b/g, 'dumbbell'], [/\bbarras?\b/g, 'barbell'], [/\bpoleas?\b/g, 'cable'],
+  [/\bmaquinas?\b/g, 'lever'], [/\bmaquina smith\b/g, 'smith'], [/\bsuspension\b/g, 'suspension'],
+  [/\bbandas?\b/g, 'band'], [/\bpeso corporal\b/g, 'body weight'],
 ]
 // Words that say nothing about which exercise this is, so they shouldn't stop a match.
-const FILLER = new Set(['the', 'a', 'with', 'and', 'v', 'variation', 'version', 'pulley', 'weighted'])
+const FILLER = new Set([
+  'the', 'a', 'with', 'and', 'v', 'variation', 'version', 'pulley', 'weighted',
+  // Spanish equivalents — otherwise "Sentadilla (Barra)" and a catalogue name that happens to
+  // read "sentadilla con barra" sort into different word-bags over nothing but a preposition.
+  'con', 'de', 'del', 'al', 'en', 'la', 'el', 'los', 'las', 'y', 'a',
+])
 
 function wordsOf(name) {
   // Parentheses are unwrapped rather than dropped: "Bench Press (Barbell)" carries its
   // equipment in there, and the dataset writes that as "barbell bench press".
+  // Diacritics are stripped (NFD-decompose, then drop the combining marks) BEFORE the
+  // ASCII-only filter below — otherwise that filter itself was the bug: "máquina" has no
+  // a-z/0-9 hit for "á", so it silently split into "m" + "quina" and could never equal
+  // "maquina" from a file that happened to romanize the same word without an accent.
   let k = String(name || '').toLowerCase()
+    .normalize('NFD').replace(DIACRITIC_MARKS, '')
     .replace(/[()[\]]/g, ' ')
     .replace(/[^a-z0-9]+/g, ' ')
     .trim()
@@ -136,11 +175,18 @@ let INDEX = null
 function buildIndex() {
   if (INDEX) return INDEX
   INDEX = { exact: new Map(), all: [] }
-  EXDB.forEach(e => {
-    const w = wordsOf(e.n)
+  const indexName = (id, name) => {
+    const w = wordsOf(name)
+    if (!w.length) return
     const k = w.slice().sort().join(' ')
-    if (!INDEX.exact.has(k)) INDEX.exact.set(k, e.id)
-    INDEX.all.push({ id: e.id, set: new Set(w), n: w.length })
+    if (!INDEX.exact.has(k)) INDEX.exact.set(k, id)
+    INDEX.all.push({ id, set: new Set(w), n: w.length })
+  }
+  EXDB.forEach(e => {
+    indexName(e.id, e.n)
+    // Every translated name pack too — a French/Spanish/etc. export names its exercises in
+    // that language, and matching only ever compared against the English catalogue name.
+    for (const pack of TRANSLATED_NAMES) if (pack[e.id]) indexName(e.id, pack[e.id])
   })
   return INDEX
 }
@@ -185,6 +231,28 @@ const ALIAS_EX = {
   // same movement, wrong equipment label, which beats leaving it uncategorised.
   'pallof press': '0979', 'cable pallof press': '0979', 'vertical pallof press': '1015',
   'cable core pallof press': '0979', 'core pallof press': '0979',
+
+  // Spanish equivalents of the same common lifts above (same convention: an unqualified name
+  // means the canonical barbell version) — reported against a real Hevy export in Spanish,
+  // where none of these matched at all before translated names joined the index above.
+  'press de banca': '0025', 'press banca': '0025', 'press plano': '0025', 'press de pecho': '0025',
+  'press inclinado': '0047', 'press declinado': '0033',
+  'press cerrado': '0030', 'press agarre cerrado': '0030',
+  sentadilla: '0043', 'sentadilla trasera': '0043', 'sentadilla con barra': '0043', 'sentadilla frontal': '0042',
+  'peso muerto': '0032', 'peso muerto rumano': '0085', 'peso muerto sumo': '0117',
+  'jalon al pecho': '2330', 'jalon dorsal': '2330', 'jalon al dorsal': '2330', 'polea al pecho': '2330', jalon: '2330',
+  encogimiento: '0095', encogimientos: '0095', 'encogimiento de hombros': '0095',
+  'press militar': '0091', 'press de hombros': '0091', 'press por encima de la cabeza': '0091',
+  'remo con barra': '0027', 'remo inclinado': '0027', 'remo con barra inclinado': '0027',
+  'remo con mancuerna': '0292', 'remo a una mano': '0292',
+  'curl femoral': '0586', 'curl de pierna': '0586', 'curl femoral tumbado': '0586', 'curl femoral sentado': '0586',
+  'prensa de piernas': '0739', 'extension de piernas': '0585', 'extension de cuadriceps': '0585',
+  'elevacion de talones': '1372', 'elevacion de gemelos': '1372', 'elevacion de gemelos de pie': '1372',
+  'elevacion lateral': '0334', pajaro: '0348', 'apertura posterior': '0348',
+  'curl de biceps': '0294', 'curl con mancuerna': '0294', 'curl predicador': '0070', 'curl con barra': '0031',
+  'extension de triceps en polea': '0241', 'jalon de triceps': '0241', 'press frances': '0060',
+  'extension de triceps tumbado': '0061', zancadas: '0054', 'cruce de poleas': '1269',
+  'sentadilla goblet': '1760', 'sentadilla copa': '1760',
 }
 
 let ALIAS_IDX = null

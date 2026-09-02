@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { t } from '../../lib/i18n.js'
 import Icon from '../../components/Icon.jsx'
-import { Button } from '../../components/ui.jsx'
+import { Button, Row } from '../../components/ui.jsx'
 
 // Just a WebView over this same app (Nebula-Syst/forvia-mobile) — no separate account, no
 // offline copy, the phone just opens a shortcut into the site instead of a browser tab. The
@@ -14,6 +14,7 @@ const RELEASES_PAGE = 'https://github.com/Nebula-Syst/forvia-mobile/releases/lat
 export default function SettingsMobileApp() {
   const nav = useNavigate()
   const [release, setRelease] = useState(undefined)   // undefined = loading, null = failed
+  const [guideOpen, setGuideOpen] = useState(false)
 
   useEffect(() => {
     fetch(RELEASES_API).then(r => r.ok ? r.json() : Promise.reject())
@@ -42,6 +43,33 @@ export default function SettingsMobileApp() {
           {t('Download {0}', release.version)}
         </Button>
       )}
+    </div>
+
+    <div style={{ height: 14 }} />
+    <div className="card">
+      <Row icon="warnTriangle" iconTint="var(--orange)" title={t('Android will warn you before installing it')}
+        subtitle={t('This is normal — read why')} onClick={() => setGuideOpen(o => !o)}>
+        <Icon name="chevronDown" className={'lrow-c' + (guideOpen ? ' rot' : '')} />
+      </Row>
+      {guideOpen && <div className="small" style={{ padding: '2px 2px 4px', lineHeight: 1.55 }}>
+        <p style={{ marginTop: 10 }}>
+          {t('Android shows this warning for every app that doesn’t come from the Play Store — not just this one. It has nothing to do with what the app actually does; it just means Google hasn’t scanned or has no history for this particular file, because it never went through their store. Self-hosted, open-source apps like this one almost always look like this to Android.')}
+        </p>
+        <p>
+          <b>{t('How to know it’s really this app and nothing else:')}</b><br />
+          {t('The download always comes straight from GitHub — github.com/Nebula-Syst/forvia-mobile — a public repository whose full source code (including the exact steps GitHub itself used to build the file) is right there for anyone to read. It never passes through any other server on the way to your phone.')}
+        </p>
+        <p><b>{t('Installing it, step by step:')}</b></p>
+        <ol className="steps-list">
+          <li>{t('Tap “Download” above — it opens in your browser.')}</li>
+          <li>{t('When it finishes, tap the downloaded file. Android may first ask to allow your browser to install unknown apps — allow it (this is a one-time, per-app permission, not a global setting).')}</li>
+          <li>{t('Play Protect may scan the file and show a warning screen. Tap “More details”, then “Install anyway”.')}</li>
+          <li>{t('That’s it — it installs like any other app, with its own icon on your home screen.')}</li>
+        </ol>
+        <p className="muted">
+          {t('If any of this makes you uneasy, that instinct is a good one to keep — don’t install APKs from places you don’t trust. The point of all this is so you can check for yourself, not so you take it on faith.')}
+        </p>
+      </div>}
     </div>
 
     <div style={{ height: 14 }} />

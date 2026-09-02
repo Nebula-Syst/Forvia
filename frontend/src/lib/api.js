@@ -62,6 +62,7 @@ export const adminTaskAdd = (name, desc, points, criteria) => api('/api/admin/ta
 export const adminTaskRemove = id => api('/api/admin/tasks/remove', { method: 'POST', body: JSON.stringify({ id }) })
 export const adminUserCreate = (name, email, password) => api('/api/admin/user/create', { method: 'POST', body: JSON.stringify({ name, email, password }) }).then(r => r.user)
 export const adminSetEmployeeTypes = (id, employeeTypes) => api('/api/admin/user/employee-types', { method: 'POST', body: JSON.stringify({ id, employeeTypes }) })
+export const adminUserLevel = (id, delta) => api('/api/admin/user/level', { method: 'POST', body: JSON.stringify({ id, delta }) }).then(r => r.rank)
 
 /* ---------- alpha waitlist ---------- */
 export const alphaApply = (name, email, message) => api('/api/alpha/apply', { method: 'POST', body: JSON.stringify({ name, email, message }) })
