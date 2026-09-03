@@ -133,6 +133,75 @@ function CheatCaughtDialog({ penalty, rank, tierColor, tierName, onDone }) {
   </div>
 }
 
+// The verdict on an appeal (or on a penalty nobody appealed but an admin ruled on anyway) —
+// same modal-reveal idiom as CheatCaughtDialog above, not a passing toast, since a ruling with a
+// written reason attached deserves to actually be read, not glanced at and gone. Overturned gets
+// the ring: same geometry as the "caught" reveal, but rising instead of draining and paced
+// noticeably slower per lap (2.2s vs. the catch's 1.1s) — being cleared should feel like relief
+// settling in, not another verdict landing. Upheld gets no ring at all; nothing on the account
+// changed, so there's nothing to animate.
+function VerdictDialog({ msg, rank, tierColor, tierName, close }) {
+  const accepted = msg.status === 'overturned'
+  const laps = accepted ? Math.max(1, Math.min(msg.levels || 1, 5)) : 0
+  const toLevel = rank?.level ?? 1
+  const startLevel = Math.max(1, toLevel - laps)
+  const finalPct = rank?.xpForLevel ? Math.min(100, Math.round((rank.xpInLevel / rank.xpForLevel) * 100)) : 100
+
+  const [level, setLevel] = useState(accepted ? startLevel : toLevel)
+  const [pct, setPct] = useState(accepted ? 0 : finalPct)
+  const [animate, setAnimate] = useState(false)
+  const [color, setColor] = useState(accepted ? 'var(--acc)' : tierColor)
+
+  useEffect(() => {
+    if (!accepted) return
+    let cancelled = false
+    const wait = ms => new Promise(r => setTimeout(r, ms))
+    const paint = () => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)))
+    async function run() {
+      await wait(800)
+      for (let i = 0; i < laps && !cancelled; i++) {
+        setAnimate(true)
+        setPct(100)                          // one full lap: rise from wherever it started to full…
+        await wait(2200)
+        if (cancelled) return
+        setAnimate(false)
+        setLevel(Math.min(toLevel, startLevel + i + 1))
+        setPct(0)                            // …snap straight back to empty, no transition…
+        await paint()
+        if (cancelled) return
+        await wait(500)                      // …hold empty for a beat so the reset actually reads
+        if (cancelled) return
+      }
+      setAnimate(true)
+      setColor(tierColor)
+      setPct(finalPct)                       // final lap settles into the real, restored position
+    }
+    run()
+    return () => { cancelled = true }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  return <div className="wide-reveal" style={{ textAlign: 'center', padding: '4px 0' }}>
+    {accepted && <>
+      <div style={{ display: 'flex', justifyContent: 'center', margin: '4px 0 10px' }}>
+        <CheatCaughtRing pct={pct} color={color} animate={animate} tierName={tierName} />
+      </div>
+      <div style={{ fontSize: 34, fontWeight: 800, letterSpacing: '-0.02em', color, transition: 'color .4s ease', marginBottom: 8 }}>
+        {t('Level {0}', level)}
+      </div>
+    </>}
+    <h3 style={{ margin: '2px 0 4px', color: accepted ? 'var(--acc)' : 'var(--red)' }}>
+      {accepted ? t('Appeal accepted') : t('Appeal reviewed')}
+    </h3>
+    <div className="ss" style={{ margin: '0 0 20px', color: 'var(--label-2)', lineHeight: 1.5 }}>
+      {accepted
+        ? t('We’ve decided to accept your appeal: “{0}”', msg.reviewNote || '')
+        : t('We’ve reviewed your appeal — the penalty stands: “{0}”', msg.reviewNote || '')}
+    </div>
+    <Button variant="primary" onClick={close}>{t('Got it')}</Button>
+  </div>
+}
+
 // Mounted once at the app shell level (not on any one page) so the reveal can interrupt
 // wherever the account actually is when it fires, not just a visit to Rank — queued one at a
 // time if more than one penalty is waiting.
@@ -186,12 +255,22 @@ export default function CheatRevealTrigger() {
     const onVisible = () => { if (document.visibilityState === 'visible') check() }
     document.addEventListener('visibilitychange', onVisible)
     const offFlagged = wsOn('anticheat:flagged', check)
-    // A verdict has no reveal dialog of its own — the account holder isn't necessarily even
-    // looking at Penalties when it lands — so a toast is the real-time "message" for this one:
-    // immediate and visible the instant admin/anticheat/review actually rules, not just a
-    // silent background re-check they'd only notice by reopening the page themselves.
-    const offReviewed = wsOn('anticheat:reviewed', msg => {
-      useUI.getState().toast(msg.status === 'overturned' ? t('Appeal accepted — it’s back on your account.') : t('Your appeal was reviewed — the penalty stands.'))
+    // The verdict gets the same modal-reveal treatment as being caught in the first place
+    // (VerdictDialog above) — the account holder isn't necessarily even looking at Penalties
+    // when it lands, and a ruling with a written reason attached deserves to be read, not just
+    // glanced off a toast. Overturned needs the fresh rank to animate the ring up to; upheld
+    // doesn't change anything about the account, so there's nothing to fetch first.
+    const offReviewed = wsOn('anticheat:reviewed', async msg => {
+      if (cancelled) return
+      if (msg.status === 'overturned') {
+        const me = await api('/api/me').catch(() => null)
+        if (cancelled) return
+        const rank = me?.user?.rank
+        const tier = tierFor(rank?.level ?? 1)
+        useUI.getState().openSheet(close => <VerdictDialog msg={msg} rank={rank} tierColor={tier.color} tierName={tier.name} close={close} />, { kind: 'center' })
+      } else {
+        useUI.getState().openSheet(close => <VerdictDialog msg={msg} close={close} />, { kind: 'center' })
+      }
       check()
     })
     return () => {

@@ -924,10 +924,12 @@ export default {
 // --- edit/delete routine from the Start tab (added 2026-09-03) ---
   "Edit routine": "Editar rutina",
 
-// --- real-time anti-cheat verdict toast (added 2026-09-03) ---
-  "Appeal accepted — it’s back on your account.": "Apelación aceptada — ya está de vuelta en tu cuenta.",
-  "Your appeal was reviewed — the penalty stands.": "Tu apelación ha sido revisada — la penalización se mantiene.",
-
 // --- admin review note, shown to the account holder (added 2026-09-03) ---
   "Admin’s note: “{0}”": "Nota del admin: “{0}”",
+
+// --- appeal verdict modal (added 2026-09-03) ---
+  "Appeal accepted": "Apelación aceptada",
+  "Appeal reviewed": "Apelación revisada",
+  "We’ve decided to accept your appeal: “{0}”": "Hemos decidido aceptar tu apelación por: “{0}”",
+  "We’ve reviewed your appeal — the penalty stands: “{0}”": "Hemos revisado tu apelación — la penalización se mantiene por: “{0}”",
 }

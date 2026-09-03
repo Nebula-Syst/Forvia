@@ -1792,7 +1792,7 @@ div{max-width:360px}h1{font-size:20px;margin:0 0 8px}p{color:#9db8a8;line-height
     // Same reasoning as the flag push above: the account holder has no other way to find out a
     // verdict landed except reopening Penalties themselves, possibly days later. Fires the
     // instant the ruling is made, whether or not they ever actually appealed it.
-    wsSend(c.userId, { type: 'anticheat:reviewed', status: c.status });
+    wsSend(c.userId, { type: 'anticheat:reviewed', status: c.status, levels: c.levels, reviewNote: c.reviewNote });
     sendPush(c.userId, c.status === 'overturned'
       ? { title: '✅ Appeal accepted', body: 'A flagged workout was cleared and is back on your account.', tag: 'anticheat-review' }
       : { title: 'Penalty reviewed', body: 'A flagged workout was reviewed and the penalty stands.', tag: 'anticheat-review' });
