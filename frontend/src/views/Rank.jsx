@@ -196,7 +196,7 @@ export default function Rank() {
     </div>
 
     <TasksCard />
-    <PenaltiesRow />
+    <PenaltiesRow onlyPending />
 
     <Segmented className="seg-range" value={tab} onChange={setTab}
       options={[{ value: 'tiers', label: t('Tiers') }, { value: 'prestige', label: t('Prestige') }]} />

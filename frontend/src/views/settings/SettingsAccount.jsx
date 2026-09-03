@@ -138,7 +138,7 @@ export default function SettingsAccount() {
       <div style={{ flex: 1, marginLeft: 10 }}><h1>{t('Account')}</h1></div>
     </div>
 
-    <PenaltiesRow />
+    <PenaltiesRow onlyPending />
 
     <Section title={t('Account info')}>
       {/* One field, not split into first/last — a compound name ("Jose Maria") isn't "first
