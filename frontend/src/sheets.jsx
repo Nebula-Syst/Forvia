@@ -1126,7 +1126,20 @@ function WorkoutDetail({ w, close }) {
         {isPr && perks?.pinFavoritePR && <button className="iconbtn" style={{ width: 30, height: 30, fontSize: 14 }} aria-label={t('Pin as favorite PR')} onClick={() => togglePinPR(e.id)}><Icon name={prPinned ? 'starFill' : 'star'} className={prPinned ? 'accent' : undefined} /></button>}
       </div>
     })}
-    <Button variant="danger" onClick={() => confirmSheet({ title: t('Delete workout?'), message: t('This removes it from your history for good.'), confirmText: t('Delete'), danger: true, onConfirm: () => { update(s => { s.workouts = s.workouts.filter(x => x.id !== w.id) }); close(); toast(t('Workout deleted')) } })}>{t('Delete workout')}</Button>
+    <Button variant="danger" onClick={() => confirmSheet({
+      title: t('Delete workout?'), message: t('This removes it from your history for good.'), confirmText: t('Delete'), danger: true,
+      onConfirm: () => {
+        update(s => {
+          s.workouts = s.workouts.filter(x => x.id !== w.id)
+          // A tombstone, not just an absent id — the server merges workouts by id union across
+          // devices (see api/server.js mergeWorkoutsInto) so a stale second device can never
+          // silently erase one it just hasn't synced yet; without this the same merge would
+          // undo every delete the instant that other device next pushed.
+          s.deletedWorkoutIds = [...(s.deletedWorkoutIds || []), { id: w.id, at: Date.now() }]
+        })
+        close(); toast(t('Workout deleted'))
+      }
+    })}>{t('Delete workout')}</Button>
   </>
 }
 export const workoutDetailSheet = w => ui().openSheet(close => <WorkoutDetail w={w} close={close} />)

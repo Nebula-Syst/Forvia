@@ -122,6 +122,37 @@ function removeState(uid) {
   deleteState(uid).catch(e => console.error('deleteState failed:', uid, e.message));
 }
 
+// PUT /api/data otherwise replaces a user's whole state with whatever the pushing device has
+// locally — fine for settings and anything only ever edited in one place at a time, but
+// catastrophic for `workouts` specifically: a second device or tab that hasn't caught up on a
+// workout logged elsewhere yet, syncing for any unrelated reason (even just being opened),
+// would silently overwrite the server's copy and erase that workout for good — no version
+// history, nothing to restore from (issue: a real workout vanished this way in production).
+// Workouts merge instead: union by id with whatever the server already has, so a workout
+// present on EITHER side survives a stale push. An *intentional* delete (sheets.jsx's "Delete
+// workout") has to travel as a small tombstone list (deletedWorkoutIds) rather than by simply
+// omitting the id from the push — omission is exactly what a stale device's push already looks
+// like, so it's the one signal that can't tell the two apart. Tombstones merge the same way
+// (union, newest `at` wins) and age out after TOMBSTONE_MAX_AGE_MS — long enough that no
+// realistic offline gap outruns it, short enough the list never grows unbounded.
+const TOMBSTONE_MAX_AGE_MS = 180 * 86400000;
+function mergeWorkoutsInto(uid, incoming) {
+  const prev = readState(uid);
+  const cutoff = Date.now() - TOMBSTONE_MAX_AGE_MS;
+  const tombById = new Map();
+  for (const t of [...(prev?.deletedWorkoutIds || []), ...(incoming.deletedWorkoutIds || [])]) {
+    if (!t?.id || !((t.at || 0) >= cutoff)) continue;
+    const cur = tombById.get(t.id);
+    if (!cur || (t.at || 0) > (cur.at || 0)) tombById.set(t.id, t);
+  }
+  const workoutById = new Map();
+  for (const w of (prev?.workouts || [])) if (w?.id) workoutById.set(w.id, w);
+  for (const w of (incoming.workouts || [])) if (w?.id) workoutById.set(w.id, w);
+  for (const id of tombById.keys()) workoutById.delete(id);
+  incoming.workouts = [...workoutById.values()];
+  incoming.deletedWorkoutIds = [...tombById.values()];
+}
+
 /* ---------- workout photos ---------- */
 // Stored on disk under DATA/uploads/<uid>/, served back through GET /api/uploads?uid&file —
 // through the API rather than a static nginx mount, so the one visibility rule (owner or a
@@ -1268,10 +1299,14 @@ div{max-width:360px}h1{font-size:20px;margin:0 0 8px}p{color:#9db8a8;line-height
     const body = await readBody(req);
     if (!body.state || typeof body.state !== 'object') return json(res, 400, { error: 'state required' });
     delete body.state.active;              // in-progress workouts stay device-local
+    mergeWorkoutsInto(user.id, body.state);
     writeState(user.id, body.state);
     scanForCheating(req, user, body.state);
     scanForTasks(req, user, body.state);
-    json(res, 200, { ok: true, ts: body.state._ts || null });
+    // workouts/deletedWorkoutIds go back in the response too — the merge above can add a
+    // workout this exact push didn't know about (logged from another device meanwhile), and
+    // without handing that back, this device wouldn't see it until its next full reload.
+    json(res, 200, { ok: true, ts: body.state._ts || null, workouts: body.state.workouts, deletedWorkoutIds: body.state.deletedWorkoutIds });
   },
 
   // Algorithmic calls are wrong sometimes — a heavy-but-real PR, a session that ran past

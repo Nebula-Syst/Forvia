@@ -14,6 +14,10 @@ export const DEF = {
   theme: DEFAULT_THEME, accent: DEFAULT_ACCENT, reduceMotion: false, body: 'male', targetW: null,
   bodyweight: [], routines: [], week: {}, dayPlan: {},
   exWeights: {}, workouts: [], active: null, customEx: [], gifSize: 'full',
+  // Tombstones for explicitly-deleted workouts — see api/server.js mergeWorkoutsInto for why
+  // these exist (a stale second device merging workouts by id must be able to tell "never saw
+  // this one yet" apart from "deleted this one on purpose").
+  deletedWorkoutIds: [],
   // effort: which per-set effort scale is logged — 'none' | 'rir' | 'rpe'. null, not 'none', so
   // that a profile which never chose (loaded state is overlaid on DEF, on every path: local,
   // server pull, backup import) still falls back to the `showRir` boolean this replaced and
@@ -129,8 +133,14 @@ export const useStore = create((set, get) => {
       if (!get().user) return
       clearTimeout(pushTm)
       try {
-        await api('/api/data', { method: 'PUT', body: JSON.stringify({ state: get().S }) })
+        const res = await api('/api/data', { method: 'PUT', body: JSON.stringify({ state: get().S }) })
         localStorage.removeItem('gym_dirty')
+        // The server merges `workouts` by id across devices rather than trusting this push as
+        // the whole truth (api/server.js mergeWorkoutsInto) — if this device was stale and the
+        // merge folded in a workout logged elsewhere meanwhile, adopt that here too, push:false
+        // so it doesn't loop back into another push. Safe against anything typed during the
+        // round-trip since update() clones whatever `S` is *now*, not what was sent.
+        if (res?.workouts) get().update(s => { s.workouts = res.workouts; s.deletedWorkoutIds = res.deletedWorkoutIds || [] }, false)
         // Catches every XP source that only ever goes through the debounced auto-save (the
         // bodyweight goal bonus, mainly) — the workout-finish path already checks explicitly
         // right after its own pushState (see sheets.jsx), but this covers the rest so a level-up

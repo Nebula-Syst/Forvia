@@ -54,8 +54,8 @@ export default function ImageCropper({ file, onDone, onCancel, outputType = 'ima
     const ctx = canvas.getContext('2d')
     // View-space (VIEW×VIEW, image centered+offset by cx/cy at `scale`) -> the source rect
     // in the ORIGINAL image's own pixels that the crop viewport is currently showing.
-    const srcX = (VIEW / 2 - cx - dispW / 2) / scale
-    const srcY = (VIEW / 2 - cy - dispH / 2) / scale
+    const srcX = (dispW / 2 - cx - VIEW / 2) / scale
+    const srcY = (dispH / 2 - cy - VIEW / 2) / scale
     const srcSize = VIEW / scale
     ctx.drawImage(img, srcX, srcY, srcSize, srcSize, 0, 0, OUTPUT, OUTPUT)
     onDone(canvas.toDataURL(outputType, quality))
