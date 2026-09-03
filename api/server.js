@@ -1368,7 +1368,7 @@ div{max-width:360px}h1{font-size:20px;margin:0 0 8px}p{color:#9db8a8;line-height
         // The account holder's own copy of what got hidden — scanForCheating pulled it out of
         // their normal history the moment it was flagged, so without this they'd have no way to
         // check their own numbers before appealing.
-        workout: c.workout || null, unit: c.unit || null,
+        workout: c.workout || null, unit: c.unit || null, reviewNote: c.reviewNote || null,
       }));
     json(res, 200, { penalties: mine });
   },
@@ -1745,16 +1745,21 @@ div{max-width:360px}h1{font-size:20px;margin:0 0 8px}p{color:#9db8a8;line-height
   // flagged; see there) stays out for good, its only copy still the one on this row. Overturning
   // puts it back where it came from: state.workouts, counted in xpFor() again on the very next
   // read, visible in history/feed again — not just a status flip, since nothing else still holds
-  // a copy to restore. Either way the account holder's appeal message stays on the record.
+  // a copy to restore. Either way the account holder's appeal message stays on the record — and
+  // now so does the admin's own: a decision with no reason attached to it isn't really a review,
+  // just a status flip, and the account holder is the one left wondering why either way.
   'POST /api/admin/anticheat/review': async (req, res) => {
     const admin = requireAdmin(req, res); if (!admin) return;
     const body = await readBody(req);
     const c = db.cheatPenalties.find(x => x.id === body.id);
     if (!c) return json(res, 404, { error: 'no such penalty' });
     if (!['uphold', 'overturn'].includes(body.decision)) return json(res, 400, { error: 'invalid decision' });
+    const reviewNote = String(body.reviewNote || '').trim().slice(0, 500);
+    if (!reviewNote) return json(res, 400, { error: 'explain the decision' });
     c.status = body.decision === 'overturn' ? 'overturned' : 'upheld';
     c.reviewedBy = admin.id;
     c.reviewedAt = new Date().toISOString();
+    c.reviewNote = reviewNote;
     if (c.status === 'overturned' && c.workout) {
       const S = readState(c.userId);
       if (S && !(S.workouts || []).some(w => w.id === c.workout.id)) {

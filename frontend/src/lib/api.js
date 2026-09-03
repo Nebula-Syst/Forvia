@@ -81,4 +81,4 @@ export const anticheatStatus = () => api('/api/anticheat/status').then(r => r.pe
 export const anticheatAppeal = (id, message) => api('/api/anticheat/appeal', { method: 'POST', body: JSON.stringify({ id, message }) })
 export const anticheatAck = id => api('/api/anticheat/ack', { method: 'POST', body: JSON.stringify({ id }) })
 export const adminAnticheat = () => api('/api/admin/anticheat').then(r => r.penalties)
-export const adminAnticheatReview = (id, decision) => api('/api/admin/anticheat/review', { method: 'POST', body: JSON.stringify({ id, decision }) })
+export const adminAnticheatReview = (id, decision, reviewNote) => api('/api/admin/anticheat/review', { method: 'POST', body: JSON.stringify({ id, decision, reviewNote }) })

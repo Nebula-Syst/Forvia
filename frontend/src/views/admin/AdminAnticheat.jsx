@@ -27,15 +27,21 @@ const STATUS_RANK = { appealed: 0, active: 1, upheld: 2, overturned: 3 }
 function PenaltyDetail({ p, onChanged, close }) {
   const toast = useUI(s => s.toast)
   const [busy, setBusy] = useState(false)
+  const [note, setNote] = useState('')
   const w = p.workout || null
+  const reviewed = p.status === 'upheld' || p.status === 'overturned'
 
   // Overturning already does the real work server-side (api/server.js's review route puts the
   // workout back in state.workouts, counted in xpFor() again on the very next read) — the fetch
   // here is only so the admin sees that restoration actually landed, in the toast itself, rather
-  // than taking it on faith.
+  // than taking it on faith. reviewNote is required server-side too (400 without one) — a ruling
+  // with no reason attached is just a status flip, and the account holder is the one left
+  // wondering why either way.
   const review = decision => {
+    const reviewNote = note.trim()
+    if (!reviewNote) return
     setBusy(true)
-    adminAnticheatReview(p.id, decision)
+    adminAnticheatReview(p.id, decision, reviewNote)
       .then(async () => {
         if (decision === 'overturn') {
           const fresh = await api('/api/admin/user?id=' + encodeURIComponent(p.userId)).catch(() => null)
@@ -87,12 +93,24 @@ function PenaltyDetail({ p, onChanged, close }) {
         </div>)}
       </div>}
 
-    {(p.status === 'active' || p.status === 'appealed') ? <>
-      <Button variant="primary" disabled={busy} onClick={() => review('overturn')}>Overturn — remove penalty</Button>
+    {reviewed && p.reviewNote && <>
+      <div className="small muted" style={{ margin: '0 0 6px' }}>Review note</div>
+      <div className="card" style={{ marginBottom: 14 }}>
+        <div className="small" style={{ lineHeight: 1.5 }}>“{p.reviewNote}”</div>
+        {p.reviewedAt && <div className="dim" style={{ fontSize: '.72rem', marginTop: 6 }}>{fmtDate(p.reviewedAt.slice(0, 10))}</div>}
+      </div>
+    </>}
+
+    <div className="small muted" style={{ margin: '0 0 6px' }}>{reviewed ? 'Reason for changing this ruling' : 'Reason for this ruling'}</div>
+    <textarea className="input" rows={3} placeholder="Explain the decision — the account holder sees this too…"
+      value={note} onChange={e => setNote(e.target.value)} style={{ marginBottom: 12, width: '100%' }} />
+
+    {!reviewed ? <>
+      <Button variant="primary" disabled={busy || !note.trim()} onClick={() => review('overturn')}>Overturn — remove penalty</Button>
       <div style={{ height: 8 }} />
-      <Button variant="danger" disabled={busy} onClick={() => review('uphold')}>Uphold — keep penalty</Button>
+      <Button variant="danger" disabled={busy || !note.trim()} onClick={() => review('uphold')}>Uphold — keep penalty</Button>
     </> : (
-      <Button variant="ghost" size="sm" disabled={busy} onClick={() => review(p.status === 'upheld' ? 'overturn' : 'uphold')}>
+      <Button variant="ghost" size="sm" disabled={busy || !note.trim()} onClick={() => review(p.status === 'upheld' ? 'overturn' : 'uphold')}>
         {p.status === 'upheld' ? 'Change to overturned' : 'Change to upheld'}
       </Button>
     )}

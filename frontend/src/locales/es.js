@@ -927,4 +927,7 @@ export default {
 // --- real-time anti-cheat verdict toast (added 2026-09-03) ---
   "Appeal accepted — it’s back on your account.": "Apelación aceptada — ya está de vuelta en tu cuenta.",
   "Your appeal was reviewed — the penalty stands.": "Tu apelación ha sido revisada — la penalización se mantiene.",
+
+// --- admin review note, shown to the account holder (added 2026-09-03) ---
+  "Admin’s note: “{0}”": "Nota del admin: “{0}”",
 }

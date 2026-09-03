@@ -87,6 +87,9 @@ export default function Penalties() {
                 <Button size="sm" variant="tinted" disabled={!(drafts[p.id] || '').trim() || sending === p.id} onClick={() => send(p.id)}>{t('Send for review')}</Button>
               </>}
               {p.status === 'appealed' && <div className="small dim" style={{ marginTop: 8 }}>{t('Your note: “{0}”', p.appeal?.message || '')}</div>}
+              {(p.status === 'upheld' || p.status === 'overturned') && p.reviewNote && (
+                <div className="small dim" style={{ marginTop: 8 }}>{t('Admin’s note: “{0}”', p.reviewNote)}</div>
+              )}
             </div>}
           </div>
         })}
