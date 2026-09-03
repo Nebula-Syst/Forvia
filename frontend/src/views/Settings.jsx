@@ -64,6 +64,8 @@ export default function Settings() {
         <Tile icon="info" tint="var(--grey)" title={t('How it works')} subtitle={t('Rank, prestige, penalties')}
           onClick={() => nav('/settings/fair-play')} />
       )}
+      <Tile icon="clipboard" tint="var(--grey)" title={t('Legal')} subtitle={t('Terms of service, privacy')}
+        onClick={() => nav('/settings/legal')} />
     </div>
 
     {user?.admin && (

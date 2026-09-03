@@ -172,11 +172,6 @@ export default function SettingsAccount() {
       />
     </Section>
 
-    <Section title={t('Legal')}>
-      <Row icon="clipboard" iconTint="var(--grey)" title={t('Terms of service')} onClick={() => nav('/legal/terms')} />
-      <Row icon="clipboard" iconTint="var(--grey)" title={t('Privacy policy')} onClick={() => nav('/legal/privacy')} />
-    </Section>
-
     <Section title={t('Danger zone')}>
       <Row icon="signOut" iconTint="var(--red)" title={t('Sign out')} danger onClick={() => confirmSheet({ title: t('Sign out?'), message: t('Your data is synced to your profile first, then cleared from this device.'), confirmText: t('Sign out'), danger: true, onConfirm: () => { signOut(); nav('/home') } })} />
       <Row icon="shield" iconTint="var(--red)" title={t('Sign out everywhere')} subtitle={t('Ends this profile’s sessions on all your devices.')} danger onClick={signOutEverywhere} />

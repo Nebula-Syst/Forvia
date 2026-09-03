@@ -63,7 +63,7 @@ export default function Home() {
         <h1>{user ? t('Hi {0}', user.name) : 'Forvia'}</h1>
         <div className="sub">
           {today.toLocaleDateString(dateLocale(), { weekday: 'long', day: 'numeric', month: 'long' })}
-          {' · '}<span style={{ textTransform: 'uppercase', letterSpacing: '.03em' }}>{t('Early access')}</span>
+          {' · '}<span style={{ textTransform: 'uppercase', letterSpacing: '.03em', fontWeight: 700, color: 'var(--acc)' }}>{t('Early access')}</span>
         </div>
         {user && <div style={{ marginTop: 8 }}><RankRow /></div>}
       </div>

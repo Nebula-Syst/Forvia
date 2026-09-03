@@ -96,6 +96,15 @@ export function passwordLoginSheet() {
   ui().openSheet(close => <PasswordLoginForm close={close} />)
 }
 
+// "Button styled as inline text" — same pattern as SettingsAccount.jsx's "Resend verification
+// email": a real <button>, not a bare <a>, so it stays keyboard/screen-reader operable without
+// needing a real href for what's actually in-app navigation (views/legal/Terms.jsx, Privacy.jsx).
+const LinkBtn = ({ onClick, children }) => (
+  <button onClick={onClick} style={{ background: 'none', border: 'none', padding: 0, color: 'var(--acc)', textDecoration: 'underline', font: 'inherit', cursor: 'pointer' }}>
+    {children}
+  </button>
+)
+
 function PasswordRegisterForm({ close, prefillCode }) {
   const config = useStore(s => s.config)
   const inviteOnly = !!config?.invite_only
@@ -139,6 +148,11 @@ function PasswordRegisterForm({ close, prefillCode }) {
     </>}
     <div style={{ height: 12 }} />
     <Button variant="primary" onClick={go} disabled={busy}>{t('Create account')}</Button>
+    <div className="dim small" style={{ marginTop: 12, lineHeight: 1.5, textAlign: 'center' }}>
+      {/* close() first — the sheet overlay isn't part of the route-keyed #app subtree (see
+          App.jsx), so it would otherwise stay open on top of the legal page underneath it. */}
+      {t('By creating an account you accept the')} <LinkBtn onClick={() => { close(); nav('/legal/terms') }}>{t('Terms of service')}</LinkBtn> {t('and the')} <LinkBtn onClick={() => { close(); nav('/legal/privacy') }}>{t('Privacy policy')}</LinkBtn>.
+    </div>
   </>
 }
 export function passwordRegisterSheet(prefillCode) {

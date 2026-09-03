@@ -940,4 +940,7 @@ export default {
   "Terms of service": "Términos de servicio",
   "Privacy policy": "Política de privacidad",
   "Legal": "Legal",
+  "By creating an account you accept the": "Al crear una cuenta aceptas los",
+  "Documents": "Documentos",
+  "Terms of service, privacy": "Términos de servicio, privacidad",
 }
