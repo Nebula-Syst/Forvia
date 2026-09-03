@@ -60,13 +60,11 @@ export default function Home() {
   return <div>
     <div className="hdr">
       <div>
-        <div className="row" style={{ gap: 8, alignItems: 'center' }}>
-          <h1 style={{ margin: 0 }}>{user ? t('Hi {0}', user.name) : 'Forvia'}</h1>
-          <span className="tag acc" style={{ fontSize: 10, fontWeight: 700, letterSpacing: '.03em', textTransform: 'uppercase', flexShrink: 0 }}>
-            {t('Early access')}
-          </span>
+        <h1>{user ? t('Hi {0}', user.name) : 'Forvia'}</h1>
+        <div className="sub">
+          {today.toLocaleDateString(dateLocale(), { weekday: 'long', day: 'numeric', month: 'long' })}
+          {' · '}<span style={{ textTransform: 'uppercase', letterSpacing: '.03em' }}>{t('Early access')}</span>
         </div>
-        <div className="sub">{today.toLocaleDateString(dateLocale(), { weekday: 'long', day: 'numeric', month: 'long' })}</div>
         {user && <div style={{ marginTop: 8 }}><RankRow /></div>}
       </div>
       <div className="row" style={{ gap: 8 }}>
