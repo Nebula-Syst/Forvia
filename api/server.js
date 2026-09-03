@@ -1537,6 +1537,10 @@ div{max-width:360px}h1{font-size:20px;margin:0 0 8px}p{color:#9db8a8;line-height
     u.adminXpAdjust = floor + baseline - xpWithoutAdjust;
     saveDb();
     audit(req, 'admin.user.level', { user: admin, target: u, msg: `${before.level} -> ${targetLevel}` });
+    // Same real-time path as the anti-cheat events (wsSend, see above) — an admin nudge is
+    // exactly the "arrives from outside this session" case that's worth pushing live rather
+    // than waiting for LevelUpRevealTrigger's own poll to notice on its own.
+    wsSend(u.id, { type: 'rank:changed' });
     json(res, 200, { rank: rankFor(u.id) });
   },
 

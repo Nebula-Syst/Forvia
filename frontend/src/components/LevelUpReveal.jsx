@@ -4,6 +4,7 @@ import { useStore } from '../store/useStore.js'
 import { useUI } from '../store/useUI.js'
 import { tierFor } from '../lib/rank.js'
 import { checkLevelUp, setLevelUpChecker } from '../lib/levelWatch.js'
+import { wsOn } from '../lib/ws.js'
 import { t } from '../lib/i18n.js'
 import RankIcon from './RankIcon.jsx'
 import { Button } from './ui.jsx'
@@ -188,10 +189,18 @@ export default function LevelUpRevealTrigger() {
     const id = setInterval(check, POLL_MS)
     const onVisible = () => { if (document.visibilityState === 'visible') check() }
     document.addEventListener('visibilitychange', onVisible)
+    // 'rank:changed' is the WS side of anything that moves XP/level from outside this session —
+    // right now just an admin's level nudge (api/server.js POST /api/admin/user/level) — same
+    // real-time path the anti-cheat reveal uses (components/CheatCaughtReveal.jsx), so this
+    // doesn't have to wait for the poll to notice on its own.
+    // check() takes an optional preFetchedUser — must NOT be handed the raw WS message directly
+    // (that would be read as a bogus "already fetched" user and break the real /api/me call).
+    const offRankChanged = wsOn('rank:changed', () => check())
     return () => {
       cancelled = true
       clearInterval(id)
       document.removeEventListener('visibilitychange', onVisible)
+      offRankChanged()
       setLevelUpChecker(() => {})
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
