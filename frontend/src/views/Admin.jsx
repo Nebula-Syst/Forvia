@@ -31,6 +31,8 @@ export default function Admin() {
         onClick={() => nav('/admin/tasks')} />
       <Tile icon="sparkles" tint="var(--acc)" title="Alpha requests" subtitle="Access requests from the landing page" full
         onClick={() => nav('/admin/alpha')} />
+      <Tile icon="flag" tint="var(--red)" title="Bug reports" subtitle="What users flagged from Settings" full
+        onClick={() => nav('/admin/bugs')} />
       <Tile icon="clipboard" tint="var(--grey)" title="Activity log" subtitle="Sign-ins, admin actions" full
         onClick={() => nav('/admin/log')} />
     </div>

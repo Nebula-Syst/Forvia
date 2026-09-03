@@ -906,4 +906,14 @@ export default {
   "That’s it — it installs like any other app, with its own icon on your home screen.": "Y ya está — se instala como cualquier otra app, con su propio icono en tu pantalla de inicio.",
   "If any of this makes you uneasy, that instinct is a good one to keep — don’t install APKs from places you don’t trust. The point of all this is so you can check for yourself, not so you take it on faith.":
     "Si algo de esto te da mala espina, hazle caso — no instales APKs de sitios en los que no confías. La idea de todo esto es que puedas comprobarlo tú mismo, no que te lo tengas que creer sin más.",
+
+// --- bug report card (added 2026-09-03) ---
+  "Report a bug": "Reportar un error",
+  "Alpha — tell us what broke": "Alpha — cuéntanos qué falló",
+  "Describe what happened — the more detail, the easier it is to fix.": "Describe qué ha pasado — cuanto más detalle, más fácil es arreglarlo.",
+  "What went wrong? Steps to reproduce help a lot.": "¿Qué ha fallado? Los pasos para reproducirlo ayudan mucho.",
+  "Sent as {0}": "Enviado como {0}",
+  "Sent anonymously — sign in first so we can follow up with you.": "Enviado como anónimo — inicia sesión antes para poder contactarte.",
+  "Thanks — logged it.": "Gracias — lo hemos registrado.",
+  "Send": "Enviar",
 }

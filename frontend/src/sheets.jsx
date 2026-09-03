@@ -23,7 +23,7 @@ import { nextPrescription, applyPrescription, policyFor, defaultIncrement, POLIC
 import { MOBILE, shareExport } from './lib/mobile.js'
 import { buildCompletedWorkout } from './lib/finish-workout.js'
 import { isWarmupRow } from './lib/workout-model.js'
-import { passwordLogin, passwordRegister, setPassword, deleteAccount, socialComments, socialComment, socialCommentRemove, socialUpload, pinWorkout, unpinWorkout, pinPR } from './lib/api.js'
+import { passwordLogin, passwordRegister, setPassword, deleteAccount, socialComments, socialComment, socialCommentRemove, socialUpload, pinWorkout, unpinWorkout, pinPR, reportBug } from './lib/api.js'
 
 const S = () => useStore.getState().S
 const update = (...a) => useStore.getState().update(...a)
@@ -195,6 +195,42 @@ function DeleteAccountForm({ close }) {
 }
 export function deleteAccountSheet() {
   ui().openSheet(close => <DeleteAccountForm close={close} />, { locked: true })
+}
+
+/* ============================ bug reports (alpha issue tracker) ============================ */
+// Deliberately one field — what went wrong, described in your own words. No severity picker,
+// no category: this is alpha, the point is a report an admin can read in the panel (see
+// AdminBugs.jsx), not a real issue tracker. Works signed out too (a guest never has a server
+// session — see the .env note on ALLOW_GUEST — so there's nothing to attach beyond the text
+// itself); the server records those as Anonymous rather than rejecting them.
+function ReportBugForm({ close }) {
+  const me = useStore.getState().user
+  const [text, setText] = useState('')
+  const [busy, setBusy] = useState(false)
+  const send = async () => {
+    const v = text.trim()
+    if (!v) return
+    setBusy(true)
+    try {
+      await reportBug(v, location.hash.replace(/^#/, '') || '/')
+      toast(t('Thanks — logged it.'))
+      close()
+    } catch (e) { toast(e.message || t('Could not save')) }
+    finally { setBusy(false) }
+  }
+  return <>
+    <h3>{t('Report a bug')}</h3>
+    <div className="muted small" style={{ marginBottom: 12, lineHeight: 1.5 }}>{t('Describe what happened — the more detail, the easier it is to fix.')}</div>
+    <textarea className="input" rows={5} maxLength={1000} placeholder={t('What went wrong? Steps to reproduce help a lot.')}
+      value={text} onChange={e => setText(e.target.value)} autoFocus />
+    <div className="muted small" style={{ margin: '10px 0' }}>
+      {me ? t('Sent as {0}', me.name) : t('Sent anonymously — sign in first so we can follow up with you.')}
+    </div>
+    <Button variant="primary" onClick={send} disabled={busy || !text.trim()}>{t('Send')}</Button>
+  </>
+}
+export function reportBugSheet() {
+  ui().openSheet(close => <ReportBugForm close={close} />)
 }
 
 /* ============================ social: comments on a workout ============================ */

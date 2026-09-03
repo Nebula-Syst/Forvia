@@ -60,7 +60,7 @@ const SECRET = fs.readFileSync(secretFile, 'utf8').trim();
 // why this stays one big in-memory object instead of being queried per-request. Same shape
 // db.json's arrays always had: users, subs (push), invites, follows, reactions, comments
 // (social), tasks/taskCompletions (daily-task catalog + awards), cheatPenalties (anti-cheat).
-let db = { users: [], subs: [], invites: [], follows: [], reactions: [], comments: [], tasks: [], taskCompletions: [], cheatPenalties: [], alphaRequests: [] };
+let db = { users: [], subs: [], invites: [], follows: [], reactions: [], comments: [], tasks: [], taskCompletions: [], cheatPenalties: [], alphaRequests: [], bugReports: [] };
 // A user can hold several employee types at once (e.g. both founder and admin), not one
 // flat role — employeeTypes is an array, filtered to the known set on every read so a
 // stale/tampered value in db.json can never grant something that isn't in EMPLOYEE_TYPES.
@@ -934,6 +934,33 @@ const routes = {
     json(res, 200, { ok: true }, headers);
   },
 
+  /* ---------- bug reports (alpha issue tracker) ---------- */
+  // Deliberately minimal: one free-text field, no severity/category picker — this is alpha,
+  // the point is a low-friction "something's wrong, here it is" that an admin triages by eye
+  // (GET /api/admin/bugs), not a real issue tracker. Works signed in or as a guest — a guest
+  // has no server session at all (see .env's ALLOW_GUEST note), so there's nothing to attach
+  // the report to beyond whatever they typed; it's recorded as Anonymous rather than dropped.
+  'POST /api/bugs': async (req, res) => {
+    const user = readSession(req);
+    const body = await readBody(req);
+    const message = String(body.message || '').trim().slice(0, 1000);
+    if (!message) return json(res, 400, { error: 'describe what went wrong' });
+    const page = String(body.page || '').trim().slice(0, 200);
+    db.bugReports.push({
+      id: crypto.randomBytes(8).toString('base64url'),
+      userId: user ? user.id : null,
+      name: user ? user.name : null,
+      email: user ? user.email : null,
+      message,
+      page,
+      status: 'open',
+      created: new Date().toISOString(),
+    });
+    saveDb();
+    audit(req, 'bug.report', user ? { user, msg: message.slice(0, 80) } : { name: 'Anonymous', msg: message.slice(0, 80) });
+    json(res, 200, { ok: true });
+  },
+
   'GET /api/me': async (req, res) => {
     const user = readSession(req);
     if (!user) return json(res, 401, { error: 'not signed in' });
@@ -1548,6 +1575,32 @@ div{max-width:360px}h1{font-size:20px;margin:0 0 8px}p{color:#9db8a8;line-height
     reqRow.status = 'dismissed';
     saveDb();
     audit(req, 'admin.alpha.dismiss', { user: admin, msg: reqRow.email });
+    json(res, 200, { ok: true });
+  },
+
+  /* ---------- bug reports (admin side) ---------- */
+  'GET /api/admin/bugs': async (req, res) => {
+    if (!requireAdmin(req, res)) return;
+    json(res, 200, { reports: [...db.bugReports].reverse() });
+  },
+  'POST /api/admin/bugs/resolve': async (req, res) => {
+    const admin = requireAdmin(req, res); if (!admin) return;
+    const body = await readBody(req);
+    const row = db.bugReports.find(r => r.id === body.id);
+    if (!row) return json(res, 404, { error: 'no such report' });
+    row.status = row.status === 'resolved' ? 'open' : 'resolved';
+    saveDb();
+    audit(req, 'admin.bug.resolve', { user: admin, msg: row.status + ': ' + row.message.slice(0, 60) });
+    json(res, 200, { report: row });
+  },
+  'POST /api/admin/bugs/delete': async (req, res) => {
+    const admin = requireAdmin(req, res); if (!admin) return;
+    const body = await readBody(req);
+    const row = db.bugReports.find(r => r.id === body.id);
+    if (!row) return json(res, 404, { error: 'no such report' });
+    db.bugReports = db.bugReports.filter(r => r.id !== body.id);
+    saveDb();
+    audit(req, 'admin.bug.delete', { user: admin, msg: row.message.slice(0, 60) });
     json(res, 200, { ok: true });
   },
 

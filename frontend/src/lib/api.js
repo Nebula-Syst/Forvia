@@ -64,6 +64,12 @@ export const adminUserCreate = (name, email, password) => api('/api/admin/user/c
 export const adminSetEmployeeTypes = (id, employeeTypes) => api('/api/admin/user/employee-types', { method: 'POST', body: JSON.stringify({ id, employeeTypes }) })
 export const adminUserLevel = (id, delta) => api('/api/admin/user/level', { method: 'POST', body: JSON.stringify({ id, delta }) }).then(r => r.rank)
 
+/* ---------- bug reports ---------- */
+export const reportBug = (message, page) => api('/api/bugs', { method: 'POST', body: JSON.stringify({ message, page }) })
+export const adminBugs = () => api('/api/admin/bugs').then(r => r.reports)
+export const adminBugResolve = id => api('/api/admin/bugs/resolve', { method: 'POST', body: JSON.stringify({ id }) }).then(r => r.report)
+export const adminBugDelete = id => api('/api/admin/bugs/delete', { method: 'POST', body: JSON.stringify({ id }) })
+
 /* ---------- alpha waitlist ---------- */
 export const alphaApply = (name, email, message) => api('/api/alpha/apply', { method: 'POST', body: JSON.stringify({ name, email, message }) })
 export const adminAlpha = () => api('/api/admin/alpha').then(r => r.requests)

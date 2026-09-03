@@ -3,6 +3,7 @@ import { useStore } from '../store/useStore.js'
 import { t } from '../lib/i18n.js'
 import { DEMO } from '../lib/demo.js'
 import { MOBILE } from '../lib/mobile.js'
+import { reportBugSheet } from '../sheets.jsx'
 import Icon from '../components/Icon.jsx'
 
 // A map of categories, not a single long scroll — each tile opens its own focused
@@ -53,6 +54,8 @@ export default function Settings() {
       )}
       <Tile icon="folder" tint="var(--teal)" title={t('Data')} subtitle={t('Backup, import, reset')}
         onClick={() => nav('/settings/data')} />
+      <Tile icon="flag" tint="var(--red)" title={t('Report a bug')} subtitle={t('Alpha — tell us what broke')}
+        onClick={() => reportBugSheet()} />
       {!MOBILE && (
         <Tile icon="download" tint="var(--green)" title={t('Mobile app')} subtitle={t('Get it for Android')}
           onClick={() => nav('/settings/mobile-app')} />
