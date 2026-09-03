@@ -108,7 +108,22 @@ const publicComment = c => ({
 // Fire-and-forget, same as the old atomicWrite(dbFile,...) call it replaces: every one of the
 // ~40 call sites below just does `saveDb();` with no await and no return value, so this stays
 // safe to call bare — a failed write is logged, never thrown, never blocks the response.
-function saveDb() { saveAll(db).catch(e => console.error('saveDb failed:', e.message)); }
+//
+// saveAll does DELETE FROM <table>; INSERT ... per collection, which is only safe run one at a
+// time. Two overlapping calls (two requests mutating db close together — the normal case under
+// any real traffic) each open their own transaction; if the first commits its INSERT while the
+// second's DELETE is still blocked on the same rows, Postgres unblocks that DELETE against
+// whatever's *now* there — but a DELETE's row-scan doesn't retroactively pick up rows another
+// transaction inserted after that scan started, so it deletes nothing further, and the second
+// call's own INSERT lands on top: every row now exists twice (issue: kv_users found duplicated
+// in production — two live rows per account). saveChain below is the fix: every saveDb() call
+// is appended to one standing promise, so saveAll never runs concurrently with itself, and
+// db.js is left as-is — the same fire-and-forget call site every caller already uses just queues
+// instead of racing.
+let saveChain = Promise.resolve();
+function saveDb() {
+  saveChain = saveChain.then(() => saveAll(db)).catch(e => console.error('saveDb failed:', e.message));
+}
 
 // Per-user training state (routines, workouts, bodyweight...) — same in-memory-mirror pattern
 // as `db` above, backed by the user_state table instead of state-<uid>.json.
