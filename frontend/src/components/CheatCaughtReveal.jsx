@@ -6,6 +6,7 @@ import { useStore } from '../store/useStore.js'
 import { tierFor } from '../lib/rank.js'
 import { FINDING_LABEL } from '../lib/anticheat.js'
 import { setCheatRevealChecker } from '../lib/anticheatWatch.js'
+import { wsOn } from '../lib/ws.js'
 import RankIcon from './RankIcon.jsx'
 import { Button, TextArea } from './ui.jsx'
 
@@ -136,13 +137,15 @@ function CheatCaughtDialog({ penalty, rank, tierColor, tierName, onDone }) {
 // wherever the account actually is when it fires, not just a visit to Rank — queued one at a
 // time if more than one penalty is waiting.
 //
-// Same live-check shape as LevelUpRevealTrigger (components/LevelUpReveal.jsx): on mount, on an
-// interval, on the tab regaining focus, and on demand right after a workout save (see
-// setCheatRevealChecker / lib/anticheatWatch.js) — a flagged workout used to only ever surface
-// on the NEXT full app load, so staying in the app right after finishing the workout that just
-// got flagged meant not finding out until you reloaded. A push notification (api/server.js
-// scanForCheating/anticheat review) covers the app-closed case; this covers app-open.
-const POLL_MS = 20000
+// The WebSocket (lib/ws.js) is what makes this actually real-time: api/server.js's scanForCheating
+// and anticheat/review both call wsSend the instant something happens, so 'anticheat:flagged' /
+// 'anticheat:reviewed' land here with no delay at all, open app or not backgrounded. Everything
+// else here — on mount, on demand right after a workout save (setCheatRevealChecker /
+// lib/anticheatWatch.js), on the tab regaining focus, and a long-interval poll — is a fallback
+// for the gap between a dropped connection and ws.js reconnecting, not the primary path. A push
+// notification (same two server-side moments) covers the app fully closed, where none of this
+// runs at all.
+const POLL_MS = 60000
 export default function CheatRevealTrigger() {
   const user = useStore(s => s.user)
   useEffect(() => {
@@ -182,10 +185,20 @@ export default function CheatRevealTrigger() {
     const id = setInterval(check, POLL_MS)
     const onVisible = () => { if (document.visibilityState === 'visible') check() }
     document.addEventListener('visibilitychange', onVisible)
+    const offFlagged = wsOn('anticheat:flagged', check)
+    // A verdict has no reveal dialog of its own — the account holder isn't necessarily even
+    // looking at Penalties when it lands — so a toast is the real-time "message" for this one:
+    // immediate and visible the instant admin/anticheat/review actually rules, not just a
+    // silent background re-check they'd only notice by reopening the page themselves.
+    const offReviewed = wsOn('anticheat:reviewed', msg => {
+      useUI.getState().toast(msg.status === 'overturned' ? t('Appeal accepted — it’s back on your account.') : t('Your appeal was reviewed — the penalty stands.'))
+      check()
+    })
     return () => {
       cancelled = true
       clearInterval(id)
       document.removeEventListener('visibilitychange', onVisible)
+      offFlagged(); offReviewed()
       setCheatRevealChecker(() => {})
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps

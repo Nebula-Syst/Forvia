@@ -8,6 +8,7 @@ import { MOBILE, nativeLoad, nativeSave, syncReminder } from '../lib/mobile.js'
 import { DEFAULT_ACCENT, DEFAULT_THEME } from '../lib/palette.js'
 import { checkNowForLevelUp } from '../lib/levelWatch.js'
 import { checkNowForCheatReveal } from '../lib/anticheatWatch.js'
+import { wsConnect, wsDisconnect } from '../lib/ws.js'
 
 const KEY = 'gym_state_v1'
 export const DEF = {
@@ -117,6 +118,10 @@ export const useStore = create((set, get) => {
       if (u) { localStorage.setItem('gym_user', JSON.stringify(u)); localStorage.removeItem('gym_guest') }
       else localStorage.removeItem('gym_user')
       set({ user: u })
+      // A session cookie only exists once there's a real (non-guest) user — same condition
+      // pushState already gates on — so the socket's lifetime just follows this one call site
+      // rather than needing its own tracking of when a session starts/ends.
+      if (u) wsConnect(); else wsDisconnect()
     },
 
     // user (and its perks — rank/prestige unlocks like maxPhotos) is a snapshot from login/boot;

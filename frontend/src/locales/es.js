@@ -923,4 +923,8 @@ export default {
 
 // --- edit/delete routine from the Start tab (added 2026-09-03) ---
   "Edit routine": "Editar rutina",
+
+// --- real-time anti-cheat verdict toast (added 2026-09-03) ---
+  "Appeal accepted — it’s back on your account.": "Apelación aceptada — ya está de vuelta en tu cuenta.",
+  "Your appeal was reviewed — the penalty stands.": "Tu apelación ha sido revisada — la penalización se mantiene.",
 }

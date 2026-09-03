@@ -7,6 +7,7 @@ import path from 'node:path';
 import net from 'node:net';
 import tls from 'node:tls';
 import webpush from 'web-push';
+import { WebSocketServer } from 'ws';
 import { ensureSchema, loadAll, saveAll, loadAllStates, saveState, deleteState, appendAudit, auditAll, auditDeleteIds, auditClearAll } from './db.js';
 
 const PORT = +(process.env.PORT || 3000);
@@ -160,6 +161,22 @@ function mergeWorkoutsInto(uid, incoming) {
 const UPLOAD_MIME = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp' };
 const uploadsDir = uid => path.join(DATA, 'uploads', uid.replace(/[^a-zA-Z0-9_-]/g, ''));
 const MAX_IMAGE_BYTES = 6 * 1024 * 1024;
+
+/* ---------- WebSocket (real-time push to an already-open app) ---------- */
+// sendPush below reaches a closed app; this reaches an open one instantly, no polling involved.
+// One WS server, attached to the exact same http.Server the REST API already listens on (no
+// second port to expose or proxy) — auth reuses the same session cookie every HTTP route already
+// trusts, checked once at the upgrade handshake (see main()'s `server.on('upgrade', ...)`).
+// SameSite=Lax on that cookie (sessionCookie above) is what already keeps a cross-site page from
+// riding along on fetch/XHR; the same protection covers this WS handshake for the same reason —
+// no separate origin check needed, consistent with every POST route here trusting it too.
+const wsByUser = new Map();   // userId -> Set<WebSocket>
+function wsSend(userId, payload) {
+  const set = wsByUser.get(userId);
+  if (!set || !set.size) return;
+  const body = JSON.stringify(payload);
+  for (const ws of set) { if (ws.readyState === ws.OPEN) ws.send(body); }
+}
 
 /* ---------- push notifications (Web Push / VAPID) ---------- */
 const vapidFile = path.join(DATA, 'vapid.json');
@@ -729,11 +746,9 @@ function scanForCheating(req, user, state) {
   if (flaggedMsgs.length) {
     saveDb();
     audit(req, 'anticheat.flag', { user, msg: flaggedMsgs.join(' | ').slice(0, 120) });
-    // The in-app "caught you" reveal only checks once, at boot (CheatRevealTrigger) — someone
-    // still in the app right when their own workout gets flagged wouldn't see it until their
-    // next full reload otherwise. A push fires the instant it happens, open app or not, same as
-    // every other real-time alert this app sends (rest timer, day reminder) — same mechanism,
-    // just a new reason to ring it.
+    // WS reaches an open app instantly (CheatRevealTrigger listens for this exact type — see
+    // frontend/src/lib/ws.js); push (below) reaches a closed one. Both fire the same moment.
+    wsSend(user.id, { type: 'anticheat:flagged' });
     sendPush(user.id, {
       title: '⚠️ Workout flagged',
       body: flaggedMsgs.length === 1 ? 'A recent workout was flagged for review — see Penalties in Settings.' : `${flaggedMsgs.length} recent workouts were flagged for review — see Penalties in Settings.`,
@@ -1753,6 +1768,7 @@ div{max-width:360px}h1{font-size:20px;margin:0 0 8px}p{color:#9db8a8;line-height
     // Same reasoning as the flag push above: the account holder has no other way to find out a
     // verdict landed except reopening Penalties themselves, possibly days later. Fires the
     // instant the ruling is made, whether or not they ever actually appealed it.
+    wsSend(c.userId, { type: 'anticheat:reviewed', status: c.status });
     sendPush(c.userId, c.status === 'overturned'
       ? { title: '✅ Appeal accepted', body: 'A flagged workout was cleared and is back on your account.', tag: 'anticheat-review' }
       : { title: 'Penalty reviewed', body: 'A flagged workout was reviewed and the penalty stands.', tag: 'anticheat-review' });
@@ -2125,7 +2141,7 @@ async function main() {
   backfillCheatPenaltySnapshots();
   setInterval(reminderTick, 10000).unref();
 
-  http.createServer(async (req, res) => {
+  const server = http.createServer(async (req, res) => {
     const url = new URL(req.url, 'http://x');
     const key = req.method + ' ' + url.pathname;
     const handler = routes[key];
@@ -2135,6 +2151,44 @@ async function main() {
       console.error(key, e);
       if (!res.headersSent) json(res, 500, { error: 'server error' });
     }
-  }).listen(PORT, () => console.log(`gym-api on :${PORT} (origin=${ORIGIN})`));
+  });
+
+  // Same session cookie, same rules as every HTTP route: no valid session, no connection —
+  // checked once here rather than trusting anything the client claims after the handshake.
+  const wss = new WebSocketServer({ noServer: true });
+  server.on('upgrade', (req, socket, head) => {
+    const { pathname } = new URL(req.url, 'http://x');
+    if (pathname !== '/ws') { socket.destroy(); return; }
+    const user = readSession(req);
+    if (!user) { socket.destroy(); return; }
+    wss.handleUpgrade(req, socket, head, ws => {
+      let set = wsByUser.get(user.id);
+      if (!set) { set = new Set(); wsByUser.set(user.id, set); }
+      set.add(ws);
+      ws.isAlive = true;
+      ws.on('pong', () => { ws.isAlive = true; });
+      ws.on('close', () => {
+        set.delete(ws);
+        if (!set.size) wsByUser.delete(user.id);
+      });
+      ws.on('error', () => {});   // 'close' always follows; nothing extra to do here
+    });
+  });
+  // A dead connection (network dropped, laptop closed) never fires 'close' on its own — nothing
+  // tells the server, so it would just sit in wsByUser forever. Pinged every 25s instead: no pong
+  // since the last ping means it's actually gone, so it's torn down; short enough that a reverse
+  // proxy in front of this (a Cloudflare tunnel, in this project's own case) never sees the
+  // connection idle long enough to kill it for us first.
+  setInterval(() => {
+    for (const set of wsByUser.values()) {
+      for (const ws of set) {
+        if (ws.isAlive === false) { ws.terminate(); continue; }
+        ws.isAlive = false;
+        ws.ping();
+      }
+    }
+  }, 25000).unref();
+
+  server.listen(PORT, () => console.log(`gym-api on :${PORT} (origin=${ORIGIN})`));
 }
 main().catch(e => { console.error('boot failed:', e); process.exit(1); });

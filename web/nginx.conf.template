@@ -19,6 +19,24 @@ server {
         proxy_set_header X-Forwarded-Proto $scheme;
     }
 
+    # Real-time push to an already-open app (api/server.js's WebSocket server) — its own
+    # location, not under /api/, since a WS upgrade needs Upgrade/Connection headers the plain
+    # HTTP proxy block above doesn't send. proxy_read_timeout is raised well past nginx's 60s
+    # default: the app pings every 25s so this shouldn't matter in practice, but a proxy timeout
+    # racing the app's own keepalive would just be a second, redundant way to drop the same
+    # connection for no reason.
+    location /ws {
+        proxy_pass http://${BACKEND}:${PORT};
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_read_timeout 3600s;
+    }
+
     # SPA fallback
     location / {
         try_files $uri $uri/ /index.html;
