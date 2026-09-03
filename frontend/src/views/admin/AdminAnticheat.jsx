@@ -33,10 +33,25 @@ function PenaltyDetail({ p, onChanged, close }) {
   }, [p.id])
   const w = d && d.workouts ? d.workouts.find(x => x.id === p.workoutId) : null
 
+  // Nothing here actually needs to "give back" levels or XP as a separate step — xpFor() never
+  // excluded a flagged workout's own XP from the total to begin with (see api/server.js), and
+  // rankFor()'s levelsDocked sum already skips any penalty whose status is 'overturned'. So the
+  // instant the status flips, the account's real level/XP is exactly what it would've been had
+  // the workout never been flagged. The only reason to re-fetch here is to show the admin that
+  // restoration actually landed, in the same toast, rather than asking them to take it on faith.
   const review = decision => {
     setBusy(true)
     adminAnticheatReview(p.id, decision)
-      .then(() => { toast(decision === 'overturn' ? 'Penalty overturned' : 'Penalty upheld'); onChanged(); close() })
+      .then(async () => {
+        if (decision === 'overturn') {
+          const fresh = await api('/api/admin/user?id=' + encodeURIComponent(p.userId)).catch(() => null)
+          const r = fresh?.user?.rank
+          toast(r ? `Penalty overturned — ${p.userName || 'user'} is back to Level ${r.level} (${r.totalXp} total XP)` : 'Penalty overturned')
+        } else {
+          toast('Penalty upheld')
+        }
+        onChanged(); close()
+      })
       .catch(e => toast(e.message))
       .finally(() => setBusy(false))
   }
