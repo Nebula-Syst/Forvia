@@ -18,6 +18,8 @@ import RestTimer from './components/RestTimer.jsx'
 import CheatRevealTrigger from './components/CheatCaughtReveal.jsx'
 import LevelUpRevealTrigger from './components/LevelUpReveal.jsx'
 import Login from './views/Login.jsx'
+import Terms from './views/legal/Terms.jsx'
+import Privacy from './views/legal/Privacy.jsx'
 import Home from './views/Home.jsx'
 import Plan from './views/Plan.jsx'
 import RoutineEdit from './views/RoutineEdit.jsx'
@@ -93,7 +95,7 @@ function Shell() {
           just the safe-area inset on this one screen; every other page keeps the normal padding. */}
       <div id="app" className={'vfade' + (loc.pathname === '/workout' && S.active ? ' notop' : '')} key={loc.pathname}>
         <ErrorBoundary>
-          {!authed ? <Login /> : (
+          {loc.pathname === '/legal/terms' ? <Terms /> : loc.pathname === '/legal/privacy' ? <Privacy /> : !authed ? <Login /> : (
             <Routes>
               <Route path="/home" element={<Home />} />
               <Route path="/plan" element={<Plan />} />

@@ -8,6 +8,15 @@ import { passwordLoginSheet, passwordRegisterSheet } from '../sheets.jsx'
 import Icon from '../components/Icon.jsx'
 import { Button } from '../components/ui.jsx'
 
+// Same "button styled as inline text" pattern as SettingsAccount.jsx's "Resend verification
+// email" — an actual <button>, not a bare <a>, so it stays keyboard/screen-reader operable
+// without needing a real href (this is in-app navigation, not a link to another page).
+const LinkBtn = ({ onClick, children }) => (
+  <button onClick={onClick} style={{ background: 'none', border: 'none', padding: 0, color: 'var(--acc)', textDecoration: 'underline', font: 'inherit', cursor: 'pointer' }}>
+    {children}
+  </button>
+)
+
 export default function Login() {
   const { setGuest } = useStore()
   const config = useStore(s => s.config)
@@ -27,6 +36,11 @@ export default function Login() {
   const head = <>
     <div style={{ fontSize: 54, display: 'flex', justifyContent: 'center', color: 'var(--acc)' }}><Icon name="dumbbell" /></div>
     <h1 style={{ fontSize: 34, fontWeight: 700, letterSpacing: '-.028em', margin: '10px 0 4px' }}>Forvia</h1>
+    <div className="row" style={{ justifyContent: 'center', marginBottom: 4 }}>
+      <span className="tag acc" style={{ fontSize: 11, fontWeight: 700, letterSpacing: '.03em', textTransform: 'uppercase' }}>
+        {t('Early access')}
+      </span>
+    </div>
   </>
   const wrap = { display: 'flex', flexDirection: 'column', justifyContent: 'center', minHeight: '78vh', textAlign: 'center' }
 
@@ -60,6 +74,9 @@ export default function Login() {
         </div>
       )}
       <div className="dim small" style={{ marginTop: 26, lineHeight: 1.5 }}>{t('Each profile keeps its own plan, workouts & body weight.')}</div>
+      <div className="dim small" style={{ marginTop: 14, lineHeight: 1.5 }}>
+        {t('By continuing you accept the')} <LinkBtn onClick={() => nav('/legal/terms')}>{t('Terms of service')}</LinkBtn> {t('and the')} <LinkBtn onClick={() => nav('/legal/privacy')}>{t('Privacy policy')}</LinkBtn>.
+      </div>
     </div>
   )
 }

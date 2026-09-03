@@ -932,4 +932,12 @@ export default {
   "Appeal reviewed": "Apelación revisada",
   "We’ve decided to accept your appeal: “{0}”": "Hemos decidido aceptar tu apelación por: “{0}”",
   "We’ve reviewed your appeal — the penalty stands: “{0}”": "Hemos revisado tu apelación — la penalización se mantiene por: “{0}”",
+
+// --- early access badge + legal pages (added 2026-09-03) ---
+  "Early access": "Acceso anticipado",
+  "By continuing you accept the": "Al continuar aceptas los",
+  "and the": "y la",
+  "Terms of service": "Términos de servicio",
+  "Privacy policy": "Política de privacidad",
+  "Legal": "Legal",
 }
