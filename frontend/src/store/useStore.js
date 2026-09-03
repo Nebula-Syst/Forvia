@@ -7,6 +7,7 @@ import { guestAllowed } from '../lib/guest.js'
 import { MOBILE, nativeLoad, nativeSave, syncReminder } from '../lib/mobile.js'
 import { DEFAULT_ACCENT, DEFAULT_THEME } from '../lib/palette.js'
 import { checkNowForLevelUp } from '../lib/levelWatch.js'
+import { checkNowForCheatReveal } from '../lib/anticheatWatch.js'
 
 const KEY = 'gym_state_v1'
 export const DEF = {
@@ -146,6 +147,10 @@ export const useStore = create((set, get) => {
         // right after its own pushState (see sheets.jsx), but this covers the rest so a level-up
         // never waits on the next poll/tab-focus no matter what actually earned the XP.
         checkNowForLevelUp()
+        // Same reasoning: this exact PUT is what scanForCheating (api/server.js) just ran
+        // against, so if it flagged something, this is the earliest possible moment to show it —
+        // no waiting on CheatRevealTrigger's own poll interval or the next tab focus.
+        checkNowForCheatReveal()
       }
       catch (e) { localStorage.setItem('gym_dirty', '1') }
     },

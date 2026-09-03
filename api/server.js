@@ -729,6 +729,16 @@ function scanForCheating(req, user, state) {
   if (flaggedMsgs.length) {
     saveDb();
     audit(req, 'anticheat.flag', { user, msg: flaggedMsgs.join(' | ').slice(0, 120) });
+    // The in-app "caught you" reveal only checks once, at boot (CheatRevealTrigger) — someone
+    // still in the app right when their own workout gets flagged wouldn't see it until their
+    // next full reload otherwise. A push fires the instant it happens, open app or not, same as
+    // every other real-time alert this app sends (rest timer, day reminder) — same mechanism,
+    // just a new reason to ring it.
+    sendPush(user.id, {
+      title: '⚠️ Workout flagged',
+      body: flaggedMsgs.length === 1 ? 'A recent workout was flagged for review — see Penalties in Settings.' : `${flaggedMsgs.length} recent workouts were flagged for review — see Penalties in Settings.`,
+      tag: 'anticheat-flag',
+    });
   }
 }
 
@@ -1740,6 +1750,12 @@ div{max-width:360px}h1{font-size:20px;margin:0 0 8px}p{color:#9db8a8;line-height
     }
     saveDb();
     audit(req, 'admin.anticheat.review', { user: admin, msg: c.workoutId + ':' + c.status });
+    // Same reasoning as the flag push above: the account holder has no other way to find out a
+    // verdict landed except reopening Penalties themselves, possibly days later. Fires the
+    // instant the ruling is made, whether or not they ever actually appealed it.
+    sendPush(c.userId, c.status === 'overturned'
+      ? { title: '✅ Appeal accepted', body: 'A flagged workout was cleared and is back on your account.', tag: 'anticheat-review' }
+      : { title: 'Penalty reviewed', body: 'A flagged workout was reviewed and the penalty stands.', tag: 'anticheat-review' });
     json(res, 200, { ok: true, status: c.status });
   },
 

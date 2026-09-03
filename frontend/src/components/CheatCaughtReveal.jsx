@@ -5,6 +5,7 @@ import { useUI } from '../store/useUI.js'
 import { useStore } from '../store/useStore.js'
 import { tierFor } from '../lib/rank.js'
 import { FINDING_LABEL } from '../lib/anticheat.js'
+import { setCheatRevealChecker } from '../lib/anticheatWatch.js'
 import RankIcon from './RankIcon.jsx'
 import { Button, TextArea } from './ui.jsx'
 
@@ -132,34 +133,62 @@ function CheatCaughtDialog({ penalty, rank, tierColor, tierName, onDone }) {
 }
 
 // Mounted once at the app shell level (not on any one page) so the reveal can interrupt
-// wherever the account actually is when it fires, not just a visit to Rank — checked once per
-// app load/session, queued one at a time if more than one penalty is waiting.
+// wherever the account actually is when it fires, not just a visit to Rank — queued one at a
+// time if more than one penalty is waiting.
+//
+// Same live-check shape as LevelUpRevealTrigger (components/LevelUpReveal.jsx): on mount, on an
+// interval, on the tab regaining focus, and on demand right after a workout save (see
+// setCheatRevealChecker / lib/anticheatWatch.js) — a flagged workout used to only ever surface
+// on the NEXT full app load, so staying in the app right after finishing the workout that just
+// got flagged meant not finding out until you reloaded. A push notification (api/server.js
+// scanForCheating/anticheat review) covers the app-closed case; this covers app-open.
+const POLL_MS = 20000
 export default function CheatRevealTrigger() {
   const user = useStore(s => s.user)
   useEffect(() => {
-    if (!user) return
+    if (!user) { setCheatRevealChecker(() => {}); return }
     let cancelled = false
-    Promise.all([anticheatStatus(), api('/api/me')]).then(async ([items, me]) => {
-      const unseen = items.filter(p => !p.seen)
-      if (!unseen.length) return
-      const rank = me.user.rank
-      const tier = tierFor(rank.level)
-      const playNext = async queue => {
-        if (cancelled || !queue.length) return
-        const [next, ...rest] = queue
-        await new Promise(resolve => {
-          const { close } = useUI.getState().openSheet(() => (
-            <CheatCaughtDialog penalty={next} rank={rank} tierColor={tier.color} tierName={tier.name} onDone={async () => {
-              try { await anticheatAck(next.id) } finally { close(); resolve() }
-            }} />
-          ), { kind: 'center', locked: true })
-        })
-        if (!cancelled) await playNext(rest)
-      }
-      await playNext(unseen)
-    }).catch(() => {})
-    return () => { cancelled = true }
+    let busy = false
+
+    const check = async () => {
+      if (busy || cancelled) return
+      busy = true
+      try {
+        const [items, me] = await Promise.all([anticheatStatus(), api('/api/me')])
+        if (cancelled) return
+        const unseen = items.filter(p => !p.seen)
+        if (!unseen.length) return
+        const rank = me.user.rank
+        const tier = tierFor(rank.level)
+        const playNext = async queue => {
+          if (cancelled || !queue.length) return
+          const [next, ...rest] = queue
+          await new Promise(resolve => {
+            const { close } = useUI.getState().openSheet(() => (
+              <CheatCaughtDialog penalty={next} rank={rank} tierColor={tier.color} tierName={tier.name} onDone={async () => {
+                try { await anticheatAck(next.id) } finally { close(); resolve() }
+              }} />
+            ), { kind: 'center', locked: true })
+          })
+          if (!cancelled) await playNext(rest)
+        }
+        await playNext(unseen)
+      } catch { /* offline or logged out mid-check — next trigger tries again */ }
+      finally { busy = false }
+    }
+
+    setCheatRevealChecker(check)
+    check()
+    const id = setInterval(check, POLL_MS)
+    const onVisible = () => { if (document.visibilityState === 'visible') check() }
+    document.addEventListener('visibilitychange', onVisible)
+    return () => {
+      cancelled = true
+      clearInterval(id)
+      document.removeEventListener('visibilitychange', onVisible)
+      setCheatRevealChecker(() => {})
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [!!user])
+  }, [user?.id])
   return null
 }
