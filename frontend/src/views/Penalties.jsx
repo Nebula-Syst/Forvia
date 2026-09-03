@@ -3,6 +3,10 @@ import { useNavigate } from 'react-router-dom'
 import { t } from '../lib/i18n.js'
 import { anticheatStatus, anticheatAppeal } from '../lib/api.js'
 import { FINDING_LABEL, STATUS_LABEL, STATUS_COLOR } from '../lib/anticheat.js'
+import { fmtDur, fmtVol } from '../lib/format.js'
+import { setsDone, workoutVolume } from '../lib/history.js'
+import { exOr } from '../lib/exercises.js'
+import { nameFor } from '../lib/i18n.js'
 import Icon from '../components/Icon.jsx'
 import { Button, TextArea } from '../components/ui.jsx'
 
@@ -52,9 +56,30 @@ export default function Penalties() {
               <Icon name={open ? 'chevronUp' : 'chevronDown'} className="chev" />
             </div>
             {open && <div className="card" style={{ marginTop: -6, marginBottom: 10 }}>
-              <div className="ss" style={{ marginBottom: p.status === 'active' ? 12 : 0 }}>
+              <div className="ss" style={{ marginBottom: 10 }}>
                 {p.findings.map(f => FINDING_LABEL[f.id]?.() || f.id).join(' · ')}
               </div>
+              {p.status !== 'overturned' && (
+                <div className="small dim" style={{ marginBottom: 10 }}>
+                  {t('Hidden from your history and stats while this stands — this is what it contained.')}
+                </div>
+              )}
+              {p.workout && (
+                <div className="card" style={{ marginBottom: 12 }}>
+                  <div className="small" style={{ fontWeight: 600 }}>{p.workout.name || t('Freestyle')}</div>
+                  <div className="dim" style={{ fontSize: '.72rem', marginBottom: 8 }}>
+                    {fmtDur((p.workout.end || p.workout.start) - p.workout.start)} · {t('{0} sets', setsDone(p.workout))} · {fmtVol(p.workout.vol ?? workoutVolume(p.workout), p.unit || 'kg')}
+                  </div>
+                  {(p.workout.entries || []).map((e, i) => (
+                    <div key={i} style={{ marginBottom: 6 }}>
+                      <div className="small capitalize" style={{ fontWeight: 500 }}>{nameFor(exOr(e.id)) || e.id}</div>
+                      <div className="dim" style={{ fontSize: '.74rem' }}>
+                        {(e.sets || []).filter(s => s.done).map(s => `${s.w ?? 0}×${s.r ?? 0}`).join(' · ') || '—'}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
               {p.status === 'active' && <>
                 <TextArea rows={3} placeholder={t('Explain why this should be reviewed…')}
                   value={drafts[p.id] || ''} onChange={e => setDrafts(d => ({ ...d, [p.id]: e.target.value }))} />

@@ -16,29 +16,23 @@ import { Button } from '../../components/ui.jsx'
 // yet permanently unreviewable from here. Each finding already carries the exact ratio that
 // tripped it (e.g. "weight 1.2x the allowed max"), sent as plain English straight from the
 // server's own rule table — not re-translated — so a reviewer reads the same wording the
-// detection code itself uses. The flagged workout's own sets are fetched and shown underneath
-// for the same reason: "far beyond any recorded human lift" only means something once you can
-// see the actual number that was logged, which is the whole point of this page existing.
-
+// detection code itself uses. The flagged workout itself — sets, weights, reps — comes straight
+// off the penalty row (`p.workout`): scanForCheating pulls a flagged workout out of the account's
+// normal history the instant it's flagged, and that row is its ONLY surviving copy until this
+// page rules on it, so there's nothing else here to fetch or cross-reference.
 const STATUS_LABEL = { active: 'Flagged', appealed: 'Appealed', upheld: 'Upheld', overturned: 'Overturned' }
 const STATUS_COLOR = { active: 'var(--red)', appealed: 'var(--orange)', upheld: 'var(--red)', overturned: 'var(--acc)' }
 const STATUS_RANK = { appealed: 0, active: 1, upheld: 2, overturned: 3 }
 
 function PenaltyDetail({ p, onChanged, close }) {
   const toast = useUI(s => s.toast)
-  const [d, setD] = useState(null)
   const [busy, setBusy] = useState(false)
-  useEffect(() => {
-    api('/api/admin/user?id=' + encodeURIComponent(p.userId)).then(setD).catch(() => setD(false))
-  }, [p.id])
-  const w = d && d.workouts ? d.workouts.find(x => x.id === p.workoutId) : null
+  const w = p.workout || null
 
-  // Nothing here actually needs to "give back" levels or XP as a separate step — xpFor() never
-  // excluded a flagged workout's own XP from the total to begin with (see api/server.js), and
-  // rankFor()'s levelsDocked sum already skips any penalty whose status is 'overturned'. So the
-  // instant the status flips, the account's real level/XP is exactly what it would've been had
-  // the workout never been flagged. The only reason to re-fetch here is to show the admin that
-  // restoration actually landed, in the same toast, rather than asking them to take it on faith.
+  // Overturning already does the real work server-side (api/server.js's review route puts the
+  // workout back in state.workouts, counted in xpFor() again on the very next read) — the fetch
+  // here is only so the admin sees that restoration actually landed, in the toast itself, rather
+  // than taking it on faith.
   const review = decision => {
     setBusy(true)
     adminAnticheatReview(p.id, decision)
@@ -79,20 +73,19 @@ function PenaltyDetail({ p, onChanged, close }) {
     </>}
 
     <div className="small muted" style={{ margin: '0 0 6px' }}>The flagged workout</div>
-    {d === null ? <div className="muted small" style={{ marginBottom: 14 }}>Loading…</div>
-      : !w ? <div className="empty small" style={{ marginBottom: 14 }}>Workout not found — it may have been deleted since.</div>
-        : <div className="card" style={{ marginBottom: 14 }}>
-          <div className="small" style={{ fontWeight: 600 }}>{w.name || 'Freestyle'}</div>
-          <div className="dim" style={{ fontSize: '.72rem', marginBottom: 8 }}>
-            {fmtDate(w.d, true)} · {fmtDur((w.end || w.start) - w.start)} · {setsDone(w)} sets · {fmtVol(w.vol ?? workoutVolume(w), d.unit)}
+    {!w ? <div className="empty small" style={{ marginBottom: 14 }}>No workout snapshot on this row (a penalty from before this existed).</div>
+      : <div className="card" style={{ marginBottom: 14 }}>
+        <div className="small" style={{ fontWeight: 600 }}>{w.name || 'Freestyle'}</div>
+        <div className="dim" style={{ fontSize: '.72rem', marginBottom: 8 }}>
+          {fmtDate(w.d, true)} · {fmtDur((w.end || w.start) - w.start)} · {setsDone(w)} sets · {fmtVol(w.vol ?? workoutVolume(w), p.unit || 'kg')}
+        </div>
+        {(w.entries || []).map((e, i) => <div key={i} style={{ marginBottom: 6 }}>
+          <div className="small capitalize" style={{ fontWeight: 500 }}>{nameFor(exOr(e.id)) || e.id}</div>
+          <div className="dim" style={{ fontSize: '.74rem' }}>
+            {(e.sets || []).filter(s => s.done).map(s => `${s.w ?? 0}×${s.r ?? 0}`).join(' · ') || '—'}
           </div>
-          {(w.entries || []).map((e, i) => <div key={i} style={{ marginBottom: 6 }}>
-            <div className="small capitalize" style={{ fontWeight: 500 }}>{nameFor(exOr(e.id)) || e.id}</div>
-            <div className="dim" style={{ fontSize: '.74rem' }}>
-              {(e.sets || []).filter(s => s.done).map(s => `${s.w ?? 0}×${s.r ?? 0}`).join(' · ') || '—'}
-            </div>
-          </div>)}
-        </div>}
+        </div>)}
+      </div>}
 
     {(p.status === 'active' || p.status === 'appealed') ? <>
       <Button variant="primary" disabled={busy} onClick={() => review('overturn')}>Overturn — remove penalty</Button>

@@ -679,25 +679,43 @@ function cheatFindingsFor(w, unit, allWorkouts) {
 }
 // Scans everything currently stored (cheap at self-hosted scale, and it means a workout
 // logged before this existed still gets caught on the next save) but only ever penalizes a
-// given workoutId once. Called from PUT /api/data, after the write it's scoring.
+// given workoutId once. Called from PUT /api/data, BEFORE the write it's scoring — a flagged
+// workout is pulled out of `state.workouts` entirely (its only copy becomes the one embedded
+// in the penalty row below) rather than left sitting in plain view with just a level docked
+// against it: xpFor/feedItemsFor/history/social all read state.workouts, so removing it from
+// there is what actually blocks and hides it everywhere at once, not a filter that has to be
+// remembered in every place that reads workouts. Overturning (POST /api/admin/anticheat/review)
+// puts it back; upholding leaves it out for good. A penalty row is therefore also the ONLY
+// durable copy of a workout while it's pending or upheld — real data, never discarded, same
+// spirit as the workout-merge fix above (issue: a flagged, later-overturned workout vanished
+// from production because nothing kept a copy of it once it left state.workouts).
 function scanForCheating(req, user, state) {
   const workouts = state.workouts || [];
-  if (!workouts.length) return;
-  const already = new Set(db.cheatPenalties.filter(c => c.userId === user.id).map(c => c.workoutId));
   const unit = state.unit || 'kg';
   const today = isoOf(new Date());
+  const penaltyByWorkoutId = new Map(db.cheatPenalties.filter(c => c.userId === user.id).map(c => [c.workoutId, c]));
   let flaggedMsgs = [];
+  const keep = [];
   workouts.forEach(w => {
-    if (!w?.id || already.has(w.id)) return;
+    if (!w?.id) { keep.push(w); return; }
+    const existing = penaltyByWorkoutId.get(w.id);
+    if (existing) {
+      // Already ruled on. Overturned = fully cleared, belongs back in normal history (a client
+      // that still has its own old copy locally and pushes it again just lands here). Anything
+      // still pending or upheld must stay excluded even if a stale device pushes its own copy —
+      // that push is exactly what "not reviewed yet" looks like from here, not new information.
+      if (existing.status === 'overturned') keep.push(w);
+      return;
+    }
     const findings = cheatFindingsFor(w, unit, workouts);
-    if (!findings.length) return;
+    if (!findings.length) { keep.push(w); return; }
     const levels = Math.min(CHEAT_MAX_LEVELS, findings[0].levels);
     // Snapshotted once, right before this penalty lands — not recomputed later — so the
     // reveal's countdown always starts from exactly where the account really stood the moment
     // it got caught, not wherever XP happens to sit whenever the animation finally plays.
     const before = rankFor(user.id);
     db.cheatPenalties.push({
-      id: crypto.randomBytes(8).toString('base64url'), userId: user.id, workoutId: w.id,
+      id: crypto.randomBytes(8).toString('base64url'), userId: user.id, workoutId: w.id, workout: w, unit,
       findings, levels, date: today, created: new Date().toISOString(),
       status: 'active',   // 'active' | 'appealed' | 'upheld' | 'overturned'
       appeal: null,        // { message, created } once the account holder disputes it
@@ -705,7 +723,9 @@ function scanForCheating(req, user, state) {
       beforeLevel: before.level, beforeXpInLevel: before.xpInLevel, beforeXpForLevel: before.xpForLevel,
     });
     flaggedMsgs.push(w.id + ':' + findings.map(f => f.id).join(',') + '=' + levels + 'lvl');
+    // Not pushed to `keep` — excluded from this save, its only surviving copy is the row above.
   });
+  state.workouts = keep;
   if (flaggedMsgs.length) {
     saveDb();
     audit(req, 'anticheat.flag', { user, msg: flaggedMsgs.join(' | ').slice(0, 120) });
@@ -1300,8 +1320,8 @@ div{max-width:360px}h1{font-size:20px;margin:0 0 8px}p{color:#9db8a8;line-height
     if (!body.state || typeof body.state !== 'object') return json(res, 400, { error: 'state required' });
     delete body.state.active;              // in-progress workouts stay device-local
     mergeWorkoutsInto(user.id, body.state);
-    writeState(user.id, body.state);
     scanForCheating(req, user, body.state);
+    writeState(user.id, body.state);
     scanForTasks(req, user, body.state);
     // workouts/deletedWorkoutIds go back in the response too — the merge above can add a
     // workout this exact push didn't know about (logged from another device meanwhile), and
@@ -1320,6 +1340,10 @@ div{max-width:360px}h1{font-size:20px;margin:0 0 8px}p{color:#9db8a8;line-height
       .map(c => ({
         id: c.id, workoutId: c.workoutId, findings: c.findings, levels: c.levels, status: c.status, appeal: c.appeal, date: c.date, seen: c.seen !== false,
         beforeLevel: c.beforeLevel, beforeXpInLevel: c.beforeXpInLevel, beforeXpForLevel: c.beforeXpForLevel,
+        // The account holder's own copy of what got hidden — scanForCheating pulled it out of
+        // their normal history the moment it was flagged, so without this they'd have no way to
+        // check their own numbers before appealing.
+        workout: c.workout || null, unit: c.unit || null,
       }));
     json(res, 200, { penalties: mine });
   },
@@ -1687,9 +1711,12 @@ div{max-width:360px}h1{font-size:20px;margin:0 0 8px}p{color:#9db8a8;line-height
     const rows = [...db.cheatPenalties].reverse().map(c => ({ ...c, userName: (db.users.find(u => u.id === c.userId) || {}).name || null }));
     json(res, 200, { penalties: rows });
   },
-  // The actual ruling on a review request. Overturning drops it from xpFor() on the very next
-  // read (nothing else to recompute); upholding just records that a human looked and agreed —
-  // either way the account holder's appeal message stays on the record.
+  // The actual ruling on a review request. Upholding just records that a human looked and
+  // agreed — the workout (scanForCheating pulled it out of state.workouts when it was first
+  // flagged; see there) stays out for good, its only copy still the one on this row. Overturning
+  // puts it back where it came from: state.workouts, counted in xpFor() again on the very next
+  // read, visible in history/feed again — not just a status flip, since nothing else still holds
+  // a copy to restore. Either way the account holder's appeal message stays on the record.
   'POST /api/admin/anticheat/review': async (req, res) => {
     const admin = requireAdmin(req, res); if (!admin) return;
     const body = await readBody(req);
@@ -1699,6 +1726,18 @@ div{max-width:360px}h1{font-size:20px;margin:0 0 8px}p{color:#9db8a8;line-height
     c.status = body.decision === 'overturn' ? 'overturned' : 'upheld';
     c.reviewedBy = admin.id;
     c.reviewedAt = new Date().toISOString();
+    if (c.status === 'overturned' && c.workout) {
+      const S = readState(c.userId);
+      if (S && !(S.workouts || []).some(w => w.id === c.workout.id)) {
+        S.workouts = [...(S.workouts || []), c.workout];
+        writeState(c.userId, S);
+        const target = db.users.find(u => u.id === c.userId);
+        // Same-day-only by design (see scanForTasks) — catches the day's task credit if the
+        // review happens to land the same day the workout did; otherwise this is a no-op, same
+        // as logging a real workout late in the day already is.
+        if (target) scanForTasks(req, target, S);
+      }
+    }
     saveDb();
     audit(req, 'admin.anticheat.review', { user: admin, msg: c.workoutId + ':' + c.status });
     json(res, 200, { ok: true, status: c.status });

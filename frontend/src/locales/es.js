@@ -916,4 +916,8 @@ export default {
   "Sent anonymously — sign in first so we can follow up with you.": "Enviado como anónimo — inicia sesión antes para poder contactarte.",
   "Thanks — logged it.": "Gracias — lo hemos registrado.",
   "Send": "Enviar",
+
+// --- flagged workout hidden while under review (added 2026-09-03) ---
+  "Hidden from your history and stats while this stands — this is what it contained.":
+    "Oculto de tu historial y estadísticas mientras siga así — esto es lo que contenía.",
 }
