@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useStore } from '../../store/useStore.js'
 import { useUI } from '../../store/useUI.js'
-import { api, adminUserCreate, adminSetEmployeeTypes, adminUserLevel } from '../../lib/api.js'
+import { api, adminUserCreate, adminSetEmployeeTypes, adminUserLevel, adminUserPrestige } from '../../lib/api.js'
 import { fmtDate, fmtVol, fmtDur } from '../../lib/format.js'
 import { workoutVolume, setsDone } from '../../lib/history.js'
 import { confirmSheet } from '../../sheets.jsx'
@@ -48,6 +48,13 @@ function UserDetail({ id, onChanged, close }) {
     setBusy(true)
     adminUserLevel(u.id, delta).then(() => { load(); onChanged() }).catch(e => toast(e.message)).finally(() => setBusy(false))
   }
+  // Same bypass relationship to POST /api/prestige that the level nudge above has to earning
+  // XP normally — the real "Upgrade mastery" button only ever fires at level 100, so this is
+  // the direct way to move the count for testing or a correction, same as level already is.
+  const nudgePrestige = delta => {
+    setBusy(true)
+    adminUserPrestige(u.id, delta).then(() => { load(); onChanged() }).catch(e => toast(e.message)).finally(() => setBusy(false))
+  }
   const rank = u.rank || {}
   const tier = tierFor(rank.level || 1)
   return <>
@@ -81,6 +88,13 @@ function UserDetail({ id, onChanged, close }) {
       <div className="row" style={{ gap: 4 }}>
         <button className="iconbtn" style={{ width: 28, height: 28, borderRadius: 7 }} disabled={busy || rank.level <= 1} onClick={() => nudgeLevel(-1)} aria-label="level down"><Icon name="minus" /></button>
         <button className="iconbtn" style={{ width: 28, height: 28, borderRadius: 7 }} disabled={busy || rank.level >= 100} onClick={() => nudgeLevel(1)} aria-label="level up"><Icon name="plus" /></button>
+      </div>
+    </div>
+    <div className="row between" style={{ marginBottom: 12, padding: '8px 10px', background: 'var(--surface-2)', borderRadius: 12 }}>
+      <div className="small" style={{ fontWeight: 600 }}>Prestige {rank.prestige || 0}</div>
+      <div className="row" style={{ gap: 4 }}>
+        <button className="iconbtn" style={{ width: 28, height: 28, borderRadius: 7 }} disabled={busy || (rank.prestige || 0) <= 0} onClick={() => nudgePrestige(-1)} aria-label="prestige down"><Icon name="minus" /></button>
+        <button className="iconbtn" style={{ width: 28, height: 28, borderRadius: 7 }} disabled={busy} onClick={() => nudgePrestige(1)} aria-label="prestige up"><Icon name="plus" /></button>
       </div>
     </div>
 

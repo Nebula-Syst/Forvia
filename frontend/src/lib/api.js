@@ -63,6 +63,7 @@ export const adminTaskRemove = id => api('/api/admin/tasks/remove', { method: 'P
 export const adminUserCreate = (name, email, password) => api('/api/admin/user/create', { method: 'POST', body: JSON.stringify({ name, email, password }) }).then(r => r.user)
 export const adminSetEmployeeTypes = (id, employeeTypes) => api('/api/admin/user/employee-types', { method: 'POST', body: JSON.stringify({ id, employeeTypes }) })
 export const adminUserLevel = (id, delta) => api('/api/admin/user/level', { method: 'POST', body: JSON.stringify({ id, delta }) }).then(r => r.rank)
+export const adminUserPrestige = (id, delta) => api('/api/admin/user/prestige', { method: 'POST', body: JSON.stringify({ id, delta }) }).then(r => r.rank)
 
 /* ---------- bug reports ---------- */
 export const reportBug = (message, page) => api('/api/bugs', { method: 'POST', body: JSON.stringify({ message, page }) })

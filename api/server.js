@@ -1559,6 +1559,33 @@ div{max-width:360px}h1{font-size:20px;margin:0 0 8px}p{color:#9db8a8;line-height
     json(res, 200, { rank: rankFor(u.id) });
   },
 
+  // Same relationship to POST /api/prestige that the level nudge above has to earning XP
+  // normally — a direct admin correction, not a reimplementation (issue: an admin trying the
+  // real "Upgrade mastery" button got the expected "not ready to prestige" 400, since it only
+  // ever fires at level 100; this is the deliberate bypass for testing/correcting the count
+  // directly). Going up mirrors the real confirm exactly — spend everything earned so far into
+  // the new cycle, landing at level 1 of it, same as clicking "Upgrade mastery" at level 100
+  // does. Going down just decrements the count; there's no stored history of the previous
+  // cycle's baseline to restore exactly, so whatever XP has been earned since simply carries
+  // into the now-lower cycle as-is — fine for a correction tool, not meant to invert every
+  // possible prior state.
+  'POST /api/admin/user/prestige': async (req, res) => {
+    const admin = requireAdmin(req, res); if (!admin) return;
+    const body = await readBody(req);
+    const u = db.users.find(x => x.id === body.id);
+    if (!u) return json(res, 404, { error: 'no such user' });
+    const delta = body.delta === -1 ? -1 : 1;
+    const current = u.prestigeConfirmed || 0;
+    const target = Math.max(0, current + delta);
+    if (target === current) return json(res, 400, { error: 'already at the limit' });
+    if (delta === 1) u.prestigeBaselineXp = rankFor(u.id).totalXp;
+    u.prestigeConfirmed = target;
+    saveDb();
+    audit(req, 'admin.user.prestige', { user: admin, target: u, msg: `${current} -> ${target}` });
+    wsSend(u.id, { type: 'rank:changed' });
+    json(res, 200, { rank: rankFor(u.id) });
+  },
+
   'POST /api/admin/user/disable': async (req, res) => {
     const admin = requireAdmin(req, res); if (!admin) return;
     const body = await readBody(req);

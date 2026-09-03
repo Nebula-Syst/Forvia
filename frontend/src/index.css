@@ -516,10 +516,10 @@ h4.sec{
   font-size:19px;font-weight:800;letter-spacing:-.024em;cursor:pointer;
 }
 #sidenav .brand .mark{
-  width:30px;height:30px;border-radius:9px;flex:none;background:var(--acc);color:var(--on-acc);
-  display:flex;align-items:center;justify-content:center;font-size:17px;
+  width:30px;height:30px;border-radius:9px;flex:none;overflow:hidden;
+  display:flex;align-items:center;justify-content:center;
 }
-#sidenav .brand .mark .icn{--icon-stroke:2}
+#sidenav .brand .mark img{width:100%;height:100%;object-fit:cover;display:block}
 #sidenav .sidestart{
   display:flex;align-items:center;gap:9px;padding:11px 12px;margin-bottom:14px;
   background:var(--acc);color:var(--on-acc);border-radius:var(--r);font-size:15px;font-weight:600;

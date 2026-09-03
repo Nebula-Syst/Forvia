@@ -55,7 +55,7 @@ export default function TabBar({ onStart }) {
         same routes and the same centerTap(), laid out as a fixed left rail. */}
     <nav id="sidenav">
       <div className="brand" onClick={() => nav('/home')}>
-        <span className="mark"><Icon name="dumbbell" /></span>
+        <span className="mark"><img src="/icon-512.png" alt="" /></span>
         <span>Forvia</span>
       </div>
       <button className={'sidestart' + centerCls} onClick={centerTap}>
