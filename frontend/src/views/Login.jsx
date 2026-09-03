@@ -36,11 +36,6 @@ export default function Login() {
   const head = <>
     <div style={{ fontSize: 54, display: 'flex', justifyContent: 'center', color: 'var(--acc)' }}><Icon name="dumbbell" /></div>
     <h1 style={{ fontSize: 34, fontWeight: 700, letterSpacing: '-.028em', margin: '10px 0 4px' }}>Forvia</h1>
-    <div className="row" style={{ justifyContent: 'center', marginBottom: 4 }}>
-      <span className="tag acc" style={{ fontSize: 11, fontWeight: 700, letterSpacing: '.03em', textTransform: 'uppercase' }}>
-        {t('Early access')}
-      </span>
-    </div>
   </>
   const wrap = { display: 'flex', flexDirection: 'column', justifyContent: 'center', minHeight: '78vh', textAlign: 'center' }
 
