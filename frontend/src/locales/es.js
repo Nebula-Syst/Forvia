@@ -920,4 +920,7 @@ export default {
 // --- flagged workout hidden while under review (added 2026-09-03) ---
   "Hidden from your history and stats while this stands — this is what it contained.":
     "Oculto de tu historial y estadísticas mientras siga así — esto es lo que contenía.",
+
+// --- edit/delete routine from the Start tab (added 2026-09-03) ---
+  "Edit routine": "Editar rutina",
 }

@@ -10,7 +10,7 @@ import { t, nameFor } from '../lib/i18n.js'
 import { api } from '../lib/api.js'
 import { setProgressHighWater, supersetFlowStep } from '../lib/supersetFlow.js'
 import { Thumb } from '../components/Media.jsx'
-import { startFlow, exercisePicker, exerciseDetailSheet, topWeightSheet, finishWorkout, workoutCompleteSheet, confirmSheet } from '../sheets.jsx'
+import { startFlow, exercisePicker, exerciseDetailSheet, topWeightSheet, finishWorkout, workoutCompleteSheet, confirmSheet, deleteRoutine } from '../sheets.jsx'
 import Icon from '../components/Icon.jsx'
 import { Button, Check, NumberField, Segmented, Stepper } from '../components/ui.jsx'
 import { glyphOf, DEFAULT_GLYPH } from '../lib/glyphs.js'
@@ -20,6 +20,7 @@ import BodyMap from '../components/BodyMap.jsx'
 
 /* ---------- start chooser (no active workout) ---------- */
 function StartChooser() {
+  const nav = useNavigate()
   const S = useStore(s => s.S)
   const todayR = effectiveRoutine(S, todayISO())
   const todayIsFreestyle = effectiveRoutineId(S, todayISO()) === FREESTYLE_DAY
@@ -29,7 +30,13 @@ function StartChooser() {
   return <div className="narrow">
     <div className="hdr"><div><h1>{t('Workout')}</h1><div className="sub">{t(DAYN[new Date().getDay()])} — {todayR ? t('today is {0}', todayR.name) : todayIsFreestyle ? t('today is freestyle') : t('rest day, but no one’s stopping you')}</div></div></div>
     {todayR && <div className="card" style={{ borderColor: 'var(--acc)' }}>
-      <h2 className="accent">{t("Today's plan")}{todayOvr ? ' · ' + t('rescheduled') : ''}</h2>
+      <div className="row between" style={{ marginBottom: 4 }}>
+        <h2 className="accent" style={{ margin: 0 }}>{t("Today's plan")}{todayOvr ? ' · ' + t('rescheduled') : ''}</h2>
+        <div className="row" style={{ gap: 4 }}>
+          <button className="iconbtn" style={{ width: 28, height: 28, fontSize: 13 }} aria-label={t('Edit routine')} onClick={() => nav('/plan/r/' + todayR.id)}><Icon name="pencil" /></button>
+          <button className="iconbtn" style={{ width: 28, height: 28, fontSize: 13 }} aria-label={t('Delete routine')} onClick={() => deleteRoutine(todayR)}><Icon name="trash" /></button>
+        </div>
+      </div>
       <div className="row between" style={{ marginBottom: 12 }}>
         <div><div className="big">{todayR.name}</div><div className="muted small">{exCount(todayR.ex.length)}</div></div>
         <span className="lrow-i" style={{ width: 38, height: 38, borderRadius: 9, fontSize: 22 }}><Icon name={glyphOf(todayR.emoji)} /></span>
@@ -40,6 +47,8 @@ function StartChooser() {
       <div className="list">{others.map(r => <div key={r.id} className="item" onClick={() => startFlow(r.id)}>
         <span className="lrow-i"><Icon name={glyphOf(r.emoji)} /></span>
         <div className="grow"><div className="tt">{r.name}</div><div className="ss">{exCount(r.ex.length)}</div></div>
+        <button className="iconbtn" aria-label={t('Edit routine')} onClick={e => { e.stopPropagation(); nav('/plan/r/' + r.id) }}><Icon name="pencil" /></button>
+        <button className="iconbtn" aria-label={t('Delete routine')} onClick={e => { e.stopPropagation(); deleteRoutine(r) }}><Icon name="trash" /></button>
         <span className="tag acc">{t('Start')}</span></div>)}</div></>}
   </div>
 }

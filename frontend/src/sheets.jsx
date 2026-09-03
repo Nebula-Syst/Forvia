@@ -47,6 +47,21 @@ export function confirmSheet(opts) {
   ui().openSheet(close => <ConfirmDialog {...opts} close={close} />, { kind: 'center' })
 }
 
+// Shared delete-with-confirm for a routine — reached from both Plan's "My routines" list and
+// the Start tab's own routine picker (issue: deleting was only reachable from Plan, one hop
+// deeper than where most people actually look for their routines first), so there's exactly one
+// place that knows everything deleting a routine has to clean up alongside it.
+export function deleteRoutine(r) {
+  confirmSheet({
+    title: t('Delete routine?'), message: t('“{0}” and its exercises will be removed.', r.name), confirmText: t('Delete'), danger: true,
+    onConfirm: () => update(s => {
+      s.routines = s.routines.filter(x => x.id !== r.id)
+      Object.keys(s.week).forEach(k => { if (s.week[k] === r.id) delete s.week[k] })
+      Object.keys(s.dayPlan).forEach(k => { if (s.dayPlan[k] === r.id) delete s.dayPlan[k] })
+    })
+  })
+}
+
 /* ============================ password login ============================ */
 // Opened from two places — Login (no session yet) and Settings (already signed in) — so it lives
 // here rather than inline in either view, same reason bwSheet/calendarSheet do.
