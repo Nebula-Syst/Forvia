@@ -585,6 +585,51 @@ h4.sec{
 .item .tt{font-size:16px;font-weight:400;line-height:1.25;letter-spacing:-.009em}
 .item .ss{color:var(--label-2);font-size:13px;margin-top:2px}
 .item .grow{flex:1;min-width:0}
+/* Inline-editable name inside a .item row or .excard (AdminExercises/AdminMuscleGroups) — a
+   full .input nested inside an already-glass container doubled up borders/shadows and read as
+   boxes-in-boxes. This reads as plain .tt text until focused, then picks up a light glass fill
+   + accent ring so it's still obviously editable without competing with its container's chrome. */
+.name-field{
+  display:block;width:100%;background:transparent;border:none;box-shadow:none;outline:none;
+  padding:3px 5px;margin:-3px -5px;border-radius:7px;
+  font-size:16px;font-weight:400;line-height:1.25;letter-spacing:-.009em;color:var(--label);
+  transition:background var(--fast),box-shadow var(--fast);
+}
+.name-field::placeholder{color:var(--label-3)}
+.name-field:focus{background:var(--glass-bg-2);box-shadow:inset 0 0 0 1.5px var(--acc)}
+
+/* ------------------------------------------------------ exercise grid -- */
+/* Photo-forward alternative to .list for a catalogue with hundreds of entries and a real
+   image per item (AdminExercises.jsx) — a flat row list of that many items read as an
+   endless, texty scroll; a grid of the photos themselves scans like a gallery instead. */
+.exgrid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.excard{
+  background:var(--glass-bg);background-image:var(--glass-sheen);
+  backdrop-filter:saturate(var(--glass-sat)) blur(var(--glass-blur));
+  -webkit-backdrop-filter:saturate(var(--glass-sat)) blur(var(--glass-blur));
+  border:1px solid var(--glass-border);box-shadow:var(--shadow-sm);
+  border-radius:var(--r-card);overflow:hidden;
+}
+.excard-media{position:relative;aspect-ratio:1;background:var(--surface-2);cursor:pointer}
+.excard-media img{width:100%;height:100%;object-fit:cover;display:block}
+.excard-media .thumb-x{width:100%;height:100%;border-radius:0;font-size:26px}
+.excard-bp{
+  position:absolute;top:8px;left:8px;background:rgba(0,0,0,.4);backdrop-filter:blur(6px);
+  color:#fff;font-size:11px;font-weight:500;padding:3px 8px;border-radius:99px;
+  text-transform:capitalize;pointer-events:none;
+}
+.excard-name{padding:9px 4px 9px 10px;display:flex;align-items:center;gap:2px}
+.excard-name .name-field{font-size:14.5px}
+@media (min-width:1000px){.exgrid{grid-template-columns:repeat(3,1fr)}}
+@media (min-width:1600px){.exgrid{grid-template-columns:repeat(4,1fr)}}
+
+/* Group card (AdminMuscleGroups.jsx) — same .excard shell, but the media area is a 2×2
+   mosaic of up to 4 of the group's own exercise photos (its "cover") instead of one photo,
+   since a group isn't a single exercise. Empty group = the same dumbbell fallback tile. */
+.groupcard-mosaic{display:grid;grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr;width:100%;height:100%;gap:1px;background:var(--sep-op)}
+.groupcard-mosaic img{width:100%;height:100%;object-fit:cover;display:block}
+.groupcard-mosaic-empty{background:var(--surface-2)}
+
 .chev{color:var(--label);flex:none;font-size:15px;--icon-stroke:2.4}
 .tag{
   display:inline-flex;align-items:center;gap:3px;background:var(--surface-2);

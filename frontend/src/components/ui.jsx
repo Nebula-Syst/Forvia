@@ -280,6 +280,31 @@ export function SelectRow({ icon, iconTint, title, value, options, onChange, she
   )
 }
 
+// Same sheet as SelectRow, rendered as a bare input-styled button instead of a titled row —
+// no icon, no label, no chevron — for a compact filter bar where a couple of these sit side
+// by side (admin exercise/muscle-group pages).
+export function PillPicker({ value, options, onChange, sheetTitle }) {
+  const cur = options.find(o => o.value === value)
+  const open = () => {
+    const { openSheet } = require_ui()
+    openSheet(close => (
+      <>
+        <h3>{sheetTitle}</h3>
+        <div className="sect-b">
+          {options.map(o => (
+            <button key={o.value} className="lrow tap" onClick={() => { close(); onChange(o.value) }}>
+              <span className="lrow-m"><span className="lrow-t">{o.label}</span></span>
+              {o.value === value && <Icon name="check" className="lrow-k" />}
+            </button>
+          ))}
+        </div>
+        <div style={{ height: 8 }} />
+      </>
+    ))
+  }
+  return <button className="input" style={{ flex: 1, textAlign: 'left' }} onClick={open}>{cur ? cur.label : value}</button>
+}
+
 // Late import keeps this module free of a cycle at load time (useUI pulls in the
 // store, which pulls in helpers that import controls).
 let _ui = null

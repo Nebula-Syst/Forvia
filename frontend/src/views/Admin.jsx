@@ -1,9 +1,9 @@
 import { useNavigate } from 'react-router-dom'
 import { useStore } from '../store/useStore.js'
+import { t } from '../lib/i18n.js'
 import Icon from '../components/Icon.jsx'
 
 // Admin-only landing page — a map of sections, same idiom as Settings.jsx's tile grid.
-// Deliberately English-only — it isn't part of the translated end-user surface.
 function Tile({ icon, tint, title, subtitle, full, onClick }) {
   return (
     <button className="settings-tile" style={{ '--tint': tint, ...(full ? { gridColumn: '1 / -1' } : {}) }} onClick={onClick}>
@@ -20,22 +20,26 @@ export default function Admin() {
 
   return <div className="narrow">
     <div className="hdr">
-      <button className="iconbtn" onClick={() => nav('/settings')} aria-label="Back"><Icon name="chevronLeft" /></button>
-      <div style={{ flex: 1, marginLeft: 8 }}><h1 style={{ margin: 0 }}>Admin panel</h1></div>
+      <button className="iconbtn" onClick={() => nav('/settings')} aria-label={t('Back')}><Icon name="chevronLeft" /></button>
+      <div style={{ flex: 1, marginLeft: 8 }}><h1 style={{ margin: 0 }}>{t('Admin panel')}</h1></div>
     </div>
 
     <div className="settings-grid">
-      <Tile icon="personCircle" tint="var(--blue)" title="Users" subtitle="Accounts, roles, invites"
+      <Tile icon="personCircle" tint="var(--blue)" title={t('Users')} subtitle={t('Accounts, roles, invites')}
         onClick={() => nav('/admin/users')} />
-      <Tile icon="checkCircle" tint="var(--green)" title="Daily tasks" subtitle="XP criteria"
+      <Tile icon="checkCircle" tint="var(--green)" title={t('Daily tasks')} subtitle={t('XP criteria')}
         onClick={() => nav('/admin/tasks')} />
-      <Tile icon="sparkles" tint="var(--acc)" title="Alpha requests" subtitle="Access requests from the landing page" full
+      <Tile icon="dumbbell" tint="var(--acc)" title={t('Exercises')} subtitle={t('Rename catalogue entries')}
+        onClick={() => nav('/admin/exercises')} />
+      <Tile icon="target" tint="var(--blue)" title={t('Muscle groups')} subtitle={t('Custom groupings of exercises')}
+        onClick={() => nav('/admin/muscle-groups')} />
+      <Tile icon="sparkles" tint="var(--acc)" title={t('Alpha requests')} subtitle={t('Access requests from the landing page')} full
         onClick={() => nav('/admin/alpha')} />
-      <Tile icon="flag" tint="var(--red)" title="Bug reports" subtitle="What users flagged from Settings" full
+      <Tile icon="flag" tint="var(--red)" title={t('Bug reports')} subtitle={t('What users flagged from Settings')} full
         onClick={() => nav('/admin/bugs')} />
-      <Tile icon="warnTriangle" tint="var(--orange)" title="Fair play" subtitle="Anti-cheat penalties and appeals" full
+      <Tile icon="warnTriangle" tint="var(--orange)" title={t('Fair play')} subtitle={t('Anti-cheat penalties and appeals')} full
         onClick={() => nav('/admin/anticheat')} />
-      <Tile icon="clipboard" tint="var(--grey)" title="Activity log" subtitle="Sign-ins, admin actions" full
+      <Tile icon="clipboard" tint="var(--grey)" title={t('Activity log')} subtitle={t('Sign-ins, admin actions')} full
         onClick={() => nav('/admin/log')} />
     </div>
   </div>

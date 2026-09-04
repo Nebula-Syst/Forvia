@@ -2,10 +2,11 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useUI } from '../../store/useUI.js'
 import { adminTasks, adminTaskAdd, adminTaskRemove } from '../../lib/api.js'
+import { t } from '../../lib/i18n.js'
 import Icon from '../../components/Icon.jsx'
 import { Button } from '../../components/ui.jsx'
 
-// Admin-only. Deliberately English-only — it isn't part of the translated end-user surface.
+// Admin-only.
 //
 // The daily-task catalog that drives the XP/level system (RankBadge.jsx) — name/description/
 // points are admin-authored copy, but done/not-done is graded server-side (scanForTasks,
@@ -30,76 +31,76 @@ export default function AdminTasks() {
 
   const add = () => {
     const n = name.trim(), p = Math.round(+points)
-    if (!n || !p || p < 1) return toast('Name and a positive point value are required')
+    if (!n || !p || p < 1) return toast(t('Name and a positive point value are required'))
     const criteria = { type: critType }
     if (critType === 'sets' || critType === 'minutes') {
       const num = Math.round(+critN)
-      if (!num || num < 1) return toast('Enter a positive number for the criteria')
+      if (!num || num < 1) return toast(t('Enter a positive number for the criteria'))
       criteria.n = num
     } else if (critType === 'body_part') {
-      if (!critBp) return toast('Pick a body part')
+      if (!critBp) return toast(t('Pick a body part'))
       criteria.bp = critBp
     }
     adminTaskAdd(n, desc.trim(), p, criteria)
-      .then(() => { setName(''); setDesc(''); setPoints('10'); toast('Task added'); load() })
+      .then(() => { setName(''); setDesc(''); setPoints('10'); toast(t('Task added')); load() })
       .catch(e => toast(e.message))
   }
-  const remove = id => adminTaskRemove(id).then(() => { toast('Task removed'); load() }).catch(e => toast(e.message))
+  const remove = id => adminTaskRemove(id).then(() => { toast(t('Task removed')); load() }).catch(e => toast(e.message))
 
   const criteriaText = c => {
-    if (!c) return 'legacy — never auto-completes'
-    if (c.type === 'finish_workout') return 'Finish a workout'
-    if (c.type === 'sets') return c.n + '+ sets'
-    if (c.type === 'minutes') return c.n + '+ min'
-    if (c.type === 'body_part') return 'Train ' + c.bp
+    if (!c) return t('legacy — never auto-completes')
+    if (c.type === 'finish_workout') return t('Finish a workout')
+    if (c.type === 'sets') return c.n + t('+ sets')
+    if (c.type === 'minutes') return c.n + t('+ min')
+    if (c.type === 'body_part') return t('Train {0}', t(c.bp))
     return c.type
   }
 
   return <div className="narrow">
     <div className="hdr">
-      <button className="iconbtn" onClick={() => nav('/admin')} aria-label="Back"><Icon name="chevronLeft" /></button>
-      <div style={{ flex: 1, marginLeft: 8 }}><h1 style={{ margin: 0 }}>Daily tasks (XP)</h1>
-        <div className="sub">Auto-completed server-side when a finished workout meets the criteria. Only 3 of {(tasks || []).length} rotate in on any given day.</div></div>
+      <button className="iconbtn" onClick={() => nav('/admin')} aria-label={t('Back')}><Icon name="chevronLeft" /></button>
+      <div style={{ flex: 1, marginLeft: 8 }}><h1 style={{ margin: 0 }}>{t('Daily tasks (XP)')}</h1>
+        <div className="sub">{t('Auto-completed server-side when a finished workout meets the criteria. Only 3 of {0} rotate in on any given day.', (tasks || []).length)}</div></div>
     </div>
 
     <div className="dtable-wrap">
       <table className="dtable">
-        <thead><tr><th>Task</th><th>XP</th><th>Criteria</th><th>Description</th><th></th><th></th></tr></thead>
+        <thead><tr><th>{t('Task')}</th><th>{t('XP')}</th><th>{t('Criteria')}</th><th>{t('Description')}</th><th></th><th></th></tr></thead>
         <tbody>
-          {(tasks || []).map(t => <tr key={t.id}>
-            <td>{t.name}</td>
-            <td className="dim-cell">+{t.points}</td>
-            <td className="dim-cell">{criteriaText(t.criteria)}</td>
-            <td className="dim-cell" style={{ whiteSpace: 'normal' }}>{t.desc || '—'}</td>
-            <td>{todayIds.includes(t.id) && <span className="tag acc">Today</span>}</td>
-            <td><button className="iconbtn" style={{ width: 28, height: 28, borderRadius: 7, fontSize: 13, color: 'var(--red)' }} onClick={() => remove(t.id)} aria-label="remove"><Icon name="trash" /></button></td>
+          {(tasks || []).map(t2 => <tr key={t2.id}>
+            <td>{t2.name}</td>
+            <td className="dim-cell">+{t2.points}</td>
+            <td className="dim-cell">{criteriaText(t2.criteria)}</td>
+            <td className="dim-cell" style={{ whiteSpace: 'normal' }}>{t2.desc || '—'}</td>
+            <td>{todayIds.includes(t2.id) && <span className="tag acc">{t('Today')}</span>}</td>
+            <td><button className="iconbtn" style={{ width: 28, height: 28, borderRadius: 7, fontSize: 13, color: 'var(--red)' }} onClick={() => remove(t2.id)} aria-label={t('remove')}><Icon name="trash" /></button></td>
           </tr>)}
         </tbody>
       </table>
-      {tasks && !tasks.length && <div className="dtable-empty">No tasks yet — add one below.</div>}
+      {tasks && !tasks.length && <div className="dtable-empty">{t('No tasks yet — add one below.')}</div>}
     </div>
 
     <div style={{ height: 14 }} />
     <div className="card">
-      <h2 style={{ margin: '0 0 10px' }}>Add task</h2>
+      <h2 style={{ margin: '0 0 10px' }}>{t('Add task')}</h2>
       <div style={{ display: 'grid', gap: 6 }}>
-        <input className="input" placeholder="Task name" value={name} onChange={e => setName(e.target.value)} />
-        <input className="input" placeholder="Description (optional)" value={desc} onChange={e => setDesc(e.target.value)} />
-        <input className="input" type="number" min="1" max="500" placeholder="Points" value={points} onChange={e => setPoints(e.target.value)} style={{ width: 100 }} />
+        <input className="input" placeholder={t('Task name')} value={name} onChange={e => setName(e.target.value)} />
+        <input className="input" placeholder={t('Description (optional)')} value={desc} onChange={e => setDesc(e.target.value)} />
+        <input className="input" type="number" min="1" max="500" placeholder={t('Points')} value={points} onChange={e => setPoints(e.target.value)} style={{ width: 100 }} />
         <select className="input" value={critType} onChange={e => setCritType(e.target.value)}>
-          <option value="finish_workout">Finish a workout</option>
-          <option value="sets">Log N sets</option>
-          <option value="minutes">Train N minutes</option>
-          <option value="body_part">Train a body part</option>
+          <option value="finish_workout">{t('Finish a workout')}</option>
+          <option value="sets">{t('Log N sets')}</option>
+          <option value="minutes">{t('Train N minutes')}</option>
+          <option value="body_part">{t('Train a body part')}</option>
         </select>
         {(critType === 'sets' || critType === 'minutes') &&
-          <input className="input" type="number" min="1" placeholder={critType === 'sets' ? 'Sets' : 'Minutes'} value={critN} onChange={e => setCritN(e.target.value)} style={{ width: 100 }} />}
+          <input className="input" type="number" min="1" placeholder={critType === 'sets' ? t('Sets') : t('Minutes')} value={critN} onChange={e => setCritN(e.target.value)} style={{ width: 100 }} />}
         {critType === 'body_part' &&
           <select className="input" value={critBp} onChange={e => setCritBp(e.target.value)}>
-            <option value="">Pick a body part…</option>
-            {(bodyParts || []).map(bp => <option key={bp} value={bp}>{bp}</option>)}
+            <option value="">{t('Pick a body part…')}</option>
+            {(bodyParts || []).map(bp => <option key={bp} value={bp}>{t(bp)}</option>)}
           </select>}
-        <Button variant="primary" size="sm" icon="plus" onClick={add}>Add task</Button>
+        <Button variant="primary" size="sm" icon="plus" onClick={add}>{t('Add task')}</Button>
       </div>
     </div>
   </div>

@@ -1,7 +1,8 @@
 import { create } from 'zustand'
-import { api } from '../lib/api.js'
+import { api, exerciseOverrides } from '../lib/api.js'
 import { localTZ } from '../lib/format.js'
 import { registerCustom } from '../lib/exercises.js'
+import { setOverrides } from '../lib/i18n.js'
 import { DEMO, DEMO_SEEDED } from '../lib/demo.js'
 import { guestAllowed } from '../lib/guest.js'
 import { MOBILE, nativeLoad, nativeSave, syncReminder } from '../lib/mobile.js'
@@ -230,6 +231,9 @@ export const useStore = create((set, get) => {
       // an unreachable server must not be allowed to lock anyone out (#42).
       const cfg = await get().loadConfig()
       if (!guestAllowed(cfg)) get().setGuest(false)
+      // Admin-set exercise renames — public, so guests see them too. Best-effort: a failed
+      // fetch just means the catalogue's original names show, same as before this existed.
+      try { setOverrides(await exerciseOverrides()) } catch (e) { /* ignore */ }
       try {
         const me = await api('/api/me')
         get().setUser(me.user)

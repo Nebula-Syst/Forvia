@@ -65,6 +65,19 @@ export const adminSetEmployeeTypes = (id, employeeTypes) => api('/api/admin/user
 export const adminUserLevel = (id, delta) => api('/api/admin/user/level', { method: 'POST', body: JSON.stringify({ id, delta }) }).then(r => r.rank)
 export const adminUserPrestige = (id, delta) => api('/api/admin/user/prestige', { method: 'POST', body: JSON.stringify({ id, delta }) }).then(r => r.rank)
 
+/* ---------- exercise name overrides ---------- */
+export const exerciseOverrides = () => api('/api/exercises/overrides').then(r => r.overrides)
+export const adminExerciseOverrideSet = (id, lang, name) => api('/api/admin/exercises/override', { method: 'POST', body: JSON.stringify({ id, lang, name }) }).then(r => r.overrides)
+
+/* ---------- custom muscle groups ---------- */
+export const adminMuscleGroups = () => api('/api/admin/muscle-groups').then(r => r.groups)
+export const adminMuscleGroupCreate = (lang, name) => api('/api/admin/muscle-groups', { method: 'POST', body: JSON.stringify({ lang, name }) }).then(r => r.groups)
+export const adminMuscleGroupRename = (id, lang, name) => api('/api/admin/muscle-groups/rename', { method: 'POST', body: JSON.stringify({ id, lang, name }) }).then(r => r.groups)
+export const adminMuscleGroupRemove = id => api('/api/admin/muscle-groups/remove', { method: 'POST', body: JSON.stringify({ id }) }).then(r => r.groups)
+export const adminMuscleGroupAddExercise = (id, exerciseId) => api('/api/admin/muscle-groups/add-exercise', { method: 'POST', body: JSON.stringify({ id, exerciseId }) }).then(r => r.groups)
+export const adminMuscleGroupRemoveExercise = (id, exerciseId) => api('/api/admin/muscle-groups/remove-exercise', { method: 'POST', body: JSON.stringify({ id, exerciseId }) }).then(r => r.groups)
+export const adminMuscleGroupSetExercises = (id, exerciseIds) => api('/api/admin/muscle-groups/set-exercises', { method: 'POST', body: JSON.stringify({ id, exerciseIds }) }).then(r => r.groups)
+
 /* ---------- bug reports ---------- */
 export const reportBug = (message, page) => api('/api/bugs', { method: 'POST', body: JSON.stringify({ message, page }) })
 export const adminBugs = () => api('/api/admin/bugs').then(r => r.reports)

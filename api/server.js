@@ -61,7 +61,7 @@ const SECRET = fs.readFileSync(secretFile, 'utf8').trim();
 // why this stays one big in-memory object instead of being queried per-request. Same shape
 // db.json's arrays always had: users, subs (push), invites, follows, reactions, comments
 // (social), tasks/taskCompletions (daily-task catalog + awards), cheatPenalties (anti-cheat).
-let db = { users: [], subs: [], invites: [], follows: [], reactions: [], comments: [], tasks: [], taskCompletions: [], cheatPenalties: [], alphaRequests: [], bugReports: [] };
+let db = { users: [], subs: [], invites: [], follows: [], reactions: [], comments: [], tasks: [], taskCompletions: [], cheatPenalties: [], alphaRequests: [], bugReports: [], exerciseOverrides: [], muscleGroups: [] };
 // A user can hold several employee types at once (e.g. both founder and admin), not one
 // flat role — employeeTypes is an array, filtered to the known set on every read so a
 // stale/tampered value in db.json can never grant something that isn't in EMPLOYEE_TYPES.
@@ -1001,6 +1001,12 @@ const routes = {
   // Public config the login screen needs before anyone is signed in.
   'GET /api/config': async (req, res) => json(res, 200, { invite_only: INVITE_ONLY, allow_guest: ALLOW_GUEST, allow_register: ALLOW_REGISTER }),
 
+  // Public, no auth: admin-authored exercise renames (see the "exercise name overrides"
+  // section below for how they're written). The catalogue itself lives only in the frontend
+  // bundle — this is the only exercise-related state the backend holds — so every client,
+  // signed in or guest, needs this to overlay renames onto the names it already has.
+  'GET /api/exercises/overrides': async (req, res) => json(res, 200, { overrides: db.exerciseOverrides }),
+
   /* ---------- alpha waitlist (public, cross-origin from the landing page) ---------- */
   // Preflight for the one browser-originated cross-origin POST this API answers.
   'OPTIONS /api/alpha/apply': async (req, res) => { res.writeHead(204, corsHeaders(req)); res.end(); },
@@ -1870,6 +1876,117 @@ div{max-width:360px}h1{font-size:20px;margin:0 0 8px}p{color:#9db8a8;line-height
     saveDb();
     audit(req, 'admin.task.remove', { user: admin, msg: task?.name || body.id });
     json(res, 200, { ok: true });
+  },
+
+  /* ---------- exercise name overrides ---------- */
+  // The exercise catalogue (id, name, muscles, images…) lives only in the frontend bundle —
+  // this backend has no copy of it (see the "backend has no copy of the exercise catalog"
+  // comment above). All this route owns is a table of {id, lang, name} renames — one per
+  // (exercise, language) pair, since the catalogue itself carries an English name plus a
+  // separate translated-name pack per language (src/names/*.js), and admin renames overlay
+  // each independently. The id is never validated against anything, because this backend has
+  // no catalogue to validate it against — the frontend is the source of truth for which ids
+  // exist. Every client overlays these on top of the catalogue's own names at display time,
+  // ahead of the translated pack too (see i18n-core.js's nameFor). An empty name removes the
+  // override for that (id, lang) pair and reverts to the catalogue/translation's own name.
+  'POST /api/admin/exercises/override': async (req, res) => {
+    const admin = requireAdmin(req, res); if (!admin) return;
+    const body = await readBody(req);
+    const id = String(body.id || '').trim();
+    const lang = String(body.lang || 'en').trim().toLowerCase();
+    const name = String(body.name || '').trim().slice(0, 80);
+    if (!id) return json(res, 400, { error: 'id is required' });
+    if (!/^[a-z]{2}$/.test(lang)) return json(res, 400, { error: 'lang must be a 2-letter code' });
+    db.exerciseOverrides = db.exerciseOverrides.filter(o => !(o.id === id && o.lang === lang));
+    if (name) db.exerciseOverrides.push({ id, lang, name });
+    saveDb();
+    audit(req, 'admin.exercise.rename', { user: admin, msg: `${id} [${lang}]` + (name ? ' → ' + name : ' (reverted)') });
+    json(res, 200, { overrides: db.exerciseOverrides });
+  },
+
+  /* ---------- custom muscle groups ---------- */
+  // Admin-defined groupings of exercises, independent of the catalogue's own body-part/muscle
+  // tags — e.g. a "Push day" or "Weak points" group. A group's name is per language, same
+  // reasoning as exercise renames (see above); membership (exerciseIds) is not, since which
+  // exercises belong in a group doesn't change with the viewer's language. Exercise ids are
+  // never validated against a catalogue this backend doesn't have — same as everywhere else.
+  'GET /api/admin/muscle-groups': async (req, res) => {
+    if (!requireAdmin(req, res)) return;
+    json(res, 200, { groups: db.muscleGroups });
+  },
+  'POST /api/admin/muscle-groups': async (req, res) => {
+    const admin = requireAdmin(req, res); if (!admin) return;
+    const body = await readBody(req);
+    const lang = String(body.lang || 'en').trim().toLowerCase();
+    const name = String(body.name || '').trim().slice(0, 60);
+    if (!name) return json(res, 400, { error: 'name is required' });
+    if (!/^[a-z]{2}$/.test(lang)) return json(res, 400, { error: 'lang must be a 2-letter code' });
+    const group = { id: crypto.randomBytes(9).toString('base64url'), name: { [lang]: name }, exerciseIds: [], created: new Date().toISOString() };
+    db.muscleGroups.push(group);
+    saveDb();
+    audit(req, 'admin.muscleGroup.create', { user: admin, msg: `${group.id} [${lang}] ${name}` });
+    json(res, 200, { groups: db.muscleGroups });
+  },
+  'POST /api/admin/muscle-groups/rename': async (req, res) => {
+    const admin = requireAdmin(req, res); if (!admin) return;
+    const body = await readBody(req);
+    const id = String(body.id || '').trim();
+    const lang = String(body.lang || 'en').trim().toLowerCase();
+    const name = String(body.name || '').trim().slice(0, 60);
+    if (!/^[a-z]{2}$/.test(lang)) return json(res, 400, { error: 'lang must be a 2-letter code' });
+    const group = db.muscleGroups.find(g => g.id === id);
+    if (!group) return json(res, 404, { error: 'group not found' });
+    if (name) group.name = { ...group.name, [lang]: name };
+    else { group.name = { ...group.name }; delete group.name[lang]; }
+    saveDb();
+    audit(req, 'admin.muscleGroup.rename', { user: admin, msg: `${id} [${lang}] → ${name || '(cleared)'}` });
+    json(res, 200, { groups: db.muscleGroups });
+  },
+  'POST /api/admin/muscle-groups/remove': async (req, res) => {
+    const admin = requireAdmin(req, res); if (!admin) return;
+    const body = await readBody(req);
+    const group = db.muscleGroups.find(g => g.id === body.id);
+    db.muscleGroups = db.muscleGroups.filter(g => g.id !== body.id);
+    saveDb();
+    audit(req, 'admin.muscleGroup.remove', { user: admin, msg: group ? (Object.values(group.name)[0] || group.id) : body.id });
+    json(res, 200, { groups: db.muscleGroups });
+  },
+  'POST /api/admin/muscle-groups/add-exercise': async (req, res) => {
+    const admin = requireAdmin(req, res); if (!admin) return;
+    const body = await readBody(req);
+    const group = db.muscleGroups.find(g => g.id === body.id);
+    if (!group) return json(res, 404, { error: 'group not found' });
+    const exId = String(body.exerciseId || '').trim();
+    if (!exId) return json(res, 400, { error: 'exerciseId is required' });
+    if (!group.exerciseIds.includes(exId)) group.exerciseIds.push(exId);
+    saveDb();
+    audit(req, 'admin.muscleGroup.addExercise', { user: admin, msg: `${exId} → ${group.id}` });
+    json(res, 200, { groups: db.muscleGroups });
+  },
+  'POST /api/admin/muscle-groups/remove-exercise': async (req, res) => {
+    const admin = requireAdmin(req, res); if (!admin) return;
+    const body = await readBody(req);
+    const group = db.muscleGroups.find(g => g.id === body.id);
+    if (!group) return json(res, 404, { error: 'group not found' });
+    const exId = String(body.exerciseId || '').trim();
+    group.exerciseIds = group.exerciseIds.filter(x => x !== exId);
+    saveDb();
+    audit(req, 'admin.muscleGroup.removeExercise', { user: admin, msg: `${exId} ✕ ${group.id}` });
+    json(res, 200, { groups: db.muscleGroups });
+  },
+  // Bulk replace — same idea as add/remove-exercise but for a whole set at once, so seeding a
+  // group from a body part (AdminMuscleGroups.jsx "Seed from body parts") is one request per
+  // group instead of one per exercise.
+  'POST /api/admin/muscle-groups/set-exercises': async (req, res) => {
+    const admin = requireAdmin(req, res); if (!admin) return;
+    const body = await readBody(req);
+    const group = db.muscleGroups.find(g => g.id === body.id);
+    if (!group) return json(res, 404, { error: 'group not found' });
+    const ids = Array.isArray(body.exerciseIds) ? body.exerciseIds : [];
+    group.exerciseIds = [...new Set(ids.map(String))];
+    saveDb();
+    audit(req, 'admin.muscleGroup.setExercises', { user: admin, msg: `${group.id}: ${group.exerciseIds.length} exercises` });
+    json(res, 200, { groups: db.muscleGroups });
   },
 
   // Today's catalog for the signed-in user, with per-task completion state. Completions

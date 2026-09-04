@@ -6,7 +6,7 @@
 import { useSyncExternalStore } from 'react'
 import {
   LANGS, INSTR_LANGS, NAME_LANGS, DATE_LOCALES,
-  getLang, dateLocale, t, instrFor, nameFor, getVersion, _setLangState
+  getLang, dateLocale, t, instrFor, nameFor, getVersion, _setLangState, _setOverrides
 } from './i18n-core.js'
 
 export { LANGS, INSTR_LANGS, NAME_LANGS, DATE_LOCALES, getLang, dateLocale, t, instrFor, nameFor }
@@ -32,6 +32,14 @@ export async function setLang(l) {
     names = l === 'en' || !NAME_LANGS.includes(l) ? null : (await namePacks['../names/' + l + '.js']()).default
   } catch (e) { dict = {}; instr = null; names = null }
   _setLangState(l, dict, instr, names)
+  notify()
+}
+
+// Fetched once at boot (useStore.js boot()) from GET /api/exercises/overrides and applied here
+// so every already-mounted screen re-renders with the renamed exercises immediately, the same
+// way switching language does.
+export function setOverrides(list) {
+  _setOverrides(list)
   notify()
 }
 

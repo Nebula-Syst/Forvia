@@ -25,6 +25,7 @@ let lang = 'en'                 // set only by _setLangState, called from i18n.j
 let dict = {}                   // current locale pack (empty = English fallback)
 let instr = null                // { exId: [steps] } for the current language, null = English
 let names = null                // { exId: 'name' } for the current language, null = English
+let overrides = null            // { lang: { exId: 'name' } } admin-set renames (AdminExercises.jsx), one set per language
 let version = 0                 // bumped on every setLang; drives the React subscription selector
 
 export const getLang = () => lang
@@ -44,7 +45,10 @@ export const instrFor = ex => (instr && instr[ex.id]) || ex.st || []
 // Name for an exercise in the current language (English catalogue name as fallback) — the
 // dataset's own `n` never gets mutated, so export/print/import and any code that still reads
 // `ex.n` directly keeps seeing the pristine English catalogue untouched.
-export const nameFor = ex => (names && names[ex.id]) || ex.n
+// An admin override for the current language (if set) wins over everything, including that
+// language's translated name pack — it's a deliberate human choice, not something a locale's
+// own translation should shadow.
+export const nameFor = ex => (overrides?.[lang]?.[ex.id]) || (names && names[ex.id]) || ex.n
 
 // Called by i18n.js's setLang once the locale pack has been loaded — kept here rather than
 // exported as setLang because loading packs requires import.meta.glob, which is Vite-only.
@@ -54,6 +58,21 @@ export function _setLangState(newLang, newDict, newInstr, newNames) {
   dict = lang === 'en' ? {} : (newDict || {})
   instr = lang === 'en' || !INSTR_LANGS.includes(lang) ? null : (newInstr || null)
   names = lang === 'en' || !NAME_LANGS.includes(lang) ? null : (newNames || null)
+  version++
+  return version
+}
+
+// Called once at boot (useStore.js) with the admin-set {id, lang, name} list fetched from
+// GET /api/exercises/overrides. Kept here, not exercises.js, so nameFor can read it without
+// exercises.js and this module importing each other (exercises.js already imports `t` from here).
+export function _setOverrides(list) {
+  const map = {}
+  ;(list || []).forEach(o => {
+    if (!o?.id || !o?.lang || !o?.name) return
+    if (!map[o.lang]) map[o.lang] = {}
+    map[o.lang][o.id] = o.name
+  })
+  overrides = Object.keys(map).length ? map : null
   version++
   return version
 }

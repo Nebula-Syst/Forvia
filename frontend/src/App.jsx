@@ -43,6 +43,9 @@ import Penalties from './views/Penalties.jsx'
 import Admin from './views/Admin.jsx'
 import AdminUsers from './views/admin/AdminUsers.jsx'
 import AdminTasks from './views/admin/AdminTasks.jsx'
+import AdminExercises from './views/admin/AdminExercises.jsx'
+import AdminMuscleGroups from './views/admin/AdminMuscleGroups.jsx'
+import AdminMuscleGroupExercises from './views/admin/AdminMuscleGroupExercises.jsx'
 import AdminLog from './views/admin/AdminLog.jsx'
 import AdminAlpha from './views/admin/AdminAlpha.jsx'
 import AdminBugs from './views/admin/AdminBugs.jsx'
@@ -122,6 +125,9 @@ function Shell() {
               <Route path="/admin" element={user?.admin ? <Admin /> : <Navigate to="/home" replace />} />
               <Route path="/admin/users" element={user?.admin ? <AdminUsers /> : <Navigate to="/home" replace />} />
               <Route path="/admin/tasks" element={user?.admin ? <AdminTasks /> : <Navigate to="/home" replace />} />
+              <Route path="/admin/exercises" element={user?.admin ? <AdminExercises /> : <Navigate to="/home" replace />} />
+              <Route path="/admin/muscle-groups" element={user?.admin ? <AdminMuscleGroups /> : <Navigate to="/home" replace />} />
+              <Route path="/admin/muscle-groups/:id" element={user?.admin ? <AdminMuscleGroupExercises /> : <Navigate to="/home" replace />} />
               <Route path="/admin/log" element={user?.admin ? <AdminLog /> : <Navigate to="/home" replace />} />
               <Route path="/admin/alpha" element={user?.admin ? <AdminAlpha /> : <Navigate to="/home" replace />} />
               <Route path="/admin/bugs" element={user?.admin ? <AdminBugs /> : <Navigate to="/home" replace />} />
