@@ -7,7 +7,11 @@ import Icon from './Icon.jsx'
 import { TIERS } from '../lib/rank.js'
 
 const SLUG_BY_TIER = Object.fromEntries(TIERS.map(t => [t.name, t.slug]))
-const RANK_ASSET_VERSION = '2'
+// Bump on ANY change to the files under public/tiers or public/prestige — 30-day immutable
+// Cache-Control (nginx) means a re-crop is otherwise invisible to anyone who already loaded
+// the old file, hard refresh included. Bumped this round for the alpha-fringe cleanup on
+// all 10 tiers + all 10 prestige levels.
+const RANK_ASSET_VERSION = '3'
 
 export default function RankIcon({ tier, size, className = '' }) {
   const slug = SLUG_BY_TIER[tier] || TIERS[0].slug
@@ -27,7 +31,7 @@ export function PrestigeIcon({ level = 1, locked = false, size, className = '' }
   const s = size ? { width: size, height: size } : null
   return (
     <span className={'prestige-icon' + (locked ? ' locked' : '') + ' ' + className} style={s}>
-      <img src={`/prestige/${n}.svg`} alt="" />
+      <img src={`/prestige/${n}.svg?v=${RANK_ASSET_VERSION}`} alt="" />
       {locked && <Icon name="lock" className="prestige-icon-lock" />}
     </span>
   )

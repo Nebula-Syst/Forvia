@@ -1,11 +1,15 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { api, confirmPrestige } from '../lib/api.js'
+import { api, confirmPrestige, streakTiers as fetchStreakTiers } from '../lib/api.js'
+import { useStore } from '../store/useStore.js'
 import { useUI } from '../store/useUI.js'
 import { fmtNum } from '../lib/format.js'
+import { streakDays } from '../lib/history.js'
+import { tierForDays, STREAK_TIER_COLORS } from '../lib/streak.js'
 import { t } from '../lib/i18n.js'
 import Icon from '../components/Icon.jsx'
 import RankIcon, { PrestigeIcon } from '../components/RankIcon.jsx'
+import StreakIcon from '../components/StreakIcon.jsx'
 import TasksCard from '../components/TasksCard.jsx'
 import PenaltiesRow from '../components/PenaltiesRow.jsx'
 import { Segmented, Button } from '../components/ui.jsx'
@@ -132,13 +136,27 @@ function PrestigeUpgradeDialog({ oldPrestige, onDone, close }) {
 // re-run login/me, so a cached copy goes stale within the session.
 export default function Rank() {
   const nav = useNavigate()
+  const S = useStore(s => s.S)
   const [me, setMe] = useState(null)
   const [tab, setTab] = useState('tiers')
+  const [streakTierList, setStreakTierList] = useState(null)
 
   useEffect(() => { api('/api/me').then(r => setMe(r.user)).catch(() => setMe(false)) }, [])
+  useEffect(() => { fetchStreakTiers().then(setStreakTierList).catch(() => setStreakTierList([])) }, [])
 
   if (me === null) return null
   if (!me) { nav('/home'); return null }
+
+  const streak = Math.max(0, streakDays(S) + (me.streakBonus || 0))
+  const curStreakTier = streakTierList ? tierForDays(streak, streakTierList) : null
+  const streakTierIdx = streakTierList ? streakTierList.findIndex(x => curStreakTier && x.id === curStreakTier.id) : -1
+  const nextStreakTier = streakTierList ? streakTierList[streakTierIdx + 1] : null
+  const streakArtIdx = streakTierIdx >= 0 ? streakTierIdx + 1 : 1
+  const streakColor = STREAK_TIER_COLORS[streakArtIdx - 1]
+  const streakPct = !curStreakTier ? 0
+    : !nextStreakTier ? 1
+    : Math.max(0, Math.min(1, (streak - curStreakTier.days) / (nextStreakTier.days - curStreakTier.days)))
+  const streakRingOffset = RING_C * (1 - streakPct)
 
   const rank = me.rank
   const tier = tierFor(rank.level)
@@ -161,45 +179,82 @@ export default function Rank() {
       <div style={{ flex: 1, marginLeft: 8 }}><h1 style={{ margin: 0 }}>{t('Level')}</h1></div>
     </div>
 
-    <div className="rank-hero" style={{ '--tier': tier.color }}>
-      <div className="rank-ring-wrap">
-        <svg width="208" height="208" style={{ position: 'absolute', inset: 0, transform: 'rotate(-90deg)' }}>
-          <circle cx="104" cy="104" r={RING_R} fill="none" stroke="rgba(255,255,255,.08)" strokeWidth="7" />
-          <circle cx="104" cy="104" r={RING_R} fill="none" stroke={tier.color} strokeWidth="7" strokeLinecap="round"
-            strokeDasharray={RING_C} strokeDashoffset={ringOffset}
-            style={{ filter: `drop-shadow(0 0 10px ${tier.color})` }} />
-        </svg>
-        <div className="rank-ring-badge"><RankIcon tier={tier.name} size="100%" /></div>
-      </div>
-      <div className="rank-tier-name" style={{ backgroundImage: `linear-gradient(120deg, #fff, color-mix(in srgb, #fff 30%, ${tier.color}))` }}>{tier.name}</div>
-      <div className="rank-level-line">{t('Level {0}', rank.level)}</div>
-      {rank.prestige > 0 && (
-        <div className="rank-prestige-pill" style={{ background: `color-mix(in srgb, ${tier.color} 16%, transparent)`, borderColor: `color-mix(in srgb, ${tier.color} 40%, transparent)` }}>
-          <PrestigeIcon level={rank.prestige} size={24} />
-          <span style={{ color: tier.color }}>{t('Prestige {0}', rank.prestige)}</span>
-        </div>
-      )}
-      {rank.readyToPrestige ? (
-        <>
-          <div className="rank-xp-row" style={{ justifyContent: 'center' }}>
-            <span style={{ fontWeight: 700, color: tier.color }}>{t('Level cap reached — ready to prestige')}</span>
+    {tab === 'prestige' ? (
+      <div className="rank-hero" style={{ '--tier': tier.color }}>
+        <div className="rank-ring-wrap">
+          <div className="rank-ring-badge">
+            <PrestigeIcon level={Math.max(1, rank.prestige)} locked={rank.prestige === 0} size="100%" />
           </div>
-          <Button variant="primary" style={{ marginTop: 10 }} onClick={doPrestige}>{t('Upgrade mastery')}</Button>
-        </>
-      ) : <>
-        <div className="rank-xp-row">
-          <span className="muted">{t('{0} / {1} XP', fmtNum(rank.xpInLevel), fmtNum(rank.xpForLevel))}</span>
-          <span style={{ fontWeight: 700, color: tier.color }}>{t('{0} XP to next level', fmtNum(left))}</span>
         </div>
-        <div className="rank-xp-bar"><i style={{ width: pct + '%', background: `linear-gradient(90deg, color-mix(in srgb, ${tier.color} 70%, white 10%), ${tier.color})` }} /></div>
-      </>}
-    </div>
-
-    <TasksCard />
-    <PenaltiesRow onlyPending />
+        {rank.prestige > 0 ? (
+          <div className="rank-tier-name" style={{ backgroundImage: `linear-gradient(120deg, #fff, color-mix(in srgb, #fff 30%, ${tier.color}))` }}>{t('Prestige {0}', rank.prestige)}</div>
+        ) : (
+          <div className="rank-tier-name" style={{ color: 'var(--label-3)', backgroundImage: 'none', WebkitTextFillColor: 'unset' }}>{t('No prestige yet')}</div>
+        )}
+      </div>
+    ) : tab === 'streak' ? (
+      <div className="rank-hero" style={{ '--tier': streakColor }}>
+        <div className="rank-ring-wrap">
+          <svg width="208" height="208" style={{ position: 'absolute', inset: 0, transform: 'rotate(-90deg)' }}>
+            <circle cx="104" cy="104" r={RING_R} fill="none" stroke="rgba(255,255,255,.08)" strokeWidth="7" />
+            <circle cx="104" cy="104" r={RING_R} fill="none" stroke={streakColor} strokeWidth="7" strokeLinecap="round"
+              strokeDasharray={RING_C} strokeDashoffset={streakRingOffset}
+              style={{ filter: `drop-shadow(0 0 10px ${streakColor})` }} />
+          </svg>
+          <div className="rank-ring-badge" style={{ filter: curStreakTier ? undefined : 'grayscale(1) brightness(.55)' }}>
+            <StreakIcon tier={streakArtIdx} size="100%" />
+          </div>
+        </div>
+        <div className="rank-tier-name" style={{ backgroundImage: `linear-gradient(120deg, #fff, color-mix(in srgb, #fff 30%, ${streakColor}))` }}>
+          {curStreakTier ? curStreakTier.name : t('No streak yet')}
+        </div>
+        <div className="rank-level-line">{t('{0} day streak', streak)}</div>
+        {nextStreakTier ? (
+          <>
+            <div className="rank-xp-row">
+              <span className="muted">{t('{0} / {1} days', streak, nextStreakTier.days)}</span>
+              <span style={{ fontWeight: 700, color: streakColor }}>{t('{0} days to next badge', Math.max(0, nextStreakTier.days - streak))}</span>
+            </div>
+            <div className="rank-xp-bar"><i style={{ width: (streakPct * 100) + '%', background: `linear-gradient(90deg, color-mix(in srgb, ${streakColor} 70%, white 10%), ${streakColor})` }} /></div>
+          </>
+        ) : curStreakTier && (
+          <div className="rank-xp-row" style={{ justifyContent: 'center' }}>
+            <span style={{ fontWeight: 700, color: streakColor }}>{t('Top streak badge reached')}</span>
+          </div>
+        )}
+      </div>
+    ) : (
+      <div className="rank-hero" style={{ '--tier': tier.color }}>
+        <div className="rank-ring-wrap">
+          <svg width="208" height="208" style={{ position: 'absolute', inset: 0, transform: 'rotate(-90deg)' }}>
+            <circle cx="104" cy="104" r={RING_R} fill="none" stroke="rgba(255,255,255,.08)" strokeWidth="7" />
+            <circle cx="104" cy="104" r={RING_R} fill="none" stroke={tier.color} strokeWidth="7" strokeLinecap="round"
+              strokeDasharray={RING_C} strokeDashoffset={ringOffset}
+              style={{ filter: `drop-shadow(0 0 10px ${tier.color})` }} />
+          </svg>
+          <div className="rank-ring-badge"><RankIcon tier={tier.name} size="100%" /></div>
+        </div>
+        <div className="rank-tier-name" style={{ backgroundImage: `linear-gradient(120deg, #fff, color-mix(in srgb, #fff 30%, ${tier.color}))` }}>{tier.name}</div>
+        <div className="rank-level-line">{t('Level {0}', rank.level)}</div>
+        {rank.readyToPrestige ? (
+          <>
+            <div className="rank-xp-row" style={{ justifyContent: 'center' }}>
+              <span style={{ fontWeight: 700, color: tier.color }}>{t('Level cap reached — ready to prestige')}</span>
+            </div>
+            <Button variant="primary" style={{ marginTop: 10 }} onClick={doPrestige}>{t('Upgrade mastery')}</Button>
+          </>
+        ) : <>
+          <div className="rank-xp-row">
+            <span className="muted">{t('{0} / {1} XP', fmtNum(rank.xpInLevel), fmtNum(rank.xpForLevel))}</span>
+            <span style={{ fontWeight: 700, color: tier.color }}>{t('{0} XP to next level', fmtNum(left))}</span>
+          </div>
+          <div className="rank-xp-bar"><i style={{ width: pct + '%', background: `linear-gradient(90deg, color-mix(in srgb, ${tier.color} 70%, white 10%), ${tier.color})` }} /></div>
+        </>}
+      </div>
+    )}
 
     <Segmented className="seg-range" value={tab} onChange={setTab}
-      options={[{ value: 'tiers', label: t('Tiers') }, { value: 'prestige', label: t('Prestige') }]} />
+      options={[{ value: 'streak', label: t('Streak') }, { value: 'tiers', label: t('Tiers') }, { value: 'prestige', label: t('Prestige') }]} />
 
     {tab === 'tiers' && <div>
       <h4 className="sec">{t('Tier path')}</h4>
@@ -277,5 +332,48 @@ export default function Rank() {
         })}
       </div>
     </div>}
+
+    {tab === 'streak' && <div>
+      <h4 className="sec">{t('Streak path')}</h4>
+      <div className="rank-ladder">
+        {(streakTierList || []).map((st, i) => {
+          const cls = 'rank-node' + (i === streakTierIdx ? ' current' : i < streakTierIdx ? ' done' : ' locked')
+          return <div key={st.id} className={cls} style={{ '--ntier': tier.color }}>
+            <div className="rank-node-circ"><StreakIcon tier={i + 1} size="100%" /></div>
+          </div>
+        })}
+      </div>
+
+      {nextStreakTier && <div className="rank-next-card">
+        <span className="ico"><StreakIcon tier={streakTierIdx + 2} size="100%" /></span>
+        <div><div className="t">{t('Next streak badge')}</div><div className="n">{nextStreakTier.name} · {t('reach {0} days', nextStreakTier.days)}</div></div>
+      </div>}
+
+      <h4 className="sec">{t('All streak badges')}</h4>
+      <div className="list">
+        {(streakTierList || []).map((st, i) => {
+          const current = i === streakTierIdx, done = i < streakTierIdx, locked = i > streakTierIdx
+          return <div key={st.id} className="item" style={current ? {
+            background: `linear-gradient(120deg, color-mix(in srgb, ${tier.color} 16%, transparent), transparent)`,
+            borderColor: `color-mix(in srgb, ${tier.color} 55%, var(--glass-border))`,
+          } : undefined}>
+            <span className="lrow-i" style={{ width: 48, height: 48, borderRadius: 14, background: 'var(--surface-2)', fontSize: 34, filter: locked ? 'grayscale(1) brightness(.55)' : undefined }}><StreakIcon tier={i + 1} /></span>
+            <div className="grow">
+              <div className="row" style={{ gap: 7, alignItems: 'baseline' }}>
+                <span className="tt" style={{ fontWeight: current ? 700 : 500 }}>{st.name}</span>
+                <span className="rank-lvl-pill" style={{ color: locked ? undefined : tier.color, background: locked ? 'var(--surface-2)' : `color-mix(in srgb, ${tier.color} 16%, transparent)` }}>{t('{0}d', st.days)}</span>
+              </div>
+              <PerkText items={[t('Coming soon.')]} />
+            </div>
+            {done && <Icon name="check" className="accent" />}
+            {locked && <Icon name="lock" className="dim" />}
+          </div>
+        })}
+        {streakTierList && streakTierList.length === 0 && <div className="empty">{t('No streak badges configured yet.')}</div>}
+      </div>
+    </div>}
+
+    <TasksCard />
+    <PenaltiesRow onlyPending />
   </div>
 }

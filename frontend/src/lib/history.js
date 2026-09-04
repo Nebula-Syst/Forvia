@@ -382,6 +382,24 @@ export function streakWeeks(S) {
   return streak
 }
 
+// Consecutive CALENDAR DAYS with at least one workout, counting back from today — a
+// different (stricter) rhythm than streakWeeks above, and what the streak-tier badges
+// (RankBadge's streak segment, lib/streak.js) are thresholded on. Same "today missing
+// doesn't break it yet, yesterday missing does" shape as streakWeeks.
+export function streakDays(S) {
+  if (!S.workouts.length) return 0
+  const days = new Set(S.workouts.map(w => w.d))
+  let streak = 0
+  const cur = new Date()
+  for (let i = 0; i < 3650; i++) {
+    const iso = isoOf(cur)
+    if (days.has(iso)) streak++
+    else if (i > 0) break
+    cur.setDate(cur.getDate() - 1)
+  }
+  return streak
+}
+
 /**
  * Cascade a weight change forward: following sets of the same warm-up flag that are still
  * undone take the new value (null deletes the key). Done sets are never rewritten.

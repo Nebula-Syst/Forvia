@@ -64,6 +64,7 @@ export const adminUserCreate = (name, email, password) => api('/api/admin/user/c
 export const adminSetEmployeeTypes = (id, employeeTypes) => api('/api/admin/user/employee-types', { method: 'POST', body: JSON.stringify({ id, employeeTypes }) })
 export const adminUserLevel = (id, delta) => api('/api/admin/user/level', { method: 'POST', body: JSON.stringify({ id, delta }) }).then(r => r.rank)
 export const adminUserPrestige = (id, delta) => api('/api/admin/user/prestige', { method: 'POST', body: JSON.stringify({ id, delta }) }).then(r => r.rank)
+export const adminUserStreak = (id, delta) => api('/api/admin/user/streak', { method: 'POST', body: JSON.stringify({ id, delta }) }).then(r => r.streakBonus)
 
 /* ---------- exercise name overrides ---------- */
 export const exerciseOverrides = () => api('/api/exercises/overrides').then(r => r.overrides)
@@ -77,6 +78,12 @@ export const adminMuscleGroupRemove = id => api('/api/admin/muscle-groups/remove
 export const adminMuscleGroupAddExercise = (id, exerciseId) => api('/api/admin/muscle-groups/add-exercise', { method: 'POST', body: JSON.stringify({ id, exerciseId }) }).then(r => r.groups)
 export const adminMuscleGroupRemoveExercise = (id, exerciseId) => api('/api/admin/muscle-groups/remove-exercise', { method: 'POST', body: JSON.stringify({ id, exerciseId }) }).then(r => r.groups)
 export const adminMuscleGroupSetExercises = (id, exerciseIds) => api('/api/admin/muscle-groups/set-exercises', { method: 'POST', body: JSON.stringify({ id, exerciseIds }) }).then(r => r.groups)
+
+/* ---------- streak tiers ---------- */
+export const streakTiers = () => api('/api/streak-tiers').then(r => r.tiers)
+export const adminStreakTierAdd = (name, days) => api('/api/admin/streak-tiers', { method: 'POST', body: JSON.stringify({ name, days }) }).then(r => r.tiers)
+export const adminStreakTierUpdate = (id, name, days) => api('/api/admin/streak-tiers/update', { method: 'POST', body: JSON.stringify({ id, name, days }) }).then(r => r.tiers)
+export const adminStreakTierRemove = id => api('/api/admin/streak-tiers/remove', { method: 'POST', body: JSON.stringify({ id }) }).then(r => r.tiers)
 
 /* ---------- bug reports ---------- */
 export const reportBug = (message, page) => api('/api/bugs', { method: 'POST', body: JSON.stringify({ message, page }) })

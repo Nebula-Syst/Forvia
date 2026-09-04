@@ -21,6 +21,7 @@ import Login from './views/Login.jsx'
 import Terms from './views/legal/Terms.jsx'
 import Privacy from './views/legal/Privacy.jsx'
 import Home from './views/Home.jsx'
+import Nutrition from './views/Nutrition.jsx'
 import Plan from './views/Plan.jsx'
 import RoutineEdit from './views/RoutineEdit.jsx'
 import Workout, { WorkoutStartActions } from './views/Workout.jsx'
@@ -46,6 +47,7 @@ import AdminTasks from './views/admin/AdminTasks.jsx'
 import AdminExercises from './views/admin/AdminExercises.jsx'
 import AdminMuscleGroups from './views/admin/AdminMuscleGroups.jsx'
 import AdminMuscleGroupExercises from './views/admin/AdminMuscleGroupExercises.jsx'
+import AdminStreaks from './views/admin/AdminStreaks.jsx'
 import AdminLog from './views/admin/AdminLog.jsx'
 import AdminAlpha from './views/admin/AdminAlpha.jsx'
 import AdminBugs from './views/admin/AdminBugs.jsx'
@@ -102,6 +104,7 @@ function Shell() {
           {loc.pathname === '/legal/terms' ? <Terms /> : loc.pathname === '/legal/privacy' ? <Privacy /> : !authed ? <Login /> : (
             <Routes>
               <Route path="/home" element={<Home />} />
+              <Route path="/nutrition" element={<Nutrition />} />
               <Route path="/plan" element={<Plan />} />
               <Route path="/plan/r/:id" element={<RoutineEdit />} />
               <Route path="/workout" element={<Workout />} />
@@ -128,6 +131,7 @@ function Shell() {
               <Route path="/admin/exercises" element={user?.admin ? <AdminExercises /> : <Navigate to="/home" replace />} />
               <Route path="/admin/muscle-groups" element={user?.admin ? <AdminMuscleGroups /> : <Navigate to="/home" replace />} />
               <Route path="/admin/muscle-groups/:id" element={user?.admin ? <AdminMuscleGroupExercises /> : <Navigate to="/home" replace />} />
+              <Route path="/admin/streaks" element={user?.admin ? <AdminStreaks /> : <Navigate to="/home" replace />} />
               <Route path="/admin/log" element={user?.admin ? <AdminLog /> : <Navigate to="/home" replace />} />
               <Route path="/admin/alpha" element={user?.admin ? <AdminAlpha /> : <Navigate to="/home" replace />} />
               <Route path="/admin/bugs" element={user?.admin ? <AdminBugs /> : <Navigate to="/home" replace />} />

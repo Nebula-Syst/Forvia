@@ -7,10 +7,10 @@ import RankBadge from './RankBadge.jsx'
 // from things (finishing a workout, checking off a task) that never re-run login/me,
 // so the store's copy goes stale the moment any of that happens this session. Shared
 // by Home and Progress — same badge, same tap target, opens the full /rank page.
-export default function RankRow() {
+export default function RankRow({ streak = 0, streakTier = 1 }) {
   const nav = useNavigate()
   const [me, setMe] = useState(null)
   useEffect(() => { api('/api/me').then(r => setMe(r.user)).catch(() => {}) }, [])
   if (!me) return null
-  return <RankBadge level={me.rank.level} prestige={me.rank.prestige} size="lg" perks={me.perks} iconsOnly onClick={() => nav('/rank')} />
+  return <RankBadge level={me.rank.level} prestige={me.rank.prestige} streak={streak} streakTier={streakTier} size="lg" perks={me.perks} iconsOnly onClick={() => nav('/rank')} />
 }

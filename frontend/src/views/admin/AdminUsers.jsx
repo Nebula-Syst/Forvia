@@ -2,9 +2,9 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useStore } from '../../store/useStore.js'
 import { useUI } from '../../store/useUI.js'
-import { api, adminUserCreate, adminSetEmployeeTypes, adminUserLevel, adminUserPrestige } from '../../lib/api.js'
+import { api, adminUserCreate, adminSetEmployeeTypes, adminUserLevel, adminUserPrestige, adminUserStreak } from '../../lib/api.js'
 import { fmtDate, fmtVol, fmtDur } from '../../lib/format.js'
-import { workoutVolume, setsDone } from '../../lib/history.js'
+import { workoutVolume, setsDone, streakDays } from '../../lib/history.js'
 import { confirmSheet } from '../../sheets.jsx'
 import { tierFor } from '../../lib/rank.js'
 import { t } from '../../lib/i18n.js'
@@ -35,6 +35,7 @@ function UserDetail({ id, onChanged, close }) {
   useEffect(() => { load() }, [id])
   if (!d) return <div className="muted small">{t('Loading…')}</div>
   const u = d.user
+  const realStreak = streakDays({ workouts: d.workouts || [] })
   const setDisabled = disabled => {
     api('/api/admin/user/disable', { method: 'POST', body: JSON.stringify({ id: u.id, disabled }) })
       .then(() => { toast(disabled ? t('User disabled') : t('User enabled')); onChanged(); close() })
@@ -55,6 +56,15 @@ function UserDetail({ id, onChanged, close }) {
   const nudgePrestige = delta => {
     setBusy(true)
     adminUserPrestige(u.id, delta).then(() => { load(); onChanged() }).catch(e => toast(e.message)).finally(() => setBusy(false))
+  }
+  // Unlike level/prestige there's no real "streak" stored anywhere to nudge — it's always
+  // recomputed client-side from the user's own workout history (lib/history.js streakDays).
+  // This adjusts streakBonus, added to that real day count wherever it's shown (Home,
+  // /rank) — lets an admin add or remove streak days directly, e.g. to test a streak
+  // badge without hand-crafting weeks of workout history.
+  const nudgeStreak = delta => {
+    setBusy(true)
+    adminUserStreak(u.id, delta).then(() => { load(); onChanged() }).catch(e => toast(e.message)).finally(() => setBusy(false))
   }
   const rank = u.rank || {}
   const tier = tierFor(rank.level || 1)
@@ -96,6 +106,16 @@ function UserDetail({ id, onChanged, close }) {
       <div className="row" style={{ gap: 4 }}>
         <button className="iconbtn" style={{ width: 28, height: 28, borderRadius: 7 }} disabled={busy || (rank.prestige || 0) <= 0} onClick={() => nudgePrestige(-1)} aria-label={t('prestige down')}><Icon name="minus" /></button>
         <button className="iconbtn" style={{ width: 28, height: 28, borderRadius: 7 }} disabled={busy} onClick={() => nudgePrestige(1)} aria-label={t('prestige up')}><Icon name="plus" /></button>
+      </div>
+    </div>
+    <div className="row between" style={{ marginBottom: 12, padding: '8px 10px', background: 'var(--surface-2)', borderRadius: 12 }}>
+      <div>
+        <div className="small" style={{ fontWeight: 600 }}>{t('Streak days: {0}', realStreak + (u.streakBonus || 0))}</div>
+        <div className="dim" style={{ fontSize: '.72rem' }}>{u.streakBonus ? t('{0} from workouts, {1} admin-added', realStreak, u.streakBonus) : t('From their workout history — add or remove days below')}</div>
+      </div>
+      <div className="row" style={{ gap: 4 }}>
+        <button className="iconbtn" style={{ width: 28, height: 28, borderRadius: 7 }} disabled={busy} onClick={() => nudgeStreak(-1)} aria-label={t('streak down')}><Icon name="minus" /></button>
+        <button className="iconbtn" style={{ width: 28, height: 28, borderRadius: 7 }} disabled={busy} onClick={() => nudgeStreak(1)} aria-label={t('streak up')}><Icon name="plus" /></button>
       </div>
     </div>
 

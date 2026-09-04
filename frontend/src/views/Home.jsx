@@ -1,11 +1,13 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useStore } from '../store/useStore.js'
-import { effectiveRoutine, effectiveRoutineId, FREESTYLE_DAY, streakWeeks, lastBW } from '../lib/history.js'
+import { effectiveRoutine, effectiveRoutineId, FREESTYLE_DAY, streakDays, lastBW } from '../lib/history.js'
 import { loadOfWorkouts } from '../lib/muscles.js'
 import { fmtNum, fmtDate, todayISO, isoOf, weekKey, DAYS } from '../lib/format.js'
 import { t, dateLocale } from '../lib/i18n.js'
-import { bwSheet, goalSheet, dayOverrideSheet, calendarSheet, startFlow, loadStarterPlan, bwDeltaColor } from '../sheets.jsx'
+import { bwSheet, goalSheet, dayOverrideSheet, calendarSheet, startFlow, bwDeltaColor } from '../sheets.jsx'
+import { streakTiers as fetchStreakTiers } from '../lib/api.js'
+import { tierForDays } from '../lib/streak.js'
 import LineChart from '../components/LineChart.jsx'
 import Heatmap from '../components/Heatmap.jsx'
 import BodyMap, { BodyMapLegend } from '../components/BodyMap.jsx'
@@ -22,6 +24,8 @@ export default function Home() {
   const S = useStore(s => s.S)
   const user = useStore(s => s.user)
   const [weekOffset, setWeekOffset] = useState(0)
+  const [tiers, setTiers] = useState(null)
+  useEffect(() => { fetchStreakTiers().then(setTiers).catch(() => setTiers([])) }, [])
 
   const today = new Date()
   const routine = effectiveRoutine(S, todayISO())
@@ -53,6 +57,8 @@ export default function Home() {
   const minsThisWeek = weekWorkouts.reduce((n, w) => n + Math.max(0, Math.round(((w.end || w.start) - w.start) / 60000)), 0)
   const weekLoad = loadOfWorkouts(weekWorkouts, null)
   const hasHistory = S.workouts.length > 0
+  const streak = Math.max(0, streakDays(S) + (user?.streakBonus || 0))
+  const streakTier = tiers ? tierForDays(streak, tiers) : null
 
   // today's session shown right under the week strip
   const onToday = () => { if (S.active) nav('/workout'); else if (routine) startFlow(routine.id); else if (isFreestyleToday) startFlow(null); else dayOverrideSheet(todayISO()) }
@@ -65,7 +71,7 @@ export default function Home() {
           {today.toLocaleDateString(dateLocale(), { weekday: 'long', day: 'numeric', month: 'long' })}
           {' · '}<span style={{ textTransform: 'uppercase', letterSpacing: '.03em', fontWeight: 700, color: 'var(--acc)' }}>{t('Early access')}</span>
         </div>
-        {user && <div style={{ marginTop: 8 }}><RankRow /></div>}
+        {user && <div style={{ marginTop: 8 }}><RankRow streak={hasHistory ? streak : 0} streakTier={streakTier?.artIdx || 1} /></div>}
       </div>
       <div className="row" style={{ gap: 8 }}>
         <button className="iconbtn" onClick={() => nav('/plan')} aria-label={t('Plan')}><Icon name="calendar" /></button>
@@ -104,7 +110,49 @@ export default function Home() {
 
     {user && <TasksCard />}
 
-    {hasHistory && <div className="tiles">
+    {user && (() => {
+      const goals = S.nutritionGoals
+      const todayFood = S.foodDiary[todayISO()] || []
+      const kcal = todayFood.reduce((n, it) => n + (it.kcal || 0), 0)
+      const carbs = todayFood.reduce((n, it) => n + (it.carbsG || 0), 0)
+      const fat = todayFood.reduce((n, it) => n + (it.fatG || 0), 0)
+      const protein = todayFood.reduce((n, it) => n + (it.proteinG || 0), 0)
+      return <>
+        <div className="card tappable" style={{ cursor: 'pointer' }} onClick={() => nav('/nutrition')}>
+          <div className="row between" style={{ marginBottom: 8 }}>
+            <h2 style={{ margin: 0 }}>{t('Calories')}</h2>
+            <div className="row" style={{ gap: 6 }}>
+              <span className="dim small">{t('{0} / {1} kcal', kcal, goals.calories)}</span>
+              <Icon name="chevronRight" className="chev" style={{ fontSize: 15 }} />
+            </div>
+          </div>
+          <div style={{ height: 10, borderRadius: 99, background: 'var(--surface-2)', overflow: 'hidden' }}>
+            <div style={{ width: Math.min(100, goals.calories ? (kcal / goals.calories) * 100 : 0) + '%', height: '100%', background: 'var(--acc)' }} />
+          </div>
+        </div>
+
+        <div className="card tappable" style={{ cursor: 'pointer' }} onClick={() => nav('/nutrition')}>
+          <div className="row between" style={{ marginBottom: 14 }}>
+            <h2 style={{ margin: 0 }}>{t('Macros')}</h2>
+            <Icon name="chevronRight" className="chev" style={{ fontSize: 15 }} />
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'space-around' }}>
+            {[
+              { l: t('Carbs'), v: carbs, g: goals.carbsG, c: 'var(--orange)' },
+              { l: t('Fat'), v: fat, g: goals.fatG, c: 'var(--indigo)' },
+              { l: t('Protein'), v: protein, g: goals.proteinG, c: 'var(--blue)' }
+            ].map(m => <div key={m.l} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
+              <Ring size={92} stroke={8} pct={m.g ? m.v / m.g : 0} color={m.c}>
+                <span style={{ fontWeight: 700, fontSize: 14 }}>{m.v}/{m.g}<span style={{ fontSize: 10, fontWeight: 500, opacity: .7 }}>g</span></span>
+              </Ring>
+              <span className="small" style={{ fontWeight: 600 }}>{m.l}</span>
+            </div>)}
+          </div>
+        </div>
+      </>
+    })()}
+
+    <div className="tiles">
       <div className="tile k-green">
         <div className="ringwrap"><Ring size={34} stroke={4} pct={plannedPerWeek ? wThisWeek / plannedPerWeek : 1} color="var(--green)"><Icon name="dumbbell" style={{ fontSize: 14 }} /></Ring></div>
         <div className="v">{wThisWeek}{plannedPerWeek ? '/' + plannedPerWeek : ''}</div><div className="l">{t('This week')}</div>
@@ -117,23 +165,7 @@ export default function Home() {
         <div className="ringwrap"><Ring size={34} stroke={4} pct={1} color="var(--blue)"><Icon name="clock" style={{ fontSize: 14 }} /></Ring></div>
         <div className="v">{minsThisWeek}</div><div className="l">{t('Minutes')}</div>
       </div>
-      <div className="tile k-orange tappable" onClick={() => calendarSheet()}>
-        <div className="ringwrap"><Ring size={34} stroke={4} pct={1} color="var(--orange)"><Icon name="flame" style={{ fontSize: 14 }} /></Ring></div>
-        <div className="v">{streakWeeks(S)}</div><div className="l">{t('Streak')}</div>
-      </div>
-    </div>}
-
-    {!S.routines.length && !S.active && (
-      <div className="card">
-        <div className="row" style={{ gap: 10, marginBottom: 6 }}>
-          <span className="lrow-i"><Icon name="sparkles" /></span>
-          <div className="big" style={{ fontSize: 22 }}>{t('Welcome!')}</div>
-        </div>
-        <div className="muted small" style={{ marginBottom: 12 }}>{t('Set up your weekly routine to get going — or load a ready-made Push / Pull / Legs plan.')}</div>
-        <Button variant="primary" icon="sparkles" onClick={loadStarterPlan}>{t('Load starter plan (PPL)')}</Button>
-        <div style={{ height: 8 }} /><Button onClick={() => nav('/plan')}>{t('Build my own plan')}</Button>
-      </div>
-    )}
+    </div>
 
     {(() => {
       const weightCard = <div className="card">
@@ -165,8 +197,6 @@ export default function Home() {
           <div className="chart" style={{ marginTop: 8 }}><LineChart points={bwPoints} h={130} unit={S.unit} goal={S.targetW} /></div>
         </> : <div className="muted small">{t("No entries yet — log your weight to start the curve. It's also asked before every workout.")}</div>}
       </div>
-
-      if (!hasHistory) return weightCard
 
       return <div className="cols">
         {weightCard}

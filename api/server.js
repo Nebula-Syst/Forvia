@@ -61,7 +61,7 @@ const SECRET = fs.readFileSync(secretFile, 'utf8').trim();
 // why this stays one big in-memory object instead of being queried per-request. Same shape
 // db.json's arrays always had: users, subs (push), invites, follows, reactions, comments
 // (social), tasks/taskCompletions (daily-task catalog + awards), cheatPenalties (anti-cheat).
-let db = { users: [], subs: [], invites: [], follows: [], reactions: [], comments: [], tasks: [], taskCompletions: [], cheatPenalties: [], alphaRequests: [], bugReports: [], exerciseOverrides: [], muscleGroups: [] };
+let db = { users: [], subs: [], invites: [], follows: [], reactions: [], comments: [], tasks: [], taskCompletions: [], cheatPenalties: [], alphaRequests: [], bugReports: [], exerciseOverrides: [], muscleGroups: [], streakTiers: [] };
 // A user can hold several employee types at once (e.g. both founder and admin), not one
 // flat role — employeeTypes is an array, filtered to the known set on every read so a
 // stale/tampered value in db.json can never grant something that isn't in EMPLOYEE_TYPES.
@@ -89,6 +89,13 @@ const publicUser = user => {
     badges: badgesFor(user, rank),
     pinnedWorkoutIds: user.pinnedWorkoutIds || [], pinnedPR: user.pinnedPR || null,
     email: user.email || null, emailVerified: !!user.emailVerified, phone: user.phone || null,
+    // Streak days themselves are never stored — they're always recomputed client-side from
+    // S.workouts (frontend lib/history.js streakDays), same reasoning as the "backend has no
+    // copy of the exercise catalog" comment elsewhere: this backend has no copy of a user's
+    // workout history to compute it from either. This admin nudge (POST /api/admin/user/streak,
+    // same +/- pattern as level/prestige) is added on top of that real number, not instead of
+    // it — for testing/demoing a streak badge without hand-crafting weeks of workout history.
+    streakBonus: user.streakBonus || 0,
   };
 };
 // A user's social presence to OTHER users — never leaks the auth-only fields above.
@@ -1007,6 +1014,15 @@ const routes = {
   // signed in or guest, needs this to overlay renames onto the names it already has.
   'GET /api/exercises/overrides': async (req, res) => json(res, 200, { overrides: db.exerciseOverrides }),
 
+  // Public, no auth: admin-configured streak-badge thresholds (day count -> tier name),
+  // sorted ascending — every client needs these to know which badge a given streak earns
+  // (see frontend lib/streak.js tierForDays). No perks are attached to these tiers yet
+  // (see the "no upgrade yet" note on the admin write routes below) — cosmetic only for now.
+  'GET /api/streak-tiers': async (req, res) => {
+    const sorted = [...db.streakTiers].sort((a, b) => a.days - b.days);
+    json(res, 200, { tiers: sorted });
+  },
+
   /* ---------- alpha waitlist (public, cross-origin from the landing page) ---------- */
   // Preflight for the one browser-originated cross-origin POST this API answers.
   'OPTIONS /api/alpha/apply': async (req, res) => { res.writeHead(204, corsHeaders(req)); res.end(); },
@@ -1592,6 +1608,19 @@ div{max-width:360px}h1{font-size:20px;margin:0 0 8px}p{color:#9db8a8;line-height
     json(res, 200, { rank: rankFor(u.id) });
   },
 
+  'POST /api/admin/user/streak': async (req, res) => {
+    const admin = requireAdmin(req, res); if (!admin) return;
+    const body = await readBody(req);
+    const u = db.users.find(x => x.id === body.id);
+    if (!u) return json(res, 404, { error: 'no such user' });
+    const delta = body.delta === -1 ? -1 : 1;
+    u.streakBonus = (u.streakBonus || 0) + delta;
+    saveDb();
+    audit(req, 'admin.user.streak', { user: admin, target: u, msg: `bonus -> ${u.streakBonus}` });
+    wsSend(u.id, { type: 'rank:changed' });
+    json(res, 200, { streakBonus: u.streakBonus });
+  },
+
   'POST /api/admin/user/disable': async (req, res) => {
     const admin = requireAdmin(req, res); if (!admin) return;
     const body = await readBody(req);
@@ -1902,6 +1931,47 @@ div{max-width:360px}h1{font-size:20px;margin:0 0 8px}p{color:#9db8a8;line-height
     saveDb();
     audit(req, 'admin.exercise.rename', { user: admin, msg: `${id} [${lang}]` + (name ? ' → ' + name : ' (reverted)') });
     json(res, 200, { overrides: db.exerciseOverrides });
+  },
+
+  /* ---------- streak tiers (admin-configurable badge thresholds) ---------- */
+  // Purely a name + day-count today, no gameplay effect (unlike RANK_PERKS/PRESTIGE_PERKS
+  // in Rank.jsx, which are real) — the badge is cosmetic until/unless perks get attached
+  // later. Thresholds are deliberately admin-editable rather than hardcoded because the
+  // starting set (1/3/7/14/21/30/60/100/180/365 days) is meant to get harder over time
+  // without a code change.
+  'POST /api/admin/streak-tiers': async (req, res) => {
+    const admin = requireAdmin(req, res); if (!admin) return;
+    const body = await readBody(req);
+    const name = String(body.name || '').trim().slice(0, 40);
+    const days = Math.max(1, Math.round(+body.days || 0));
+    if (!name || !days) return json(res, 400, { error: 'name and a positive day count are required' });
+    const tier = { id: crypto.randomBytes(9).toString('base64url'), name, days };
+    db.streakTiers.push(tier);
+    saveDb();
+    audit(req, 'admin.streakTier.add', { user: admin, msg: `${name} (${days}d)` });
+    json(res, 200, { tiers: [...db.streakTiers].sort((a, b) => a.days - b.days) });
+  },
+  'POST /api/admin/streak-tiers/update': async (req, res) => {
+    const admin = requireAdmin(req, res); if (!admin) return;
+    const body = await readBody(req);
+    const tier = db.streakTiers.find(x => x.id === body.id);
+    if (!tier) return json(res, 404, { error: 'tier not found' });
+    const name = String(body.name || '').trim().slice(0, 40);
+    const days = Math.max(1, Math.round(+body.days || 0));
+    if (!name || !days) return json(res, 400, { error: 'name and a positive day count are required' });
+    tier.name = name; tier.days = days;
+    saveDb();
+    audit(req, 'admin.streakTier.update', { user: admin, msg: `${tier.id} -> ${name} (${days}d)` });
+    json(res, 200, { tiers: [...db.streakTiers].sort((a, b) => a.days - b.days) });
+  },
+  'POST /api/admin/streak-tiers/remove': async (req, res) => {
+    const admin = requireAdmin(req, res); if (!admin) return;
+    const body = await readBody(req);
+    const tier = db.streakTiers.find(x => x.id === body.id);
+    db.streakTiers = db.streakTiers.filter(x => x.id !== body.id);
+    saveDb();
+    audit(req, 'admin.streakTier.remove', { user: admin, msg: tier ? tier.name : body.id });
+    json(res, 200, { tiers: [...db.streakTiers].sort((a, b) => a.days - b.days) });
   },
 
   /* ---------- custom muscle groups ---------- */

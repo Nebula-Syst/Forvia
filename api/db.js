@@ -13,7 +13,7 @@ export const pool = new pg.Pool({ connectionString: DATABASE_URL });
 
 // One table per top-level db.json array. No natural-key columns — a full replace on every
 // save (see saveAll) means nothing needs a stable primary key to upsert against.
-const COLLECTIONS = ['users', 'subs', 'invites', 'follows', 'reactions', 'comments', 'tasks', 'taskCompletions', 'cheatPenalties', 'alphaRequests', 'bugReports', 'exerciseOverrides', 'muscleGroups'];
+const COLLECTIONS = ['users', 'subs', 'invites', 'follows', 'reactions', 'comments', 'tasks', 'taskCompletions', 'cheatPenalties', 'alphaRequests', 'bugReports', 'exerciseOverrides', 'muscleGroups', 'streakTiers'];
 const tableFor = name => 'kv_' + name.replace(/[A-Z]/g, c => '_' + c.toLowerCase());
 
 export async function ensureSchema() {

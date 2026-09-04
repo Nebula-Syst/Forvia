@@ -1086,6 +1086,33 @@ export default {
   "Seed from body parts": "Precargar desde partes del cuerpo", "Seeding…": "Precargando…",
   "{0} groups created": "{0} grupos creados", "Already up to date": "Ya está todo al día",
   "This group no longer exists.": "Este grupo ya no existe.",
+
+  // --- Streak tiers (added 2026-09-04) ---
+  "Streak": "Racha", "Streak path": "Ruta de racha", "Next streak badge": "Siguiente insignia de racha",
+  "All streak badges": "Todas las insignias de racha", "reach {0} days": "alcanza {0} días", "{0}d": "{0}d",
+  "No streak badges configured yet.": "Todavía no hay insignias de racha configuradas.",
+  "Streak tiers": "Tramos de racha", "Badge day thresholds": "Umbrales en días de la insignia",
+  "Days": "Días", "days": "días", "New tier": "Nuevo tramo", "Add tier": "Añadir tramo",
+  "Name and a positive day count are required": "El nombre y un número de días positivo son obligatorios",
+  "Tier added": "Tramo añadido", "Tier deleted": "Tramo eliminado", "{0} tiers": "{0} tramos",
+  "No tiers yet — add one below.": "Todavía no hay tramos — añade uno abajo.",
+  "Seed defaults": "Precargar valores por defecto", "{0} tiers created": "{0} tramos creados",
+  "No prestige yet": "Todavía sin prestigio", "No streak yet": "Todavía sin racha",
+  "Top streak badge reached": "Insignia máxima de racha alcanzada",
+  "{0} / {1} days": "{0} / {1} días", "{0} day streak": "Racha de {0} días",
+  "{0} days to next badge": "{0} días para la siguiente insignia",
+  "Streak days: {0}": "Días de racha: {0}", "streak down": "bajar racha", "streak up": "subir racha",
+  "{0} from workouts, {1} admin-added": "{0} de entrenamientos, {1} añadidos por admin",
+  "From their workout history — add or remove days below": "Calculado a partir de sus entrenamientos — suma o resta días abajo",
+
+  // --- Nutrition (phase 1 shell, added 2026-09-04) ---
+  "Log food": "Registrar alimento", "Nutrition": "Nutrición", "Nutrition goals": "Objetivos de nutrición",
+  "Workout options": "Opciones de entrenamiento", "Close": "Cerrar",
+  "Add food": "Añadir alimento", "No items logged yet": "Todavía no hay nada registrado",
+  "Food search isn’t connected yet — coming soon.": "La búsqueda de alimentos aún no está conectada — próximamente.",
+  "of {0} kcal": "de {0} kcal", "Calories": "Calorías", "Macros": "Macros", "Carbs": "Carbohidratos", "Fat": "Grasa", "Protein": "Proteína",
+  "Breakfast": "Desayuno", "Lunch": "Comida", "Dinner": "Cena", "Snack": "Snack",
+  "{0} / {1} kcal": "{0} / {1} kcal", "{0} meals logged today": "{0} comidas registradas hoy",
   "Previous page": "Página anterior", "Next page": "Página siguiente", "add": "añadir",
   "Page {0} of {1}": "Página {0} de {1}",
 }

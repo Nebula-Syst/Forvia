@@ -33,6 +33,8 @@ export default function Admin() {
         onClick={() => nav('/admin/exercises')} />
       <Tile icon="target" tint="var(--blue)" title={t('Muscle groups')} subtitle={t('Custom groupings of exercises')}
         onClick={() => nav('/admin/muscle-groups')} />
+      <Tile icon="flame" tint="var(--orange)" title={t('Streak tiers')} subtitle={t('Badge day thresholds')}
+        onClick={() => nav('/admin/streaks')} />
       <Tile icon="sparkles" tint="var(--acc)" title={t('Alpha requests')} subtitle={t('Access requests from the landing page')} full
         onClick={() => nav('/admin/alpha')} />
       <Tile icon="flag" tint="var(--red)" title={t('Bug reports')} subtitle={t('What users flagged from Settings')} full
