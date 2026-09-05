@@ -5,7 +5,6 @@ import { t } from '../lib/i18n.js'
 import { DEMO, REPO } from '../lib/demo.js'
 import { guestAllowed, registerAllowed } from '../lib/guest.js'
 import { passwordLoginSheet, passwordRegisterSheet } from '../sheets.jsx'
-import Icon from '../components/Icon.jsx'
 import { Button } from '../components/ui.jsx'
 
 // Same "button styled as inline text" pattern as SettingsAccount.jsx's "Resend verification
@@ -34,7 +33,15 @@ export default function Login() {
     nav('/', { replace: true })
   }, [joinCode])
   const head = <>
-    <div style={{ fontSize: 54, display: 'flex', justifyContent: 'center', color: 'var(--acc)' }}><Icon name="dumbbell" /></div>
+    {/* The real brand mark (assets/brand/) instead of the generic dumbbell glyph — both
+        crops are transparent, so neither drops a background tile onto the page behind it.
+        Two ink colors because the mark itself doesn't adapt: white reads on the dark theme's
+        near-black background, black on the light theme's near-white one; CSS picks one per
+        data-theme exactly like every other themed asset in index.css. */}
+    <div className="login-mark">
+      <img className="dark" src="/logo-mark-dark.png" alt="" />
+      <img className="light" src="/logo-mark-light.png" alt="" />
+    </div>
     <h1 style={{ fontSize: 34, fontWeight: 700, letterSpacing: '-.028em', margin: '10px 0 4px' }}>Forvia</h1>
   </>
   const wrap = { display: 'flex', flexDirection: 'column', justifyContent: 'center', minHeight: '78vh', textAlign: 'center' }

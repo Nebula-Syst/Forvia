@@ -128,6 +128,16 @@
   --glow-1:22%; --glow-2:15%; --glow-3:14%; --glow-4:9%;
 }
 
+/* Login's brand mark (Login.jsx) — a transparent crop of the real logo (assets/brand/) in
+   two ink colors, since the flat PNG itself can't adapt: white for the default dark theme
+   and the dark-family "prestige" theme, black for the light theme, swapped the same way
+   every other themed value here is (an explicit light override, dark left as the default). */
+.login-mark{display:flex;justify-content:center;height:64px;margin-bottom:2px}
+.login-mark img{height:100%;width:auto}
+.login-mark .light{display:none}
+:root[data-theme="light"] .login-mark .dark{display:none}
+:root[data-theme="light"] .login-mark .light{display:block}
+
 /* Prestige-8 perk (perksFor().appTheme) — a dark-family variant, so it only overrides
    what the light block above also overrides; shadows/glow stay the dark theme's. */
 :root[data-theme="prestige"] {
