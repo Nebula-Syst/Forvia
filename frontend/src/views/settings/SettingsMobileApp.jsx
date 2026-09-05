@@ -25,11 +25,12 @@ export default function SettingsMobileApp() {
       .catch(() => setRelease(null))
   }, [])
 
-  return <div className="narrow">
+  return <div className="narrow settings-page">
     <div className="hdr">
       <button className="iconbtn" onClick={() => nav('/settings')} aria-label={t('Settings')}><Icon name="chevronLeft" /></button>
       <div style={{ flex: 1, marginLeft: 10 }}><h1>{t('Mobile app')}</h1></div>
     </div>
+    <p className="settings-subtitle">{t('Get Forvia on your phone.')}</p>
 
     <div className="card">
       <h2 style={{ margin: '0 0 8px' }}>{t('Android')}</h2>

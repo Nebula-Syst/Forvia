@@ -1,13 +1,16 @@
 import { useNavigate } from 'react-router-dom'
 import { useStore } from '../store/useStore.js'
-import { DAYN, exCount, uid } from '../lib/format.js'
-import { FREESTYLE_DAY } from '../lib/history.js'
+import { exCount, uid } from '../lib/format.js'
 import { t } from '../lib/i18n.js'
-import { dayAssignSheet, planToolsSheet, deleteRoutine } from '../sheets.jsx'
+import { planToolsSheet, deleteRoutine } from '../sheets.jsx'
 import Icon from '../components/Icon.jsx'
 import { glyphOf, DEFAULT_GLYPH } from '../lib/glyphs.js'
 
-export default function Plan() {
+// Was Plan.jsx (at /plan) — this screen used to also hold a "Week schedule" section
+// (S.week, weekday → routine assignment) above this list. That concept is gone: a
+// routine is picked freely each session from /workout, not pre-assigned to a weekday.
+// What's left is just the routine CRUD list, renamed to match.
+export default function Routines() {
   const nav = useNavigate()
   const S = useStore(s => s.S)
   const update = useStore(s => s.update)
@@ -18,32 +21,18 @@ export default function Plan() {
   const createRoutine = () => {
     const r = { id: uid(), name: t('New routine'), emoji: DEFAULT_GLYPH, ex: [] }
     update(s => { s.routines.push(r) })
-    nav('/plan/r/' + r.id)
+    nav('/routines/r/' + r.id)
   }
 
   return <>
     <div className="hdr">
-      <div><h1>{t('Plan')}</h1><div className="sub">{t('Your weekly routine')}</div></div>
+      <div><h1>{t('Routines')}</h1><div className="sub">{t('Pick one freely each session')}</div></div>
       <button className="iconbtn" onClick={planToolsSheet} aria-label={t('Share your plan')} title={t('Share your plan')}><Icon name="upload" /></button>
     </div>
-    <h4 className="sec">{t('Week schedule')}</h4>
-    <div className="list" style={{ display: 'flex', flexDirection: 'column' }}>
-      {[1, 2, 3, 4, 5, 6, 0].map(d => {
-        const r = S.routines.find(x => x.id === S.week[d])
-        const isFreestyle = S.week[d] === FREESTYLE_DAY
-        return <div key={d} className="item" onClick={() => dayAssignSheet(d)}>
-          <div className="grow"><div className="tt">{t(DAYN[d])}</div></div>
-          {r ? <span className="tag acc"><Icon name={glyphOf(r.emoji)} />{r.name}</span>
-            : isFreestyle ? <span className="tag acc"><Icon name="shuffle" />{t('Freestyle')}</span>
-            : <span className="tag">{t('Rest')}</span>}
-          <Icon name="chevronRight" className="chev" /></div>
-      })}
-    </div>
 
-    <h4 className="sec">{t('My routines')}</h4>
     <div className="list" style={{ display: 'flex', flexDirection: 'column' }}>
       {S.routines.map(r => (
-        <div key={r.id} className="item" onClick={() => nav('/plan/r/' + r.id)}>
+        <div key={r.id} className="item" onClick={() => nav('/routines/r/' + r.id)}>
           <span className="lrow-i"><Icon name={glyphOf(r.emoji)} /></span>
           <div className="grow"><div className="tt">{r.name}</div><div className="ss">{exCount(r.ex.length)}</div></div>
           <button className="iconbtn" aria-label={t('Delete routine')} onClick={e => { e.stopPropagation(); deleteRoutine(r) }}><Icon name="trash" /></button>

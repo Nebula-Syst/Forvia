@@ -26,32 +26,51 @@ export default function Settings() {
 
   const showProfile = user && !DEMO && !MOBILE
   const showNotifications = user || MOBILE
+  const showProgress = user
 
-  return <div className="narrow">
-    <div className="hdr">
-      <div><h1>{t('Settings')}</h1></div>
-    </div>
+  return <div className="narrow settings-home">
+    {/* Three named clusters instead of one flat grid — same h4.sec label already used for
+        "Tier path" (Rank.jsx) and "Your data" (SettingsData.jsx), so grouping tiles reads
+        as the same convention rather than a new one. Membership only, no tile gained/lost/moved
+        between groups vs. the previous single grid — this is presentation, not new IA. */}
+    {(user || DEMO) && <h4 className="sec">{t('You')}</h4>}
+    {(user || DEMO) && (
+      <div className="settings-grid">
+        <Tile icon="personCircle" tint="var(--blue)" title={t('Account')}
+          subtitle={MOBILE ? t('About this app') : DEMO ? t('Demo') : t('Sign-in, email, sessions')}
+          onClick={() => nav('/settings/account')} />
+        {showProfile && (
+          <Tile icon="sparkles" tint="var(--purple)" title={t('Profile')} subtitle={t('Bio, badges')}
+            onClick={() => nav('/settings/profile')} />
+        )}
+        {showProgress && (
+          <Tile icon="medal" tint="var(--yellow)" title={t('Level & Prestige')} subtitle={t('Tier progress, perks')}
+            onClick={() => nav('/rank')} />
+        )}
+      </div>
+    )}
 
+    <h4 className="sec">{t('Preferences')}</h4>
     <div className="settings-grid">
-      <Tile icon="personCircle" tint="var(--blue)" title={t('Account')}
-        subtitle={MOBILE ? t('About this app') : DEMO ? t('Demo') : t('Sign-in, email, sessions')}
-        onClick={() => nav('/settings/account')} />
-      {showProfile && (
-        <Tile icon="sparkles" tint="var(--purple)" title={t('Profile')} subtitle={t('Bio, badges')}
-          onClick={() => nav('/settings/profile')} />
-      )}
-      {user && (
-        <Tile icon="medal" tint="var(--yellow)" title={t('Level & Prestige')} subtitle={t('Tier progress, perks')}
-          onClick={() => nav('/rank')} />
+      {!(user || DEMO) && (
+        <Tile icon="personCircle" tint="var(--blue)" title={t('Account')}
+          subtitle={MOBILE ? t('About this app') : t('Sign-in, email, sessions')}
+          onClick={() => nav('/settings/account')} />
       )}
       <Tile icon="dumbbell" tint="var(--orange)" title={t('Workout')} subtitle={t('Rest timer, sounds, units')}
         onClick={() => nav('/settings/workout')} />
+      <Tile icon="flame" tint="var(--pink)" title={t('Nutrition goals')} subtitle={t('Calories, macros, activity level')}
+        onClick={() => nav('/settings/nutrition')} />
       <Tile icon="moon" tint="var(--indigo)" title={t('Appearance')} subtitle={t('Theme, accent color')}
         onClick={() => nav('/settings/appearance')} />
       {showNotifications && (
         <Tile icon="bell" tint="var(--red)" title={t('Notifications')} subtitle={t('Push alerts, reminders')}
           onClick={() => nav('/settings/notifications')} />
       )}
+    </div>
+
+    <h4 className="sec">{t('Data & support')}</h4>
+    <div className="settings-grid">
       <Tile icon="folder" tint="var(--teal)" title={t('Data')} subtitle={t('Backup, import, reset')}
         onClick={() => nav('/settings/data')} />
       <Tile icon="flag" tint="var(--red)" title={t('Report a bug')} subtitle={t('Alpha — tell us what broke')}

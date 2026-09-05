@@ -1,20 +1,23 @@
-// Share a weekly plan.
+// Share your routines.
 //
 // Two jobs:
 //  1. A small, self-contained file a friend can import into THEIR Forvia — just the
-//     routines + the week schedule + the custom exercises those routines use. It never
-//     carries workouts, weigh-ins or settings, and importing MERGES (adds routines with
-//     fresh ids) so nothing the friend already has is touched.
+//     routines + the custom exercises they use. It never carries workouts, weigh-ins
+//     or settings, and importing MERGES (adds routines with fresh ids) so nothing the
+//     friend already has is touched.
 //  2. A clean, printable page (Save as PDF) where a single exercise never splits across
 //     a page break — each exercise, and each routine that fits, stays in one place.
+//
+// PLAN_FMT bumped to 2 when the weekly schedule was dropped from the bundle (routines
+// are freely picked per session now, not pre-assigned to a weekday) — parsePlan below
+// still accepts an older file's `week` field, it's just never read.
 
 import { EXIDX, isBodyweightEq } from './exercises.js'
-import { modeOf, fmtSec, isBw, isPerSide, sideReps, FREESTYLE_DAY } from './history.js'
-import { uid, todayISO, DAYN, fmtNum, exCount } from './format.js'
+import { modeOf, fmtSec, isBw, isPerSide, sideReps } from './history.js'
+import { uid, todayISO, fmtNum, exCount } from './format.js'
 import { t, nameFor } from './i18n-core.js'
 
-const PLAN_FMT = 1
-const WEEK_ORDER = [1, 2, 3, 4, 5, 6, 0]   // Mon-first, matching the Plan screen
+const PLAN_FMT = 2
 
 // Keep only the meaningful config fields, so the file stays small and readable.
 function cleanEx(e) {
@@ -48,7 +51,7 @@ function cleanEx(e) {
   return o
 }
 
-/** Build the shareable bundle: every routine, the week schedule, referenced customs. */
+/** Build the shareable bundle: every routine plus the referenced customs. */
 export function buildPlanBundle(S, name) {
   const routines = (S.routines || []).map(r => ({
     id: r.id, name: r.name, emoji: r.emoji, ...(r.prog ? { prog: r.prog } : {}), ex: (r.ex || []).map(cleanEx)
@@ -57,9 +60,7 @@ export function buildPlanBundle(S, name) {
   const customEx = (S.customEx || [])
     .filter(c => usedIds.has(c.id))
     .map(c => ({ id: c.id, n: c.n, bp: c.bp, ...(c.desc ? { desc: c.desc } : {}) }))
-  const week = {}
-  WEEK_ORDER.forEach(d => { if (S.week?.[d]) week[d] = S.week[d] })
-  return { forvia_plan: PLAN_FMT, exported: todayISO(), name: name || '', week, routines, customEx }
+  return { forvia_plan: PLAN_FMT, exported: todayISO(), name: name || '', routines, customEx }
 }
 
 /**
@@ -91,12 +92,12 @@ export function parsePlan(raw) {
   return {
     name: (data.name || '').trim(),
     routines,
-    week: data.week || {},
+    // `week` from an older export (PLAN_FMT 1) is read by nothing anymore — dropped here
+    // rather than carried through so a stale file can never resurrect the weekly schedule.
     customEx,
     dropped,
     routineCount: routines.length,
-    exerciseCount: routines.reduce((n, r) => n + r.ex.length, 0),
-    scheduledDays: WEEK_ORDER.filter(d => data.week?.[d]).length
+    exerciseCount: routines.reduce((n, r) => n + r.ex.length, 0)
   }
 }
 
@@ -104,10 +105,8 @@ export function parsePlan(raw) {
  * Merge a parsed bundle into a draft state `s` (call inside store.update).
  *  - customs: reuse one you already have with the same name + body part, else add it fresh
  *  - routines: always added as NEW routines (fresh ids) — never overwrites yours
- *  - schedule: optional; when on, the shared week REPLACES yours (days the shared plan
- *    leaves empty become rest days — a half-overwritten week would silently mix two plans)
  */
-export function mergePlan(s, bundle, { schedule } = {}) {
+export function mergePlan(s, bundle) {
   s.customEx = s.customEx || []
   const exIdMap = {}
   bundle.customEx.forEach(c => {
@@ -117,25 +116,15 @@ export function mergePlan(s, bundle, { schedule } = {}) {
     exIdMap[c.id] = nid
     s.customEx.push({ id: nid, n: c.n, bp: c.bp, ...(c.desc ? { desc: c.desc } : {}) })
   })
-  const ridMap = {}
   bundle.routines.forEach(r => {
-    const nid = uid()
-    ridMap[r.id] = nid
     s.routines.push({
-      id: nid,
+      id: uid(),
       name: r.name || t('Shared routine'),
       emoji: r.emoji,
       ...(r.prog ? { prog: r.prog } : {}),
       ex: (r.ex || []).map(e => ({ ...e, id: exIdMap[e.id] || e.id }))
     })
   })
-  if (schedule) {
-    WEEK_ORDER.forEach(d => { delete s.week[d] })
-    Object.entries(bundle.week || {}).forEach(([d, oldId]) => {
-      if (oldId === FREESTYLE_DAY) s.week[d] = FREESTYLE_DAY
-      else if (ridMap[oldId]) s.week[d] = ridMap[oldId]
-    })
-  }
   return { routines: bundle.routines.length }
 }
 
@@ -189,15 +178,6 @@ function routineHTML(r, unit) {
   </section>`
 }
 
-function weekHTML(S) {
-  const rows = WEEK_ORDER.map(d => {
-    const r = S.routines.find(x => x.id === S.week?.[d])
-    const val = r ? esc(r.name) : `<span class="rest">${esc(t('Rest'))}</span>`
-    return `<div class="w-row"><div class="w-day">${esc(t(DAYN[d]))}</div><div class="w-r">${val}</div></div>`
-  }).join('')
-  return `<div class="week">${rows}</div>`
-}
-
 /** Full self-contained HTML for the print/PDF view. */
 export function planPrintHTML(S, owner) {
   const unit = S.unit || 'kg'
@@ -207,7 +187,7 @@ export function planPrintHTML(S, owner) {
     : `<p class="none">${esc(t('No routines yet.'))}</p>`
   const sub = [owner, todayISO()].filter(Boolean).map(esc).join(' · ')
   return `<!doctype html><html><head><meta charset="utf-8">
-<title>${esc(t('Weekly Training Plan'))}</title>
+<title>${esc(t('Routines'))}</title>
 <style>
   @page { margin: 16mm 15mm; }
   * { box-sizing: border-box; }
@@ -224,13 +204,6 @@ export function planPrintHTML(S, owner) {
   header .sub { color: #6b7180; font-size: 13px; margin-top: 4px; }
 
   h3.block { font-size: 12px; letter-spacing: .1em; text-transform: uppercase; color: #8a90a0; margin: 0 0 8px; font-weight: 700; }
-
-  .week { border: 1px solid #e4e6ec; border-radius: 10px; overflow: hidden; margin-bottom: 26px; break-inside: avoid; page-break-inside: avoid; }
-  .w-row { display: flex; align-items: baseline; padding: 8px 14px; border-top: 1px solid #eef0f4; }
-  .w-row:first-child { border-top: 0; }
-  .w-day { width: 116px; font-weight: 600; color: #16181d; flex: none; }
-  .w-r { text-transform: capitalize; }
-  .rest, .w-r .rest { color: #a2a8b6; text-transform: none; }
 
   .routine { break-inside: avoid; page-break-inside: avoid; margin-bottom: 20px; padding: 14px 16px; border: 1px solid #e4e6ec; border-radius: 12px; }
   .r-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; border-bottom: 1px solid #eef0f4; padding-bottom: 8px; margin-bottom: 8px; break-after: avoid; page-break-after: avoid; }
@@ -254,11 +227,9 @@ export function planPrintHTML(S, owner) {
 <body><div class="doc">
   <header>
     <div class="kicker">Forvia</div>
-    <h1>${esc(t('Weekly Training Plan'))}</h1>
+    <h1>${esc(t('Routines'))}</h1>
     ${sub ? `<div class="sub">${sub}</div>` : ''}
   </header>
-  <h3 class="block">${esc(t('Week schedule'))}</h3>
-  ${weekHTML(S)}
   <h3 class="block">${esc(t('Routines'))}</h3>
   ${body}
   <footer>${esc(t('Made with Forvia'))} · forvia.duarte-santos.ch</footer>

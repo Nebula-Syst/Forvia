@@ -1,3 +1,4 @@
+import { useNavigate } from 'react-router-dom'
 import { useStore } from '../store/useStore.js'
 import { useUI } from '../store/useUI.js'
 import { todayISO } from '../lib/format.js'
@@ -16,6 +17,7 @@ const MEALS = [
 ]
 
 export default function Nutrition() {
+  const nav = useNavigate()
   const S = useStore(s => s.S)
   const toast = useUI(s => s.toast)
   const goals = S.nutritionGoals
@@ -28,7 +30,7 @@ export default function Nutrition() {
   return <div className="narrow">
     <div className="hdr">
       <div><h1>{t('Nutrition')}</h1><div className="sub">{t('Today')}</div></div>
-      <button className="iconbtn" onClick={notReady} aria-label={t('Nutrition goals')}><Icon name="target" /></button>
+      <button className="iconbtn" onClick={() => nav('/settings/nutrition')} aria-label={t('Nutrition goals')}><Icon name="target" /></button>
     </div>
 
     <div className="card" style={{ display: 'flex', alignItems: 'center', gap: 18, marginBottom: 12 }}>

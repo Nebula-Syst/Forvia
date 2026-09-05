@@ -75,6 +75,19 @@ const isAdmin = user => !!user && (employeeTypesOf(user).length > 0 || ADMIN_UID
 // saves *any* selection (including clearing every slot) that explicit array wins forever.
 const defaultBadges = rank => ['rank', ...(rank.prestige > 0 ? ['prestige'] : [])];
 const badgesFor = (user, rank) => Array.isArray(user.badges) ? user.badges : defaultBadges(rank);
+// Mirrors frontend/src/lib/rank.js TIERS (slug + level floor only — names/colors/art are
+// display-only and live purely on the client). Needed here just to validate a showcase
+// badge pick of 'rank:<slug>' against the level actually reached.
+const RANK_TIER_MINS = { iron: 1, bronze: 11, silver: 21, gold: 31, platinum: 41, diamond: 51, master: 61, champion: 71, elite: 81, legend: 91 };
+// Mirrors frontend/src/lib/streak.js FALLBACK_STREAK_TIERS — what a fresh instance (no
+// admin-authored streak tiers yet) shows/validates against, so a showcase badge pick of
+// 'streak:fallback-N' isn't rejected just because nobody's edited the admin list.
+const FALLBACK_STREAK_TIERS = [
+  { id: 'fallback-1', days: 1 }, { id: 'fallback-2', days: 3 }, { id: 'fallback-3', days: 7 },
+  { id: 'fallback-4', days: 14 }, { id: 'fallback-5', days: 21 }, { id: 'fallback-6', days: 30 },
+  { id: 'fallback-7', days: 60 }, { id: 'fallback-8', days: 100 }, { id: 'fallback-9', days: 180 },
+  { id: 'fallback-10', days: 365 },
+];
 
 // Same URL shape GET /api/uploads already serves workout photos through — an avatar is just
 // another file in that user's uploads dir, so it inherits that route's visibility rule for
@@ -84,11 +97,21 @@ const publicUser = user => {
   const rank = rankFor(user.id);
   return {
     id: user.id, name: user.name, admin: isAdmin(user), employeeTypes: employeeTypesOf(user),
+    // firstName/lastName are the real source of truth once set (see POST /api/account/name) —
+    // `name` is still what the rest of the app reads to display someone, kept in sync from
+    // the two parts server-side so nothing else has to change. null on accounts that have
+    // never saved a split, so the client knows to offer its one-time best-guess split rather
+    // than silently re-splitting `name` on every load (that re-guess was the actual bug: a
+    // compound given name like "Jose Maria" doesn't have a real first/last boundary a splitter
+    // can find, so re-deriving it every time undid any correction the person had made).
+    firstName: user.firstName ?? null, lastName: user.lastName ?? null,
+    username: user.username || null,
     public: !!user.public, rank, perks: perksFor(user.id),
     bio: user.bio || '', avatarUrl: avatarUrlOf(user),
     badges: badgesFor(user, rank),
     pinnedWorkoutIds: user.pinnedWorkoutIds || [], pinnedPR: user.pinnedPR || null,
     email: user.email || null, emailVerified: !!user.emailVerified, phone: user.phone || null,
+    created: user.created || null,
     // Streak days themselves are never stored — they're always recomputed client-side from
     // S.workouts (frontend lib/history.js streakDays), same reasoning as the "backend has no
     // copy of the exercise catalog" comment elsewhere: this backend has no copy of a user's
@@ -102,16 +125,16 @@ const publicUser = user => {
 // Perks ride along here too: they're cosmetic flair, meant to be seen by other people
 // (a legend frame, an animated name) — nothing sensitive about them.
 const socialUser = user => ({
-  id: user.id, name: user.name, perks: perksFor(user.id),
+  id: user.id, name: user.name, username: user.username || null, perks: perksFor(user.id),
   bio: user.bio || '', avatarUrl: avatarUrlOf(user), badges: badgesFor(user, rankFor(user.id)),
   pinnedWorkoutIds: user.pinnedWorkoutIds || [], pinnedPR: user.pinnedPR || null,
 });
 // Shared by GET /api/social/comments and the POST /api/social/comment response, so the
 // field list only lives in one place.
-const publicComment = c => ({
-  id: c.id, userId: c.userId, name: (db.users.find(u => u.id === c.userId) || {}).name || '?',
-  text: c.text, created: c.created,
-});
+const publicComment = c => {
+  const author = db.users.find(u => u.id === c.userId) || {};
+  return { id: c.id, userId: c.userId, name: author.name || '?', username: author.username || null, text: c.text, created: c.created };
+};
 // Fire-and-forget, same as the old atomicWrite(dbFile,...) call it replaces: every one of the
 // ~40 call sites below just does `saveDb();` with no await and no return value, so this stays
 // safe to call bare — a failed write is logged, never thrown, never blocks the response.
@@ -246,15 +269,6 @@ function cancelRestTimer(userId) {
   if (t) { clearTimeout(t); restTimers.delete(userId); }
 }
 
-// "Workout planned today" reminder — one per user per day, at their chosen time.
-// Duplicated (not imported) from frontend/src/lib/history.js effectiveRoutineId — tiny pure helper, not worth sharing across the two runtimes.
-function effectiveRoutineId(S, iso) {
-  const ov = S.dayPlan?.[iso];
-  if (ov === 'rest') return null;
-  if (ov && S.routines?.some(r => r.id === ov)) return ov;
-  const wd = new Date(iso + 'T12:00:00').getDay();
-  return S.week?.[wd] || null;
-}
 // Computes "now" in an arbitrary IANA zone (e.g. "Europe/Lisbon") instead of the server's own —
 // each user's reminder fires by their own clock, wherever they and their phone actually are.
 function userNow(tz) {
@@ -267,6 +281,9 @@ function userNow(tz) {
     return { date: `${g('year')}-${g('month')}-${g('day')}`, hhmm: `${g('hour')}:${g('minute')}` };
   } catch { return null; } // unknown/invalid tz string — skip this user rather than guess
 }
+// Used to be gated on effectiveRoutineId (S.week/S.dayPlan) and skipped rest days; there's
+// no weekly schedule left to consult (routines are picked freely each session), so this now
+// just checks whether *anything* was logged today rather than whether something was "planned".
 function reminderTick() {
   for (const user of db.users) {
     if (!db.subs.some(s => s.userId === user.id)) continue;
@@ -276,15 +293,12 @@ function reminderTick() {
     if (!now || S.reminder.time !== now.hhmm) continue;
     if (user.lastReminder === now.date) continue;
     if ((S.workouts || []).some(w => w.d === now.date)) continue;
-    const rid = effectiveRoutineId(S, now.date);
-    if (!rid) continue; // rest day — nothing planned
-    const routine = (S.routines || []).find(r => r.id === rid);
-    console.log('reminder firing', user.id, rid);
+    console.log('reminder firing', user.id);
     user.lastReminder = now.date;
     saveDb();
     sendPush(user.id, {
-      title: routine ? `${routine.emoji || '🏋️'} ${routine.name} today` : 'Workout planned today',
-      body: "It's on your plan — let's go 💪",
+      title: 'Workout reminder',
+      body: "You haven't logged a workout today — let's go 💪",
       tag: 'day-reminder'
     });
   }
@@ -308,17 +322,14 @@ function verifySig(token) {
   } catch { return null; }
   return payload;
 }
-// Session payload is `<uid>:<expiry>:<version>`, where the version is the user's `sv` counter.
-// Bumping `sv` (POST /api/logout/all) makes every cookie ever handed out for that account stop
-// verifying, which is the only revocation there was before short of deleting ./data/secret and
-// signing out the whole instance. Cookies minted before `sv` existed have no third field and are
-// read as version 0, matching a user who has never bumped — they stay valid until they expire.
-const sessionVersion = user => user.sv || 0;
-function makeSession(user) {
-  const exp = Date.now() + SESSION_DAYS * 86400000;
-  return sign(user.id + ':' + exp + ':' + sessionVersion(user));
-}
-function readSession(req) {
+// Session payload is `<uid>:<expiry>:<sid>`, where `sid` is the id of one entry in that user's
+// `sessions` array (see makeSession below) — the per-device session record that array entry
+// represents is the sole source of truth for whether a cookie is still valid. Revoking one
+// device (POST /api/account/sessions/revoke) removes just that entry; "sign out everywhere"
+// (POST /api/logout/all) empties the whole array. There is no version-counter fallback — this
+// replaced that mechanism outright, so every cookie issued before this change stops verifying
+// (its payload has no matching session record) and everyone signs in again once.
+function parseSessionCookie(req) {
   const cookies = Object.fromEntries((req.headers.cookie || '').split(';').map(c => {
     const i = c.indexOf('='); return i < 0 ? ['', ''] : [c.slice(0, i).trim(), c.slice(i + 1).trim()];
   }));
@@ -326,15 +337,30 @@ function readSession(req) {
   if (!tok) return null;
   const payload = verifySig(tok);
   if (!payload) return null;
-  const [uid, exp, ver] = payload.split(':');
-  if (!uid || +exp < Date.now()) return null;
-  const user = db.users.find(u => u.id === uid) || null;
+  const [uid, exp, sid] = payload.split(':');
+  if (!uid || !sid || +exp < Date.now()) return null;
+  return { uid, exp: +exp, sid };
+}
+function makeSession(user, req) {
+  const exp = Date.now() + SESSION_DAYS * 86400000;
+  const sess = {
+    id: crypto.randomBytes(9).toString('base64url'),
+    createdAt: new Date().toISOString(),
+    lastSeenAt: new Date().toISOString(),
+    ua: (req?.headers['user-agent'] || '').slice(0, 200),
+  };
+  if (!Array.isArray(user.sessions)) user.sessions = [];
+  user.sessions.push(sess);
+  saveDb();
+  return sign(user.id + ':' + exp + ':' + sess.id);
+}
+function readSession(req) {
+  const parsed = parseSessionCookie(req);
+  if (!parsed) return null;
+  const user = db.users.find(u => u.id === parsed.uid) || null;
   if (!user) return null;
   if (user.disabled) return null;           // disabled accounts are locked out everywhere
-  // Missing third field = pre-versioning cookie = version 0. Anything non-numeric is a malformed
-  // payload (it still had to pass the HMAC, so this is belt-and-braces) and is refused outright.
-  const claimed = ver === undefined ? 0 : Number(ver);
-  if (!Number.isInteger(claimed) || claimed !== sessionVersion(user)) return null;
+  if (!(user.sessions || []).find(s => s.id === parsed.sid)) return null;
   return user;
 }
 // Guard for /api/admin/* — resolves the caller and 401/403s if they aren't an admin.
@@ -346,8 +372,8 @@ function requireAdmin(req, res) {
   if (!isAdmin(user)) { audit(req, 'admin.denied', { ok: false, user }); json(res, 403, { error: 'forbidden' }); return null; }
   return user;
 }
-function sessionCookie(user) {
-  return `gymsid=${makeSession(user)}; Path=/; Max-Age=${SESSION_DAYS * 86400}; HttpOnly;${SECURE} SameSite=Lax`;
+function sessionCookie(user, req) {
+  return `gymsid=${makeSession(user, req)}; Path=/; Max-Age=${SESSION_DAYS * 86400}; HttpOnly;${SECURE} SameSite=Lax`;
 }
 const clearCookie = `gymsid=; Path=/; Max-Age=0; HttpOnly;${SECURE} SameSite=Lax`;
 
@@ -601,6 +627,25 @@ function statsFor(uid) {
   const workouts = S.workouts || [];
   const thisWeek = workouts.filter(w => weekKeyOf(w.d) === weekKeyOf(isoOf(new Date()))).length;
   return { streak: streakWeeksOf(workouts), thisWeek };
+}
+// Day-count streak (consecutive calendar days with a logged workout, counting back from
+// today) plus the admin bonus on top — mirrors frontend/src/lib/history.js streakDays(S)
+// exactly, since that's what the streak-badge day thresholds are checked against (both in
+// the UI and here, validating a showcase badge pick of 'streak:<tierId>').
+function currentStreakDays(uid) {
+  const workouts = (readState(uid) || {}).workouts || [];
+  let streak = 0;
+  if (workouts.length) {
+    const days = new Set(workouts.map(w => w.d));
+    const cur = new Date();
+    for (let i = 0; i < 3650; i++) {
+      if (days.has(isoOf(cur))) streak++;
+      else if (i > 0) break;
+      cur.setDate(cur.getDate() - 1);
+    }
+  }
+  const user = db.users.find(u => u.id === uid);
+  return Math.max(0, streak + (user?.streakBonus || 0));
 }
 
 /* ---------- rank / level ---------- */
@@ -887,6 +932,11 @@ function xpFor(uid) {
 // far past the cap you'd let it run. Level caps at 100 (Legend, ring full) once a whole cycle
 // has been earned past that baseline — readyToPrestige flips on, and stays on, until claimed.
 const CYCLE_XP = LEVEL_CUM[100];
+// The art (RankIcon.jsx's PrestigeIcon) and the badge picker (SettingsProfile.jsx) both
+// already clamp display at prestige 10 — there's no 11th tier of art to show. Enforcing the
+// same cap here means a level-100 account past it simply never goes readyToPrestige again,
+// rather than confirming into a prestige number nothing can ever render.
+const MAX_PRESTIGE = 10;
 function rankFor(uid) {
   const totalXp = xpFor(uid);
   const user = db.users.find(u => u.id === uid);
@@ -905,7 +955,7 @@ function rankFor(uid) {
   // just because the raw XP behind that cap was still there.
   const levelsDocked = db.cheatPenalties.filter(c => c.userId === uid && c.status !== 'overturned').reduce((n, c) => n + c.levels, 0);
   const level = Math.max(1, rawLevel - levelsDocked);
-  const readyToPrestige = level === 100;
+  const readyToPrestige = level === 100 && prestige < MAX_PRESTIGE;
   // Docked accounts always sit at the exact floor of their level (the fractional progress
   // within it is part of what got taken) — otherwise, the real xpInCycle position stands.
   const xp = levelsDocked > 0 ? LEVEL_CUM[level - 1] : (readyToPrestige ? LEVEL_CUM[100] : xpInCycle);
@@ -968,7 +1018,12 @@ function perksFor(uid) {
 // disappear from everyone's feed/leaderboard/discovery on their very next request.
 const isPublic = uid => { const u = db.users.find(x => x.id === uid); return !!u && !!u.public && !u.disabled; };
 const followingOf = uid => db.follows.filter(f => f.followerId === uid).map(f => f.followeeId).filter(isPublic);
-const FEED_LIMIT = 50;   // feed page size — a self-hosted instance's follow graph is small
+// Not real pagination — the frontend fetches this whole list in one call and reveals it
+// 5 cards at a time as you scroll (Social.jsx PAGE_SIZE), so FEED_LIMIT only exists as a
+// sanity ceiling against a pathological follow graph, not a page size. A self-hosted
+// instance's follow graph within the FEED_DAYS window is small enough that returning
+// everything in it is cheap.
+const FEED_LIMIT = 500;
 const FEED_DAYS = 30;
 // Shared by /api/social/feed (uids = who I follow) and /api/social/discover (uids =
 // public accounts I don't follow yet) — same shape either way, just a different guest list.
@@ -985,7 +1040,7 @@ function feedItemsFor(uids, me) {
       const reactions = db.reactions.filter(r => r.targetUid === uid && r.workoutId === w.id);
       const comments = db.comments.filter(c => c.targetUid === uid && c.workoutId === w.id);
       items.push({
-        uid, name: u.name, avatarUrl: avatarUrlOf(u), level, prestige, perks,
+        uid, name: u.name, username: u.username || null, avatarUrl: avatarUrlOf(u), level, prestige, perks,
         workout: {
           id: w.id, d: w.d, start: w.start, end: w.end, name: w.name, prs: w.prs || [],
           desc: w.desc || '', images: w.images || [], vol: w.vol || 0,
@@ -1132,7 +1187,7 @@ const routes = {
         text: `Confirm this is your email address for your Forvia account (${name}):\n\n${ORIGIN}/api/account/verify-email?token=${user.emailVerifyToken.token}\n\nIf you didn't request this, you can ignore this message — nothing changes until the link above is opened.`,
       });
     }
-    json(res, 200, { user: publicUser(user) }, { 'Set-Cookie': sessionCookie(user) });
+    json(res, 200, { user: publicUser(user) }, { 'Set-Cookie': sessionCookie(user, req) });
   },
 
   'POST /api/login': async (req, res) => {
@@ -1144,7 +1199,7 @@ const routes = {
     if (!user || !verifyPassword(String(body.password || ''), user.pwd.salt, user.pwd.hash)) return fail(user ? 'bad-password' : 'unknown-email');
     if (user.disabled) { audit(req, 'auth.login.fail', { ok: false, user, msg: 'account-disabled' }); return json(res, 403, { error: 'this account has been disabled' }) }
     audit(req, 'auth.login.ok', { user });
-    json(res, 200, { user: publicUser(user) }, { 'Set-Cookie': sessionCookie(user) });
+    json(res, 200, { user: publicUser(user) }, { 'Set-Cookie': sessionCookie(user, req) });
   },
 
   // Account info — one route per field (same convention as the /api/social/* setters):
@@ -1154,11 +1209,56 @@ const routes = {
     const user = readSession(req);
     if (!user) return json(res, 401, { error: 'not signed in' });
     const body = await readBody(req);
-    const name = String(body.name || '').trim().slice(0, 60);
-    if (!name) return json(res, 400, { error: 'name required' });
+    // firstName/lastName (both optional strings) is the real path now — they're stored as
+    // their own fields and `name` is just their join, so a compound given name never gets
+    // re-split by guesswork on a later load. `name` alone is kept working for any caller
+    // that still only sends that (there are none left in this app today, but it costs
+    // nothing to keep accepting it and it's a cheap way to not paint a future caller into
+    // this same corner).
+    let name;
+    if (body.firstName != null || body.lastName != null) {
+      const firstName = String(body.firstName || '').trim().slice(0, 40);
+      const lastName = String(body.lastName || '').trim().slice(0, 40);
+      name = `${firstName} ${lastName}`.trim().slice(0, 60);
+      if (!name) return json(res, 400, { error: 'name required' });
+      user.firstName = firstName;
+      user.lastName = lastName;
+    } else {
+      name = String(body.name || '').trim().slice(0, 60);
+      if (!name) return json(res, 400, { error: 'name required' });
+    }
     user.name = name;
     saveDb();
     audit(req, 'account.name.set', { user });
+    json(res, 200, { user: publicUser(user) });
+  },
+
+  // The public handle — shown instead of (or alongside) the real name anywhere someone is
+  // identified to other accounts (Social feed, public profile). Unlike name, this has to be
+  // unique instance-wide, same shape of check as email above. Lowercase-normalized so
+  // "JoseM" and "josem" can't both be claimed and then read as different people.
+  'POST /api/account/username': async (req, res) => {
+    const user = readSession(req);
+    if (!user) return json(res, 401, { error: 'not signed in' });
+    const body = await readBody(req);
+    const username = String(body.username || '').trim().toLowerCase();
+    if (!username) {
+      // Clearing it back out is allowed — the public profile falls back to the real name.
+      delete user.username;
+      saveDb();
+      audit(req, 'account.username.set', { user, msg: '(cleared)' });
+      return json(res, 200, { user: publicUser(user) });
+    }
+    if (!/^[a-z0-9_]{3,20}$/.test(username)) {
+      return json(res, 400, { error: 'usernames are 3-20 characters: letters, numbers, underscore only' });
+    }
+    if (username !== user.username) {
+      const other = db.users.find(u => u.username === username);
+      if (other && other.id !== user.id) return json(res, 409, { error: 'that username is already taken' });
+    }
+    user.username = username;
+    saveDb();
+    audit(req, 'account.username.set', { user });
     json(res, 200, { user: publicUser(user) });
   },
 
@@ -1189,9 +1289,23 @@ const routes = {
     const body = await readBody(req);
     const picked = (Array.isArray(body.badges) ? body.badges : []).slice(0, 3);
     const rank = rankFor(user.id);
-    const allowed = new Set(['rank', ...(rank.prestige > 0 ? ['prestige'] : [])]);
+    // 'rank:<slug>' for any tier actually reached, 'prestige:<n>' for any prestige level
+    // actually reached, 'streak:<tierId>' for any streak-badge tier actually reached (not
+    // just the current one in any case) — plus the legacy bare 'rank'/'prestige' (always
+    // resolves to whichever is current, see badgesFor/ProfileBadge on the client) so old
+    // saved picks keep working untouched.
+    const unlockedRankIds = Object.entries(RANK_TIER_MINS).filter(([, min]) => rank.level >= min).map(([slug]) => 'rank:' + slug);
+    const unlockedPrestigeIds = Array.from({ length: Math.min(rank.prestige, 10) }, (_, i) => 'prestige:' + (i + 1));
+    const streakDaysNow = currentStreakDays(user.id);
+    const streakTierList = db.streakTiers.length ? db.streakTiers : FALLBACK_STREAK_TIERS;
+    const unlockedStreakIds = streakTierList.filter(s => streakDaysNow >= s.days).map(s => 'streak:' + s.id);
+    const allowed = new Set(['rank', ...unlockedRankIds, ...(rank.prestige > 0 ? ['prestige'] : []), ...unlockedPrestigeIds, ...unlockedStreakIds]);
     const filled = picked.filter(Boolean);
-    if (filled.some(id => !allowed.has(id)) || new Set(filled).size !== filled.length) {
+    const familyOf = id => id === 'rank' || id.startsWith('rank:') ? 'rank'
+      : id === 'prestige' || id.startsWith('prestige:') ? 'prestige'
+        : id.startsWith('streak:') ? 'streak' : id;
+    const families = filled.map(familyOf);
+    if (filled.some(id => !allowed.has(id)) || new Set(filled).size !== filled.length || new Set(families).size !== families.length) {
       return json(res, 400, { error: 'invalid badge selection' });
     }
     while (picked.length < 3) picked.push(null);
@@ -1348,25 +1462,68 @@ div{max-width:360px}h1{font-size:20px;margin:0 0 8px}p{color:#9db8a8;line-height
     json(res, 200, { ok: true }, { 'Set-Cookie': clearCookie });
   },
 
-  // Reads the session purely so the sign-out can be recorded; the cookie is cleared either way.
-  // A logout with no valid cookie is a no-op and isn't worth an entry.
+  // Reads the session so the sign-out can be recorded, and now also removes this one device's
+  // session record — a stolen cookie from before a normal sign-out no longer keeps working
+  // until expiry. A logout with no valid cookie is a no-op and isn't worth an entry.
   'POST /api/logout': async (req, res) => {
     const user = readSession(req);
-    if (user) audit(req, 'auth.logout', { user });
+    if (user) {
+      const parsed = parseSessionCookie(req);
+      if (parsed) {
+        user.sessions = (user.sessions || []).filter(s => s.id !== parsed.sid);
+        saveDb();
+      }
+      audit(req, 'auth.logout', { user });
+    }
     json(res, 200, { ok: true }, { 'Set-Cookie': clearCookie });
   },
 
-  // "Sign out everywhere" — bumps this user's session version, which invalidates every cookie
+  // "Sign out everywhere" — empties this user's session list, which invalidates every cookie
   // ever issued for the account, on every device, including a copy someone else walked off with.
   // The caller's own cookie is cleared here too, so the browser doing it doesn't sit on a token
   // it no longer accepts. Passkeys are untouched: signing back in works immediately.
   'POST /api/logout/all': async (req, res) => {
     const user = readSession(req);
     if (!user) return json(res, 401, { error: 'not signed in' });
-    user.sv = sessionVersion(user) + 1;
+    user.sessions = [];
     saveDb();
     audit(req, 'auth.logout.all', { user });
     json(res, 200, { ok: true }, { 'Set-Cookie': clearCookie });
+  },
+
+  // Per-device session list for Settings → Account. Touches only the CURRENT request's own
+  // session record (lastSeenAt) — not on every authenticated route, to avoid a saveDb() write
+  // per API call. Never returns the signed cookie token itself, only record metadata.
+  'GET /api/account/sessions': async (req, res) => {
+    const user = readSession(req);
+    if (!user) return json(res, 401, { error: 'not signed in' });
+    const parsed = parseSessionCookie(req);
+    const sessions = user.sessions || [];
+    const mine = parsed ? sessions.find(s => s.id === parsed.sid) : null;
+    if (mine) { mine.lastSeenAt = new Date().toISOString(); saveDb(); }
+    const list = sessions
+      .map(s => ({ id: s.id, createdAt: s.createdAt, lastSeenAt: s.lastSeenAt, ua: s.ua || '', current: !!parsed && s.id === parsed.sid }))
+      .sort((a, b) => new Date(b.lastSeenAt) - new Date(a.lastSeenAt));
+    json(res, 200, { sessions: list });
+  },
+
+  // Revoke one device's session. If it's the caller's own current session, also clear their
+  // cookie so this device signs out immediately too (same as POST /api/logout).
+  'POST /api/account/sessions/revoke': async (req, res) => {
+    const user = readSession(req);
+    if (!user) return json(res, 401, { error: 'not signed in' });
+    const body = await readBody(req);
+    const id = String(body.id || '').trim();
+    if (!id) return json(res, 400, { error: 'id required' });
+    const sessions = user.sessions || [];
+    const idx = sessions.findIndex(s => s.id === id);
+    if (idx < 0) return json(res, 404, { error: 'session not found' });
+    sessions.splice(idx, 1);
+    saveDb();
+    audit(req, 'account.sessions.revoke', { user });
+    const parsed = parseSessionCookie(req);
+    if (parsed && parsed.sid === id) return json(res, 200, { ok: true }, { 'Set-Cookie': clearCookie });
+    json(res, 200, { ok: true });
   },
 
   'GET /api/data': async (req, res) => {
@@ -1598,7 +1755,7 @@ div{max-width:360px}h1{font-size:20px;margin:0 0 8px}p{color:#9db8a8;line-height
     if (!u) return json(res, 404, { error: 'no such user' });
     const delta = body.delta === -1 ? -1 : 1;
     const current = u.prestigeConfirmed || 0;
-    const target = Math.max(0, current + delta);
+    const target = Math.max(0, Math.min(MAX_PRESTIGE, current + delta));
     if (target === current) return json(res, 400, { error: 'already at the limit' });
     if (delta === 1) u.prestigeBaselineXp = rankFor(u.id).totalXp;
     u.prestigeConfirmed = target;
@@ -2231,14 +2388,16 @@ div{max-width:360px}h1{font-size:20px;margin:0 0 8px}p{color:#9db8a8;line-height
   },
 
   // A single public profile — tapping a name in the feed lands here. 404s the instant
-  // the account isn't public any more, same rule as everywhere else in Social.
+  // the account isn't public any more, same rule as everywhere else in Social — except
+  // your own profile, which you can always view (Social's "My profile" button) regardless
+  // of your own public/private setting.
   'GET /api/social/user': async (req, res) => {
     const me = readSession(req);
     if (!me) return json(res, 401, { error: 'not signed in' });
     const q = new URL(req.url, 'http://x').searchParams;
     const uid = q.get('uid') || '';
     const u = db.users.find(x => x.id === uid);
-    if (!u || u.disabled || !u.public) return json(res, 404, { error: 'not found' });
+    if (!u || u.disabled || (!u.public && uid !== me.id)) return json(res, 404, { error: 'not found' });
     // Pinned posts (Diamond tier / Prestige 3) surface first on the profile — everywhere
     // else (the regular feed) stays purely chronological.
     const pinned = new Set(u.pinnedWorkoutIds || []);

@@ -3,8 +3,8 @@ import { useNavigate, useLocation } from 'react-router-dom'
 import { useStore } from '../store/useStore.js'
 import { useUI } from '../store/useUI.js'
 import { exOr } from '../lib/exercises.js'
-import { effectiveRoutine, effectiveRoutineId, FREESTYLE_DAY, lastEntryFor, buildSets, freestyleConfig, defaultConfig, setsDoneActive, workoutVolume, supersetUnits, unitOf, setLabel, modeOf, isBw, repStep, EFFORT, effortOf, capEffort, cascadeWeight, removeRowAt, pairAdjacent, unpairSuperset, cleanupSg, setLooksOff, bestWeightFor, fmtSec } from '../lib/history.js'
-import { fmtVol, fmtNum, todayISO, exCount, DAYN, uid } from '../lib/format.js'
+import { lastEntryFor, buildSets, freestyleConfig, defaultConfig, setsDoneActive, workoutVolume, supersetUnits, unitOf, setLabel, modeOf, isBw, repStep, EFFORT, effortOf, capEffort, cascadeWeight, removeRowAt, pairAdjacent, unpairSuperset, cleanupSg, setLooksOff, bestWeightFor, fmtSec } from '../lib/history.js'
+import { fmtVol, fmtNum, exCount, uid } from '../lib/format.js'
 import { beep, vibrate } from '../lib/sound.js'
 import { t, nameFor } from '../lib/i18n.js'
 import { api } from '../lib/api.js'
@@ -19,37 +19,27 @@ import { loadOfActive } from '../lib/muscles.js'
 import BodyMap from '../components/BodyMap.jsx'
 
 /* ---------- start chooser (no active workout) ---------- */
+// No more "today's plan" to feature above the rest — every routine is picked freely each
+// session (see the FREESTYLE fab/rail buttons for training without one at all), so this is
+// just a flat list rather than a highlighted card plus "other routines" underneath it.
 function StartChooser() {
   const nav = useNavigate()
   const S = useStore(s => s.S)
-  const todayR = effectiveRoutine(S, todayISO())
-  const todayIsFreestyle = effectiveRoutineId(S, todayISO()) === FREESTYLE_DAY
-  const todayOvr = S.dayPlan[todayISO()] !== undefined
-  const others = S.routines.filter(r => r !== todayR)
 
   return <div className="narrow">
-    <div className="hdr"><div><h1>{t('Workout')}</h1><div className="sub">{t(DAYN[new Date().getDay()])} — {todayR ? t('today is {0}', todayR.name) : todayIsFreestyle ? t('today is freestyle') : t('rest day, but no one’s stopping you')}</div></div></div>
-    {todayR && <div className="card" style={{ borderColor: 'var(--acc)' }}>
-      <div className="row between" style={{ marginBottom: 4 }}>
-        <h2 className="accent" style={{ margin: 0 }}>{t("Today's plan")}{todayOvr ? ' · ' + t('rescheduled') : ''}</h2>
-        <div className="row" style={{ gap: 4 }}>
-          <button className="iconbtn" style={{ width: 28, height: 28, fontSize: 13 }} aria-label={t('Edit routine')} onClick={() => nav('/plan/r/' + todayR.id)}><Icon name="pencil" /></button>
-          <button className="iconbtn" style={{ width: 28, height: 28, fontSize: 13 }} aria-label={t('Delete routine')} onClick={() => deleteRoutine(todayR)}><Icon name="trash" /></button>
-        </div>
-      </div>
-      <div className="row between" style={{ marginBottom: 12 }}>
-        <div><div className="big">{todayR.name}</div><div className="muted small">{exCount(todayR.ex.length)}</div></div>
-        <span className="lrow-i" style={{ width: 38, height: 38, borderRadius: 9, fontSize: 22 }}><Icon name={glyphOf(todayR.emoji)} /></span>
-      </div>
-      <Button variant="primary" icon="play" onClick={() => startFlow(todayR.id)}>{t('Start {0}', todayR.name)}</Button>
-    </div>}
-    {others.length > 0 && <><h4 className="sec">{t('Routines')}</h4>
-      <div className="list">{others.map(r => <div key={r.id} className="item" onClick={() => startFlow(r.id)}>
+    <div className="hdr">
+      <div><h1>{t('Workout')}</h1><div className="sub">{t('Pick a routine to start')}</div></div>
+      {/* Home's header icon now opens the calendar instead of /routines (see sheets.jsx
+          calendarSheet) — this is the surviving way in to create/rename/delete routines. */}
+      <button className="iconbtn" onClick={() => nav('/routines')} aria-label={t('Manage routines')}><Icon name="clipboard" /></button>
+    </div>
+    {S.routines.length > 0 ? <div className="list">{S.routines.map(r => <div key={r.id} className="item" onClick={() => startFlow(r.id)}>
         <span className="lrow-i"><Icon name={glyphOf(r.emoji)} /></span>
         <div className="grow"><div className="tt">{r.name}</div><div className="ss">{exCount(r.ex.length)}</div></div>
-        <button className="iconbtn" aria-label={t('Edit routine')} onClick={e => { e.stopPropagation(); nav('/plan/r/' + r.id) }}><Icon name="pencil" /></button>
+        <button className="iconbtn" aria-label={t('Edit routine')} onClick={e => { e.stopPropagation(); nav('/routines/r/' + r.id) }}><Icon name="pencil" /></button>
         <button className="iconbtn" aria-label={t('Delete routine')} onClick={e => { e.stopPropagation(); deleteRoutine(r) }}><Icon name="trash" /></button>
-        <span className="tag acc">{t('Start')}</span></div>)}</div></>}
+        <span className="tag acc">{t('Start')}</span></div>)}</div>
+      : <div className="empty"><div className="ico"><Icon name="dumbbell" /></div>{t('No routines yet — create one below, or just train freestyle.')}</div>}
   </div>
 }
 
@@ -74,7 +64,7 @@ export function WorkoutStartActions() {
   const addRoutine = () => {
     const r = { id: uid(), name: t('New routine'), emoji: DEFAULT_GLYPH, ex: [] }
     update(s => { s.routines.push(r) })
-    nav('/plan/r/' + r.id)
+    nav('/routines/r/' + r.id)
   }
 
   return (
@@ -729,6 +719,7 @@ function ActiveWorkout() {
             center instead to actually land level with the round buttons either side. */}
         <div style={{ flex: 1, marginLeft: 10, fontWeight: 600 }}>{A.name}</div>
         <button className="iconbtn" aria-label={t('Clock')} onClick={openClockSheet}><Icon name="clock" /></button>
+        <button className="iconbtn" aria-label={paused ? t('Resume workout') : t('Pause workout')} onClick={togglePause}><Icon name={paused ? 'play' : 'pause'} /></button>
         <button className="iconbtn" style={{ color: 'var(--acc)' }} aria-label={t('Finish')} onClick={finishWorkout}><Icon name="check" /></button>
       </div>
       <div className="wprog"><i style={{ width: (total ? done / total * 100 : 0) + '%' }} /></div>

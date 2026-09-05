@@ -72,11 +72,12 @@ export default function SettingsData() {
     onConfirm: () => { replaceState(DEF); toast(t('All data reset')); nav('/home') },
   })
 
-  return <div className="narrow">
+  return <div className="narrow settings-page">
     <div className="hdr">
       <button className="iconbtn" onClick={() => nav('/settings')} aria-label={t('Settings')}><Icon name="chevronLeft" /></button>
       <div style={{ flex: 1, marginLeft: 10 }}><h1>{t('Data')}</h1></div>
     </div>
+    <p className="settings-subtitle">{t('Back up, import, or reset your data.')}</p>
 
     {/* What you'd actually be exporting/losing, at a glance — before you go pick an action
         below. Purely computed from S, nothing new to store or sync. Same "Progress Rings"

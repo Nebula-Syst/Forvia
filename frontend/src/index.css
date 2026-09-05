@@ -520,15 +520,6 @@ h4.sec{
   box-shadow:var(--shadow-md);color:var(--label);font-size:13px;font-weight:600;
 }
 #tabbar .startfab .opt:active{filter:brightness(.92)}
-/* .rec = the session is live (tap to pause); .paused = it's on hold and the active-workout
-   page blocks logging until this is tapped again. A calm pulsing ring says "running fine";
-   the button turning red on its own says "stopped, do something". */
-#tabbar .startfab.rec .main::after{
-  content:'';position:absolute;inset:-2px;border-radius:50%;
-  border:2px solid var(--acc);animation:ping 1.9s var(--ease) infinite;
-}
-@keyframes ping{0%{transform:scale(1);opacity:.7}100%{transform:scale(1.06);opacity:0}}
-#tabbar .startfab.paused .main{background:var(--red);color:#fff;box-shadow:0 6px 18px -4px color-mix(in srgb,var(--red) 55%,transparent)}
 /* Dims the page behind the two revealed circles so they read as a deliberate menu, not a
    layout glitch. Sits outside #tabbar but under it in z-index, so the tab buttons and the
    fab itself (both inside #tabbar's own stacking context) always paint above it untouched —
@@ -586,23 +577,40 @@ h4.sec{
 }
 
 /* ------------------------------------------------------------ week strip -- */
-.week{display:flex;justify-content:space-between;gap:4px}
+/* Fixed to the current week — no more prev/next nav, browsing other weeks
+   happens through the month calendar sheet instead. Bare on the page (no
+   .card) — see Home.jsx. */
+.week{display:flex;justify-content:space-between;gap:2px;margin-bottom:16px}
 .wday{
-  flex:1;text-align:center;padding:8px 2px 9px;border-radius:10px;
+  flex:1;text-align:center;padding:3px 2px 6px;border-radius:8px;
   background:none;border:none;transition:background var(--fast);
+  display:flex;flex-direction:column;align-items:center;justify-content:flex-start;
+  min-height:44px;
 }
-.wday .lbl{font-size:11px;color:var(--label-3);font-weight:500;text-transform:uppercase;letter-spacing:.03em}
-.wday .num{font-size:17px;font-weight:400;margin:4px 0;letter-spacing:-.012em}
-.wday .dot{width:5px;height:5px;border-radius:50%;background:transparent;margin:0 auto}
-.wday .dot.plan{background:var(--label-3)}
-.wday .dot.ovr{background:var(--orange)}
-.wday .dot.done{background:var(--acc)}
+.wday .lbl{font-size:12px;color:var(--label-2);font-weight:600;text-transform:uppercase;letter-spacing:.02em}
+/* Small dot marking "today", sitting above its letter — independent of that day's fill
+   state below (a rest day today still gets the dot, just an empty ring under it). */
+.wday-tick{height:6px;display:flex;align-items:center;justify-content:center}
+.wday-tick-dot{width:4px;height:4px;border-radius:50%;background:var(--acc)}
+/* Attendance circle: two independent halves, not a generic "either" fill — left lights
+   up for a logged workout, right for a logged food entry, so which half is dark tells
+   you which one you skipped. Both lit reads as solid (no seam, same accent color either
+   side) plus a checkmark on top. The border always matches whatever's lit — a half-fill
+   with a leftover gray border read as broken before. Halves are two pseudo-elements
+   clipped to their side rather than a single conic-gradient, since the two signals are
+   independent (conic-gradient can't light two arbitrary, unrelated arcs at once). */
+.day-ring{
+  width:28px;height:28px;margin:6px auto 0;border-radius:50%;box-sizing:border-box;
+  border:2px solid var(--label-3);display:flex;align-items:center;justify-content:center;
+  color:var(--on-acc);font-size:14px;--icon-stroke:3;position:relative;overflow:hidden;
+}
+.day-ring::before,.day-ring::after{content:'';position:absolute;inset:0;background:var(--acc);opacity:0}
+.day-ring::before{clip-path:inset(0 50% 0 0)}   /* left half = workout */
+.day-ring::after{clip-path:inset(0 0 0 50%)}    /* right half = food */
+.day-ring.l-on::before,.day-ring.r-on::after{opacity:1}
+.day-ring.l-on,.day-ring.r-on{border-color:var(--acc)}
+.day-ring>*{position:relative;z-index:1}
 .wday:active{background:var(--surface-2)}
-.wday.today .num{
-  background:var(--acc);color:var(--on-acc);font-weight:600;
-  width:31px;height:31px;border-radius:50%;display:flex;align-items:center;
-  justify-content:center;margin:2px auto;
-}
 
 /* ----------------------------------------------------------------- list -- */
 .list{display:flex;flex-direction:column;gap:8px}
@@ -904,7 +912,6 @@ h4.sec{
 :root[data-reduce-motion] .name-animated,
 :root[data-reduce-motion] .border-beam::before,
 :root[data-reduce-motion] .rank-ring-badge,
-:root[data-reduce-motion] #tabbar .startfab.rec .main::after,
 :root[data-reduce-motion] .fab-scrim{
   animation:none;
 }
@@ -962,7 +969,14 @@ h4.sec{
 .badge-slot.filled{color:var(--acc);background:color-mix(in srgb, var(--acc-soft) 55%, var(--surface-2));border-color:transparent}
 .badge-slot.on{border-color:var(--acc);box-shadow:0 0 0 3px color-mix(in srgb, var(--acc) 25%, transparent)}
 .badge-slot.pulse{animation:badge-pulse 2s ease-in-out infinite}
-.badges-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+.badge-group{margin-bottom:8px}
+.badge-group + .badge-group{margin-top:4px}
+.badge-group-hdr{
+  width:100%;display:flex;align-items:center;gap:8px;padding:10px 2px;background:none;border:none;
+  color:var(--label);font-size:15px;font-weight:600;cursor:pointer;
+}
+.badge-group-title{flex:1;text-align:left}
+.badges-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;padding-bottom:10px}
 .badge-pick{
   position:relative;border-radius:14px;padding:12px 6px 10px;display:flex;flex-direction:column;align-items:center;gap:6px;
   background:var(--glass-bg-2);border:2px solid transparent;transition:transform var(--fast),border-color var(--fast);
@@ -1311,6 +1325,36 @@ button.wstat:active{transform:scale(.95)}
   position:fixed;left:12px;right:12px;bottom:calc(88px + var(--sab));z-index:55;
   display:flex;gap:10px;
 }
+
+/* Mini-player-style way back into a running session from anywhere else in the app — the tab
+   bar's own button no longer doubles as its transport control (ActiveWorkoutPill.jsx). Same
+   fixed-positioning recipe as #timer, pushed up further while the rest-timer bar is also on
+   screen (body.resting) so the two floating bars stack instead of overlapping. */
+.active-pill{
+  position:fixed;left:12px;right:12px;bottom:calc(88px + var(--sab));z-index:58;
+  display:flex;align-items:center;gap:12px;text-align:left;width:auto;
+  padding:8px 10px;border-radius:var(--r-lg);
+  background:color-mix(in srgb,var(--surface) 97%,transparent);background-image:var(--glass-sheen);
+  backdrop-filter:saturate(var(--glass-sat)) blur(var(--glass-blur));
+  -webkit-backdrop-filter:saturate(var(--glass-sat)) blur(var(--glass-blur));
+  border:1px solid var(--glass-border);box-shadow:var(--shadow-lg);
+  animation:slideup var(--med) var(--ease);
+}
+body.resting .active-pill{bottom:calc(210px + var(--sab))}
+.active-pill:active{filter:brightness(.95)}
+.active-pill-ico{
+  width:50px;height:50px;border-radius:9px;flex:none;
+  display:flex;align-items:center;justify-content:center;font-size:21px;
+  background:var(--surface-2);color:var(--label-2);
+}
+.active-pill-m{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+.active-pill-t{font-size:15px;font-weight:600;letter-spacing:-.012em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.active-pill-s{font-size:13px;color:var(--label-2);font-variant-numeric:tabular-nums}
+.active-pill-play{
+  flex:none;width:38px;height:38px;border-radius:50%;
+  display:flex;align-items:center;justify-content:center;
+  background:var(--acc);color:var(--on-acc);font-size:15px;
+}
 #timer .t{font-size:26px;font-weight:600;letter-spacing:-.026em;font-variant-numeric:tabular-nums;min-width:66px}
 #timer .bar{flex:1;height:4px;background:var(--surface-3);border-radius:99px;overflow:hidden}
 #timer .bar i{display:block;height:100%;background:var(--acc);transition:width 1s var(--ease)}
@@ -1576,6 +1620,78 @@ button.wstat:active{transform:scale(.95)}
   position:absolute;top:14px;right:14px;background:color-mix(in srgb, var(--acc) 20%, transparent);
   color:var(--acc);font-size:10.5px;font-weight:700;padding:3px 8px;border-radius:99px;
 }
+/* Desktop-only lift — the press feedback above already covers touch; a pointer that can
+   hover gets a matching-but-distinct cue instead of nothing, same idiom as .dtable tr:hover. */
+@media (hover:hover){
+  .settings-tile:hover{background:var(--glass-bg-2);transform:translateY(-1px);box-shadow:var(--shadow-md)}
+}
+
+/* Settings home groups its tiles under h4.sec labels (same small-caps convention as Rank's
+   "Tier path" / SettingsData's "Your data") instead of one undifferentiated grid — the grid
+   itself is unchanged, this just adds a heading in the gap above each cluster. */
+.settings-home h4.sec:first-of-type{margin-top:4px}
+
+/* Every settings sub-page (all of views/settings/* except Profile, which keeps its own
+   layout) opts into this class on its outer .narrow wrapper. Scoped here rather than
+   widening .sect/.sect-t themselves, which are shared by every other screen in the app. */
+.settings-page .sect{margin-bottom:28px}
+.settings-page .sect-t{padding-bottom:9px}
+/* The one-line "what this page is for" caption under each <h1> — pure hierarchy, no new
+   information architecture. Sits tight under the header, same dim tone as .lrow-s. */
+.settings-subtitle{
+  font-size:13.5px;color:var(--label-2);line-height:1.4;
+  margin:-10px 2px 22px;max-width:34em;
+}
+
+/* Nutrition goals hero (SettingsNutrition) — calorie ring + one editable row per macro
+   (grams/percent shown, only the % stepper is interactive; grams/calories are always derived,
+   never typed in directly). */
+.nutgoal-hero{
+  display:flex;gap:22px;align-items:flex-start;margin:4px 2px 22px;padding:20px;
+}
+.nutgoal-cals{flex:none;padding-top:2px}
+.nutgoal-macros{flex:1;display:flex;flex-direction:column;gap:16px;min-width:0}
+.nutgoal-macro-row+.nutgoal-macro-row{padding-top:16px;border-top:1px solid var(--sep)}
+.nutgoal-dot{width:9px;height:9px;border-radius:99px;flex:none}
+.nutgoal-slider{margin-top:2px}
+
+/* Discover's "suggested people" strip — horizontally scrollable small cards, one tap to
+   follow, above the (post-based) discover feed which stays empty until someone you don't
+   follow yet has actually posted something. */
+.suggest-strip{
+  display:flex;gap:10px;overflow-x:auto;padding:2px 2px 14px;margin:0 -2px 4px;
+  scrollbar-width:none;
+}
+.suggest-strip::-webkit-scrollbar{display:none}
+.suggest-card{
+  flex:none;width:104px;text-align:center;padding:14px 10px;
+  background:var(--glass-bg);background-image:var(--glass-sheen);
+  backdrop-filter:saturate(var(--glass-sat)) blur(var(--glass-blur));
+  -webkit-backdrop-filter:saturate(var(--glass-sat)) blur(var(--glass-blur));
+  border:1px solid var(--glass-border);box-shadow:var(--shadow-sm);
+  border-radius:var(--r-card);cursor:pointer;
+}
+.suggest-card .avatar{margin:0 auto}
+.suggest-card .tt{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+/* Plain numeric input + unit suffix (SettingsNutrition's Height/Age) — a Stepper's +/-
+   buttons squeeze the number into too little width, cutting off 2-3 digit values. */
+.unit-field{
+  flex:none;display:flex;align-items:center;gap:6px;width:110px;
+  background:var(--glass-bg-2);border:1px solid var(--glass-border);border-radius:var(--r);
+  padding:9px 13px;
+}
+.unit-field .num{
+  flex:1;min-width:0;text-align:right;background:none;border:none;outline:none;
+  font-size:17px;font-weight:500;letter-spacing:-.012em;padding:0;color:var(--label-1);
+  -moz-appearance:textfield;appearance:textfield;
+}
+.unit-field .num::-webkit-inner-spin-button{display:none}
+.unit-field .dim{font-size:13px;flex:none}
+@media (max-width:420px){
+  .nutgoal-hero{flex-direction:column;align-items:stretch;gap:18px}
+  .nutgoal-cals{align-self:center}
+}
 
 /* --- admin data table (Admin panel — Users/Log) — dense, sortable-feeling rows for a list
    that's a scroll-forever headache as cards. Desktop-first on purpose: this surface is never
@@ -1659,8 +1775,6 @@ button.wstat:active{transform:scale(.95)}
 .cal-d.today{box-shadow:inset 0 0 0 1.8px var(--acc)}
 .cal-d i{width:5px;height:5px;border-radius:50%;background:transparent}
 .cal-d i.done{background:var(--acc)}
-.cal-d i.plan{background:var(--label-3)}
-.cal-d i.ovr{background:var(--orange)}
 .cal-legend{display:flex;gap:14px;justify-content:center;margin-top:12px;font-size:12px;color:var(--label-3)}
 .cal-legend i{display:inline-block;width:6px;height:6px;border-radius:50%;margin-right:5px}
 
@@ -1673,6 +1787,7 @@ button.wstat:active{transform:scale(.95)}
 }
 .swatch:active{transform:scale(.9)}
 .swatch.on{transform:scale(1.08)}
+@media (hover:hover){ .swatch:not(.on):hover{transform:scale(1.06)} }
 .swatch.on::after{
   content:'';position:absolute;inset:-5px;border-radius:50%;
   box-shadow:0 0 0 2px var(--label),0 0 12px -1px var(--label-2);
@@ -1683,12 +1798,13 @@ button.wstat:active{transform:scale(.95)}
 /* Each swatch is a tiny mock card in that theme's own colours (hardcoded — it has to show
    dark/light/prestige regardless of which one :root is actually wearing right now), so
    picking a theme is "which of these do I like" instead of reading three plain words. */
-.theme-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:4px}
+.theme-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:4px}
 .theme-swatch{
-  position:relative;border-radius:16px;padding:10px 10px 9px;display:flex;flex-direction:column;gap:8px;
-  border:2px solid transparent;transition:transform var(--fast),border-color var(--fast);
+  position:relative;border-radius:16px;padding:10px 10px 9px;display:flex;flex-direction:column;gap:9px;
+  border:2px solid transparent;transition:transform var(--fast),border-color var(--fast),box-shadow var(--fast);
 }
 .theme-swatch:active{transform:scale(.96)}
+@media (hover:hover){ .theme-swatch:not(.locked):not(.on):hover{box-shadow:0 0 0 1.5px var(--glass-border)} }
 .theme-swatch.on{border-color:var(--acc);box-shadow:0 0 0 3px color-mix(in srgb, var(--acc) 25%, transparent)}
 .theme-swatch.locked{opacity:.6}
 .theme-swatch-card{
@@ -1722,22 +1838,6 @@ button.wstat:active{transform:scale(.95)}
 }
 .ss-ex{position:relative}
 .ss-amp{text-align:center;font-size:15px;font-weight:600;color:var(--acc);margin:14px 0 8px}
-
-/* --- home: today's session row --- */
-.today-row{
-  display:flex;align-items:center;justify-content:space-between;gap:10px;
-  margin-top:12px;padding:12px 14px;border-radius:var(--r);
-  background:color-mix(in srgb, var(--acc-soft) 55%, var(--glass-bg-2));
-  border:1px solid var(--acc-line);box-shadow:var(--shadow-sm);
-  transition:background var(--fast),transform var(--fast) var(--ease);width:100%;text-align:left;
-}
-.today-row:active{background:var(--acc-soft);transform:scale(.99)}
-.today-row .lbl2{font-size:11px;font-weight:500;letter-spacing:.03em;text-transform:uppercase;color:var(--label-3)}
-.today-row .ttl{
-  font-weight:500;font-size:17px;line-height:1.25;text-transform:capitalize;
-  letter-spacing:-.012em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:2px;
-}
-.today-row .sub{font-size:12.5px;color:var(--label-2);margin-top:1px}
 
 /* --- home: progress ring around today's badge, and the KPI ring tiles --- */
 .ring-badge{width:100%;height:100%;border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;background:var(--tint,var(--acc))}
@@ -1782,6 +1882,8 @@ button.wstat:active{transform:scale(.95)}
   .center{left:calc(50% + var(--sidenav-w)/2);width:340px}
   #timer{left:calc(50% + var(--sidenav-w)/2);right:auto;margin-left:-260px;width:520px;bottom:32px}
   .sticky-actions{left:calc(50% + var(--sidenav-w)/2);right:auto;margin-left:-260px;width:520px;bottom:32px}
+  .active-pill{left:calc(50% + var(--sidenav-w)/2);right:auto;margin-left:-260px;width:520px;bottom:32px}
+  body.resting .active-pill{bottom:110px}
   /* 520px fits the clock, the bar and all three controls on one line again */
   #timer.rest{flex-direction:row;align-items:center;gap:14px}
   #timer.rest .head{flex:1;min-width:0}
@@ -1829,7 +1931,6 @@ button.wstat:active{transform:scale(.95)}
 @media (hover:hover){
   .item:hover{background:var(--glass-bg-2);transform:translateY(-1px);box-shadow:var(--shadow-sm)}
   .tile.tappable:hover{background:var(--glass-bg-2);transform:translateY(-1px);box-shadow:var(--shadow-sm)}
-  .today-row:hover{background:color-mix(in srgb, var(--acc-soft) 70%, var(--glass-bg-2));transform:translateY(-1px)}
   .lrow.tap:hover{background:var(--surface-2)}
   .cal-d:hover{background:var(--surface-2)}
   .chip:not(.on):hover{background:var(--surface-2)}
@@ -1840,5 +1941,5 @@ button.wstat:active{transform:scale(.95)}
   .btn:not(:disabled):hover{transform:translateY(-1px);box-shadow:var(--shadow-sm)}
   .btn.primary:not(:disabled):hover{box-shadow:var(--shadow-md)}
   .btn.ghost:hover,.btn.plain:hover{background:var(--glass-bg-2)}
-  .item,.tile.tappable,.today-row,.lrow.tap,.chip,.glyph-cell,.cal-d,.swatch{cursor:pointer}
+  .item,.tile.tappable,.lrow.tap,.chip,.glyph-cell,.cal-d,.swatch{cursor:pointer}
 }

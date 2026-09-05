@@ -52,11 +52,12 @@ export default function SettingsWorkout() {
   const wakeOK = wakeLockSupported()
   const vibOK = vibrationSupported()
 
-  return <div className="narrow">
+  return <div className="narrow settings-page">
     <div className="hdr">
       <button className="iconbtn" onClick={() => nav('/settings')} aria-label={t('Settings')}><Icon name="chevronLeft" /></button>
       <div style={{ flex: 1, marginLeft: 10 }}><h1>{t('Workout')}</h1></div>
     </div>
+    <p className="settings-subtitle">{t('How a workout session looks and behaves while you train.')}</p>
 
     <Section title={t('Logging')} footer={t('Note: switching units only changes the label — logged numbers are not converted.')}>
       <Row icon="scale" iconTint="var(--teal)" title={t('Weight unit')}>

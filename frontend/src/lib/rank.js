@@ -16,3 +16,9 @@ export const TIERS = [
 ]
 
 export const tierFor = level => TIERS.find(t => level >= t.min && level <= t.max) || TIERS[0]
+
+export const tierBySlug = slug => TIERS.find(t => t.slug === slug) || TIERS[0]
+
+// Every tier at or below the level actually reached — these are the ones a "rank" showcase
+// badge (SettingsProfile.jsx) may be set to, not just the current one.
+export const unlockedTiers = level => TIERS.filter(t => level >= t.min)

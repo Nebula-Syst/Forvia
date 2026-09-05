@@ -1,11 +1,11 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useStore } from '../store/useStore.js'
-import { effectiveRoutine, effectiveRoutineId, FREESTYLE_DAY, streakDays, lastBW } from '../lib/history.js'
+import { streakDays, lastBW } from '../lib/history.js'
 import { loadOfWorkouts } from '../lib/muscles.js'
-import { fmtNum, fmtDate, todayISO, isoOf, weekKey, DAYS } from '../lib/format.js'
+import { fmtNum, fmtDate, todayISO, isoOf, weekKey } from '../lib/format.js'
 import { t, dateLocale } from '../lib/i18n.js'
-import { bwSheet, goalSheet, dayOverrideSheet, calendarSheet, startFlow, bwDeltaColor } from '../sheets.jsx'
+import { bwSheet, goalSheet, calendarSheet, dayDetailSheet, bwDeltaColor } from '../sheets.jsx'
 import { streakTiers as fetchStreakTiers } from '../lib/api.js'
 import { tierForDays } from '../lib/streak.js'
 import LineChart from '../components/LineChart.jsx'
@@ -16,42 +16,76 @@ import RankRow from '../components/RankRow.jsx'
 import TasksCard from '../components/TasksCard.jsx'
 import Ring from '../components/Ring.jsx'
 import { Button } from '../components/ui.jsx'
-import { glyphOf } from '../lib/glyphs.js'
+
+// Macro ring for the Home nutrition card — not the shared Ring component: that one leaves an
+// unfilled ring a flat neutral grey, which is correct for a generic progress ring but reads as
+// three dead, colorless circles here at 0g logged (the common state — most visits to Home are
+// before any food's been logged yet). Tinting the *track* itself in the macro's own color
+// keeps each ring visually alive and distinct from the very first render, progress or not.
+function MacroRing({ label, value, goal, color }) {
+  const pct = goal ? Math.min(1, value / goal) : 0
+  const size = 76, stroke = 7, r = (size - stroke) / 2, c = 2 * Math.PI * r
+  return <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 14 }}>
+    <div style={{ position: 'relative', width: size, height: size }}>
+      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
+        <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke={color} strokeOpacity={0.16} strokeWidth={stroke} />
+        <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke={color} strokeWidth={stroke} strokeLinecap="round"
+          strokeDasharray={c} strokeDashoffset={c * (1 - pct)} transform={`rotate(-90 ${size / 2} ${size / 2})`}
+          style={{ transition: 'stroke-dashoffset .4s ease' }} />
+      </svg>
+      <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <span style={{ fontWeight: 800, fontSize: 19, letterSpacing: '-.02em' }}>{value}<span style={{ fontSize: 11, fontWeight: 600, opacity: .55 }}>g</span></span>
+      </div>
+    </div>
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3 }}>
+      <span className="row" style={{ gap: 5 }}>
+        <span style={{ width: 7, height: 7, borderRadius: 99, background: color, flex: 'none' }} />
+        <span className="small" style={{ fontWeight: 600 }}>{label}</span>
+      </span>
+      <span style={{ fontSize: 11, color: 'var(--label-3)' }}>{t('of {0}g', goal)}</span>
+    </div>
+  </div>
+}
 
 // Home = what to do now + a quick glance. Deep charts & history live in Stats.
 export default function Home() {
   const nav = useNavigate()
   const S = useStore(s => s.S)
   const user = useStore(s => s.user)
-  const [weekOffset, setWeekOffset] = useState(0)
   const [tiers, setTiers] = useState(null)
   useEffect(() => { fetchStreakTiers().then(setTiers).catch(() => setTiers([])) }, [])
 
   const today = new Date()
-  const routine = effectiveRoutine(S, todayISO())
-  const isFreestyleToday = effectiveRoutineId(S, todayISO()) === FREESTYLE_DAY
-  const todayOvr = S.dayPlan[todayISO()] !== undefined
   const bw = lastBW(S)
   const prevBW = S.bodyweight.length > 1 ? S.bodyweight[S.bodyweight.length - 2] : null
   const delta = bw && prevBW ? bw.w - prevBW.w : null
 
-  const monday = new Date(today); monday.setDate(today.getDate() - ((today.getDay() + 6) % 7) + weekOffset * 7)
+  // Attendance strip: the ring's two halves are independent signals, not a generic
+  // "either" fill — left = a workout logged that day, right = a food entry — so at a
+  // glance which half is missing tells you which one you skipped. Full ring + checkmark
+  // only when both sides are lit. Fixed to the current week only — browsing other weeks
+  // now happens through the month calendar sheet instead, so there's no weekOffset here.
+  const monday = new Date(today); monday.setDate(today.getDate() - ((today.getDay() + 6) % 7))
   const doneDays = new Set(S.workouts.map(w => w.d))
   const strip = []
   for (let i = 0; i < 7; i++) {
     const d = new Date(monday); d.setDate(monday.getDate() + i)
     const iso = isoOf(d)
-    const eff = effectiveRoutineId(S, iso), ovr = S.dayPlan[iso] !== undefined, done = doneDays.has(iso)
-    const dot = done ? ' done' : ovr && eff ? ' ovr' : eff ? ' plan' : ''
-    strip.push(<div key={i} className={'wday' + (iso === todayISO() ? ' today' : '')} onClick={() => dayOverrideSheet(iso)}>
-      <div className="lbl">{t(DAYS[d.getDay()])}</div><div className="num">{d.getDate()}</div><div className={'dot' + dot} /></div>)
+    const isToday = iso === todayISO()
+    const trained = doneDays.has(iso)
+    const ate = (S.foodDiary[iso] || []).length > 0
+    const fillCls = (trained ? ' l-on' : '') + (ate ? ' r-on' : '')
+    // Date number in the label instead of a weekday letter — a day is identified by
+    // its number, the ring below still carries the logged state.
+    strip.push(<button key={i} type="button" className={'wday' + (isToday ? ' today' : '')} onClick={() => dayDetailSheet(iso)}>
+      <div className="wday-tick">{isToday && <span className="wday-tick-dot" />}</div>
+      <div className="lbl">{d.getDate()}</div>
+      <div className={'day-ring' + fillCls}>{trained && ate && <Icon name="check" />}</div>
+    </button>)
   }
-  const sunday = new Date(monday); sunday.setDate(monday.getDate() + 6)
-  const wkLabel = weekOffset === 0 ? t('This week') : `${monday.getDate()} ${monday.toLocaleDateString(dateLocale(), { month: 'short' })} – ${sunday.getDate()} ${sunday.toLocaleDateString(dateLocale(), { month: 'short' })}`
 
   const weekWorkouts = S.workouts.filter(w => weekKey(w.d) === weekKey(todayISO()))
   const wThisWeek = weekWorkouts.length
-  const plannedPerWeek = Object.keys(S.week).filter(k => S.week[k]).length
   const bwPoints = S.bodyweight.slice(-30).map(b => ({ t: b.t || new Date(b.d).getTime(), y: b.w, d: b.d }))
   const setsThisWeek = weekWorkouts.reduce((n, w) => n + w.entries.reduce((m, e) => m + e.sets.filter(s => s.done).length, 0), 0)
   const minsThisWeek = weekWorkouts.reduce((n, w) => n + Math.max(0, Math.round(((w.end || w.start) - w.start) / 60000)), 0)
@@ -60,13 +94,12 @@ export default function Home() {
   const streak = Math.max(0, streakDays(S) + (user?.streakBonus || 0))
   const streakTier = tiers ? tierForDays(streak, tiers) : null
 
-  // today's session shown right under the week strip
-  const onToday = () => { if (S.active) nav('/workout'); else if (routine) startFlow(routine.id); else if (isFreestyleToday) startFlow(null); else dayOverrideSheet(todayISO()) }
-
   return <div>
     <div className="hdr">
       <div>
-        <h1>{user ? t('Hi {0}', user.name) : 'Forvia'}</h1>
+        {/* Given name only — Apellidos are for Account/Perfil, a greeting reads better
+            short, and a compound-surname full name here wrapped onto its own line. */}
+        <h1>{user ? t('Hi {0}', user.firstName || user.name) : 'Forvia'}</h1>
         <div className="sub">
           {today.toLocaleDateString(dateLocale(), { weekday: 'long', day: 'numeric', month: 'long' })}
           {' · '}<span style={{ textTransform: 'uppercase', letterSpacing: '.03em', fontWeight: 700, color: 'var(--acc)' }}>{t('Early access')}</span>
@@ -74,39 +107,14 @@ export default function Home() {
         {user && <div style={{ marginTop: 8 }}><RankRow streak={hasHistory ? streak : 0} streakTier={streakTier?.artIdx || 1} /></div>}
       </div>
       <div className="row" style={{ gap: 8 }}>
-        <button className="iconbtn" onClick={() => nav('/plan')} aria-label={t('Plan')}><Icon name="calendar" /></button>
+        <button className="iconbtn" onClick={() => calendarSheet()} aria-label={t('Calendar')}><Icon name="calendar" /></button>
       </div>
     </div>
 
-    <div className="card">
-      <div className="row between" style={{ marginBottom: 8 }}>
-        <button className="iconbtn" style={{ width: 30, height: 30, fontSize: 15 }} onClick={() => setWeekOffset(w => w - 1)} aria-label="Previous week"><Icon name="chevronLeft" /></button>
-        <div className="small muted" style={{ fontWeight: 500 }}>{wkLabel}</div>
-        <button className="iconbtn" style={{ width: 30, height: 30, fontSize: 15 }} onClick={() => setWeekOffset(w => w + 1)} aria-label="Next week"><Icon name="chevronRight" /></button>
-      </div>
-      <div className="week">{strip}</div>
-      <div className="today-row" onClick={onToday}>
-        <div className="row" style={{ gap: 12, minWidth: 0 }}>
-          {plannedPerWeek > 0
-            ? <Ring size={56} stroke={6} pct={wThisWeek / plannedPerWeek} color={S.active ? 'var(--orange)' : 'var(--acc)'}>
-                <span className="ring-badge" style={{ width: 40, height: 40, fontSize: 18, '--tint': S.active ? 'var(--orange)' : (routine || isFreestyleToday) ? 'var(--acc)' : 'var(--surface-3)' }}>
-                  <Icon name={S.active ? 'timer' : routine ? glyphOf(routine.emoji) : isFreestyleToday ? 'shuffle' : 'moon'} />
-                </span>
-              </Ring>
-            : <span className="lrow-i" style={{ width: 40, height: 40, borderRadius: '50%', fontSize: 18, background: S.active ? 'var(--orange)' : (routine || isFreestyleToday) ? 'var(--acc)' : 'var(--surface-3)' }}>
-                <Icon name={S.active ? 'timer' : routine ? glyphOf(routine.emoji) : isFreestyleToday ? 'shuffle' : 'moon'} />
-              </span>}
-          <div style={{ minWidth: 0 }}>
-            <div className="lbl2">{t('Today')}</div>
-            <div className="ttl">{S.active ? t('{0} — in progress', S.active.name) : routine ? routine.name : isFreestyleToday ? t('Freestyle') : t('Rest day')}{todayOvr && (routine || isFreestyleToday) ? ' · ' + t('rescheduled') : ''}</div>
-            {plannedPerWeek > 0 && <div className="sub">{t('{0}/{1} this week', wThisWeek, plannedPerWeek)}</div>}
-          </div>
-        </div>
-        {S.active ? <span className="btn primary sm" style={{ backgroundColor: 'var(--orange)' }}>{t('Resume')}</span>
-          : (routine || isFreestyleToday) ? <span className="btn primary sm">{t('Start')}</span>
-          : <Icon name="plus" className="chev" />}
-      </div>
-    </div>
+    {/* No card here on purpose — this is a glance strip, not a content block, and the
+        glass background/border/padding of `.card` was the biggest chunk of the height
+        this has already been trimmed twice trying to shrink. */}
+    <div className="week">{strip}</div>
 
     {user && <TasksCard />}
 
@@ -131,22 +139,17 @@ export default function Home() {
           </div>
         </div>
 
-        <div className="card tappable" style={{ cursor: 'pointer' }} onClick={() => nav('/nutrition')}>
-          <div className="row between" style={{ marginBottom: 14 }}>
+        <div className="card tappable" style={{ cursor: 'pointer', padding: '18px 16px 22px' }} onClick={() => nav('/nutrition')}>
+          <div className="row between" style={{ marginBottom: 22 }}>
             <h2 style={{ margin: 0 }}>{t('Macros')}</h2>
             <Icon name="chevronRight" className="chev" style={{ fontSize: 15 }} />
           </div>
-          <div style={{ display: 'flex', justifyContent: 'space-around' }}>
+          <div style={{ display: 'flex', justifyContent: 'center', gap: 26 }}>
             {[
               { l: t('Carbs'), v: carbs, g: goals.carbsG, c: 'var(--orange)' },
               { l: t('Fat'), v: fat, g: goals.fatG, c: 'var(--indigo)' },
               { l: t('Protein'), v: protein, g: goals.proteinG, c: 'var(--blue)' }
-            ].map(m => <div key={m.l} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
-              <Ring size={92} stroke={8} pct={m.g ? m.v / m.g : 0} color={m.c}>
-                <span style={{ fontWeight: 700, fontSize: 14 }}>{m.v}/{m.g}<span style={{ fontSize: 10, fontWeight: 500, opacity: .7 }}>g</span></span>
-              </Ring>
-              <span className="small" style={{ fontWeight: 600 }}>{m.l}</span>
-            </div>)}
+            ].map(m => <MacroRing key={m.l} label={m.l} value={m.v} goal={m.g} color={m.c} />)}
           </div>
         </div>
       </>
@@ -154,8 +157,8 @@ export default function Home() {
 
     <div className="tiles">
       <div className="tile k-green">
-        <div className="ringwrap"><Ring size={34} stroke={4} pct={plannedPerWeek ? wThisWeek / plannedPerWeek : 1} color="var(--green)"><Icon name="dumbbell" style={{ fontSize: 14 }} /></Ring></div>
-        <div className="v">{wThisWeek}{plannedPerWeek ? '/' + plannedPerWeek : ''}</div><div className="l">{t('This week')}</div>
+        <div className="ringwrap"><Ring size={34} stroke={4} pct={1} color="var(--green)"><Icon name="dumbbell" style={{ fontSize: 14 }} /></Ring></div>
+        <div className="v">{wThisWeek}</div><div className="l">{t('This week')}</div>
       </div>
       <div className="tile k-violet">
         <div className="ringwrap"><Ring size={34} stroke={4} pct={1} color="var(--purple)"><Icon name="clipboard" style={{ fontSize: 14 }} /></Ring></div>

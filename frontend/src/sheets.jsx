@@ -2,8 +2,8 @@ import { useEffect, useRef, useState } from 'react'
 import { useStore, hasData } from './store/useStore.js'
 import { useUI } from './store/useUI.js'
 import { EXDB, EXIDX, BODYPARTS, isCardio, isBodyweightEq, allExercises, equipmentOf, smOf } from './lib/exercises.js'
-import { fmtDate, fmtNum, fmtVol, fmtDur, durPart, todayISO, uid, exCount, DAYN, MONTHS_LONG, ACCENTS, normalizeSearch } from './lib/format.js'
-import { lastEntryFor, bestWeightFor, buildSets, effectiveRoutineId, FREESTYLE_DAY, workoutVolume, workoutXp, PR_XP, setsDone, setsDoneActive, lastBW, supersetUnits, unitOf, setLabel, defaultConfig, cleanupSg, modeOf, effortOf, isBw, isPerSide, sideReps, workSetsDone } from './lib/history.js'
+import { fmtDate, fmtNum, fmtVol, fmtDur, durPart, todayISO, uid, exCount, MONTHS_LONG, ACCENTS, normalizeSearch } from './lib/format.js'
+import { lastEntryFor, bestWeightFor, buildSets, workoutVolume, workoutXp, PR_XP, setsDone, setsDoneActive, lastBW, supersetUnits, unitOf, setLabel, defaultConfig, cleanupSg, modeOf, effortOf, isBw, isPerSide, sideReps, workSetsDone } from './lib/history.js'
 import { beep, vibrate } from './lib/sound.js'
 import { t, instrFor, nameFor, getLang, INSTR_LANGS } from './lib/i18n.js'
 import { nav } from './lib/nav.js'
@@ -54,11 +54,7 @@ export function confirmSheet(opts) {
 export function deleteRoutine(r) {
   confirmSheet({
     title: t('Delete routine?'), message: t('“{0}” and its exercises will be removed.', r.name), confirmText: t('Delete'), danger: true,
-    onConfirm: () => update(s => {
-      s.routines = s.routines.filter(x => x.id !== r.id)
-      Object.keys(s.week).forEach(k => { if (s.week[k] === r.id) delete s.week[k] })
-      Object.keys(s.dayPlan).forEach(k => { if (s.dayPlan[k] === r.id) delete s.dayPlan[k] })
-    })
+    onConfirm: () => update(s => { s.routines = s.routines.filter(x => x.id !== r.id) })
   })
 }
 
@@ -348,11 +344,8 @@ export function feedPostSheet(item) {
 /* ============================ starter plan ============================ */
 export function loadStarterPlan() {
   const [push, pull, legs] = starterRoutines()
-  update(st => {
-    st.routines.push(push, pull, legs)
-    st.week[1] = push.id; st.week[3] = pull.id; st.week[5] = legs.id
-  })
-  toast(t('Starter plan loaded — Mon Push · Wed Pull · Fri Legs'))
+  update(st => { st.routines.push(push, pull, legs) })
+  toast(t('Starter routines loaded — Push, Pull & Legs'))
 }
 
 /* ============================ weight picker (shared: body weight + goal) ============================ */
@@ -634,7 +627,7 @@ function AddToRoutine({ ex, close }) {
       })
       const r = isNew ? S().routines[S().routines.length - 1] : st.routines.find(x => x.id === rid)
       toast(t('“{0}” added to {1}', nameFor(ex), r ? r.name : t('routine')))
-      if (isNew && r) nav('/plan/r/' + r.id)
+      if (isNew && r) nav('/routines/r/' + r.id)
     }, null, isNew ? null : st.routines.find(x => x.id === rid))
   }
   return <>
@@ -1044,21 +1037,17 @@ function PlanTools({ close }) {
 export const planImportSheet = bundle => ui().openSheet(close => <PlanImport bundle={bundle} close={close} />)
 
 function PlanImport({ bundle, close }) {
-  const [schedule, setSchedule] = useState(false)
   const apply = () => {
-    update(s => mergePlan(s, bundle, { schedule }))
+    update(s => mergePlan(s, bundle))
     close()
     toast(t('Added {0} routines to your plan', bundle.routineCount))
-    nav('/plan')
+    nav('/routines')
   }
   return <>
     <h3>{bundle.name ? t('Import “{0}”', bundle.name) : t('Import this plan')}</h3>
     <div className="muted small" style={{ marginBottom: 14 }}>
       {t(bundle.routineCount === 1 ? '{0} routine' : '{0} routines', bundle.routineCount)}
       {' · ' + exCount(bundle.exerciseCount)}
-      {bundle.scheduledDays > 0
-        ? ' · ' + t(bundle.scheduledDays === 1 ? 'scheduled on {0} day' : 'scheduled on {0} days', bundle.scheduledDays)
-        : ''}
     </div>
     <div className="dim small" style={{ marginBottom: 14, lineHeight: 1.4 }}>{t('These are added as new routines — nothing you already have is changed.')}</div>
     {bundle.dropped > 0 && <div className="small" style={{ color: 'var(--yellow)', marginBottom: 14, lineHeight: 1.4 }}>
@@ -1066,61 +1055,11 @@ function PlanImport({ bundle, close }) {
         ? '{0} exercise in the file isn’t in your library and was left out.'
         : '{0} exercises in the file aren’t in your library and were left out.', bundle.dropped)}
     </div>}
-    {bundle.scheduledDays > 0 && <div className="row between" style={{ padding: '10px 2px', borderTop: '1px solid var(--sep)', borderBottom: '1px solid var(--sep)', marginBottom: 16, gap: 12 }}>
-      <div><div className="tt" style={{ fontSize: 15 }}>{t('Use this weekly schedule')}</div><div className="small dim">{t('Replaces your current Mon–Sun assignments.')}</div></div>
-      <Switch checked={schedule} onChange={setSchedule} />
-    </div>}
     <Button variant="primary" onClick={apply}>{t('Add to my plan')}</Button>
     <div style={{ height: 8 }} />
     <Button variant="ghost" className="dim" onClick={close}>{t('Cancel')}</Button>
   </>
 }
-
-/* ============================ day override / assign ============================ */
-function DayOverride({ iso, close }) {
-  const st = useStore(s => s.S)
-  const wd = new Date(iso + 'T12:00:00').getDay()
-  const weeklyR = st.routines.find(r => r.id === st.week[wd])
-  const weeklyIsFreestyle = st.week[wd] === FREESTYLE_DAY
-  const hasOvr = st.dayPlan[iso] !== undefined
-  const effId = effectiveRoutineId(st, iso)
-  const set = v => {
-    update(s => { if (!v) delete s.dayPlan[iso]; else s.dayPlan[iso] = v })
-    close()
-    toast(v === '' ? t('Back to weekly plan') : v === 'rest' ? t('{0} set to rest', fmtDate(iso)) : v === FREESTYLE_DAY ? t('{0} set to freestyle', fmtDate(iso)) : t('{0} planned for {1}', (st.routines.find(r => r.id === v) || {}).name, fmtDate(iso)))
-  }
-  return <>
-    <h3>{fmtDate(iso, true)}</h3>
-    <div className="muted small" style={{ marginBottom: 12 }}>{t('Weekly plan:')} {weeklyR ? weeklyR.name : weeklyIsFreestyle ? t('Freestyle') : t('Rest')}{hasOvr && <span style={{ color: 'var(--orange)' }}> · {t('changed for this day')}</span>}<br />{t('Sick, missed a day or want a different session? Pick what to train instead.')}</div>
-    <div className="list">
-      {st.routines.map(r => <div key={r.id} className="item" onClick={() => set(r.id)}>
-        <span className="lrow-i"><Icon name={glyphOf(r.emoji)} /></span>
-        <div className="grow"><div className="tt">{r.name}</div><div className="ss">{exCount(r.ex.length)}</div></div>
-        {effId === r.id && <Icon name="check" className="accent" />}</div>)}
-      <div className="item" onClick={() => set(FREESTYLE_DAY)}><span className="lrow-i" style={{ background: 'var(--surface-3)' }}><Icon name="shuffle" /></span><div className="grow"><div className="tt">{t('Freestyle')}</div><div className="ss">{t('Train without a fixed routine')}</div></div>{effId === FREESTYLE_DAY && <Icon name="check" className="accent" />}</div>
-      <div className="item" onClick={() => set('rest')}><span className="lrow-i" style={{ background: 'var(--surface-3)' }}><Icon name="moon" /></span><div className="grow"><div className="tt">{t('Rest / skip this day')}</div></div>{effId === null && <Icon name="check" className="accent" />}</div>
-      {hasOvr && <div className="item" onClick={() => set('')}><span className="lrow-i" style={{ background: 'var(--surface-3)' }}><Icon name="reset" /></span><div className="grow"><div className="tt">{t('Back to weekly plan')}</div></div></div>}
-    </div>
-  </>
-}
-export const dayOverrideSheet = iso => ui().openSheet(close => <DayOverride iso={iso} close={close} />)
-
-function DayAssign({ day, close }) {
-  const st = useStore(s => s.S)
-  const set = v => { update(s => { if (v) s.week[day] = v; else delete s.week[day] }); close() }
-  return <>
-    <h3>{t(DAYN[day])}</h3>
-    <div className="list">
-      <div className="item" onClick={() => set('')}><span className="lrow-i" style={{ background: 'var(--surface-3)' }}><Icon name="moon" /></span><div className="grow"><div className="tt">{t('Rest day')}</div></div>{!st.week[day] && <Icon name="check" className="accent" />}</div>
-      <div className="item" onClick={() => set(FREESTYLE_DAY)}><span className="lrow-i" style={{ background: 'var(--surface-3)' }}><Icon name="shuffle" /></span><div className="grow"><div className="tt">{t('Freestyle')}</div><div className="ss">{t('Train without a fixed routine')}</div></div>{st.week[day] === FREESTYLE_DAY && <Icon name="check" className="accent" />}</div>
-      {st.routines.map(r => <div key={r.id} className="item" onClick={() => set(r.id)}>
-        <span className="lrow-i"><Icon name={glyphOf(r.emoji)} /></span>
-        <div className="grow"><div className="tt">{r.name}</div><div className="ss">{exCount(r.ex.length)}</div></div>
-        {st.week[day] === r.id && <Icon name="check" className="accent" />}</div>)}
-    </div>
-  </>
-}
-export const dayAssignSheet = day => ui().openSheet(close => <DayAssign day={day} close={close} />)
 
 /* ============================ workout detail ============================ */
 function WorkoutDetail({ w, close }) {
@@ -1189,13 +1128,11 @@ function Calendar({ start, close }) {
   for (let i = 0; i < startOffset; i++) cells.push(<div key={'e' + i} />)
   for (let d = 1; d <= daysIn; d++) {
     const iso = y + '-' + String(mo + 1).padStart(2, '0') + '-' + String(d).padStart(2, '0')
-    const ws = byDay[iso], effId = effectiveRoutineId(st, iso), ovr = st.dayPlan[iso] !== undefined
-    const dotCls = ws ? 'done' : ovr && effId ? 'ovr' : effId ? 'plan' : ''
-    cells.push(<button key={d} className={'cal-d' + (ws ? ' has' : '') + (iso === todayISO() ? ' today' : '')} onClick={() => {
-      if (!ws) { close(); dayOverrideSheet(iso); return }
-      if (ws.length === 1) { close(); workoutDetailSheet(ws[0]); return }
-      close(); ui().openSheet(c2 => <><h3>{fmtDate(iso, true)}</h3><div className="list">{ws.map(w => <WorkoutRow key={w.id} w={w} onClick={() => { c2(); workoutDetailSheet(w) }} />)}</div></>)
-    }}><span>{d}</span><i className={dotCls} /></button>)
+    const ws = byDay[iso]
+    // No more "planned"/"rescheduled" dots — a day either has a logged workout or it doesn't.
+    // Every day opens the day-detail sheet now, workout or not — it also carries that
+    // date's nutrition, which is worth seeing even on a rest day.
+    cells.push(<button key={d} className={'cal-d' + (ws ? ' has' : '') + (iso === todayISO() ? ' today' : '')} onClick={() => { close(); dayDetailSheet(iso) }}><span>{d}</span><i className={ws ? 'done' : ''} /></button>)
   }
   return <>
     <div className="row between" style={{ marginBottom: 2 }}>
@@ -1207,13 +1144,55 @@ function Calendar({ start, close }) {
     <div className="cal-grid">{['Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa', 'Su'].map(l => <div key={l} className="cal-h">{t(l)}</div>)}{cells}</div>
     <div className="cal-legend">
       <span><i style={{ background: 'var(--acc)' }} />{t('Trained')}</span>
-      <span><i style={{ background: 'var(--label-3)' }} />{t('Planned')}</span>
-      <span><i style={{ background: 'var(--orange)' }} />{t('Rescheduled')}</span>
     </div>
-    <div className="small dim" style={{ textAlign: 'center', marginTop: 10 }}>{t('Tap a trained day for details · tap any other day to plan a session')}</div>
+    <div className="small dim" style={{ textAlign: 'center', marginTop: 10 }}>{t('Tap a day for its workout and nutrition log')}</div>
   </>
 }
 export const calendarSheet = start => ui().openSheet(close => <Calendar start={start} close={close} />)
+
+/* ============================ day detail (workout + nutrition) ============================ */
+// One sheet for "what happened on this date" — reached from the month calendar and from
+// Home's week strip alike, so both entry points land on the exact same view instead of
+// each growing its own half-featured version.
+function DayDetail({ iso, close }) {
+  const st = useStore(s => s.S)
+  const ws = st.workouts.filter(w => w.d === iso)
+  const goals = st.nutritionGoals
+  const food = st.foodDiary[iso] || []
+  const sum = key => food.reduce((n, it) => n + (it[key] || 0), 0)
+  const kcal = sum('kcal'), carbs = sum('carbsG'), fat = sum('fatG'), protein = sum('proteinG')
+  return <>
+    <h3 style={{ marginBottom: 12 }}>{fmtDate(iso, true)}</h3>
+
+    <div className="muted small" style={{ marginBottom: 8 }}>{t('Workout')}</div>
+    {ws.length
+      ? <div className="list" style={{ marginBottom: 20 }}>{ws.map(w => <WorkoutRow key={w.id} w={w} onClick={() => { close(); workoutDetailSheet(w) }} />)}</div>
+      : <div className="empty" style={{ padding: '18px 0', marginBottom: 20 }}><div className="ico"><Icon name="dumbbell" /></div>{t('No workout logged this day')}</div>}
+
+    <div className="muted small" style={{ marginBottom: 8 }}>{t('Nutrition')}</div>
+    <div className="card" style={{ marginBottom: 0 }}>
+      <div className="row between small" style={{ marginBottom: 3 }}>
+        <span className="muted">{t('Calories')}</span><span className="dim">{kcal} / {goals.calories} kcal</span>
+      </div>
+      <div style={{ height: 6, borderRadius: 99, background: 'var(--surface-2)', overflow: 'hidden', marginBottom: 14 }}>
+        <div style={{ width: Math.min(100, goals.calories ? (kcal / goals.calories) * 100 : 0) + '%', height: '100%', background: 'var(--acc)' }} />
+      </div>
+      {[
+        { l: t('Carbs'), v: carbs, g: goals.carbsG, c: 'var(--orange)' },
+        { l: t('Fat'), v: fat, g: goals.fatG, c: 'var(--indigo)' },
+        { l: t('Protein'), v: protein, g: goals.proteinG, c: 'var(--blue)' }
+      ].map((m, i, arr) => <div key={m.l} style={{ marginBottom: i === arr.length - 1 ? 0 : 8 }}>
+        <div className="row between small" style={{ marginBottom: 3 }}>
+          <span className="muted">{m.l}</span><span className="dim">{m.v} / {m.g}g</span>
+        </div>
+        <div style={{ height: 6, borderRadius: 99, background: 'var(--surface-2)', overflow: 'hidden' }}>
+          <div style={{ width: Math.min(100, m.g ? (m.v / m.g) * 100 : 0) + '%', height: '100%', background: m.c }} />
+        </div>
+      </div>)}
+    </div>
+  </>
+}
+export const dayDetailSheet = iso => ui().openSheet(close => <DayDetail iso={iso} close={close} />)
 
 /* shared small workout row (used in lists) */
 export function WorkoutRow({ w, onClick }) {

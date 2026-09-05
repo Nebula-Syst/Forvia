@@ -15,7 +15,26 @@ const KEY = 'gym_state_v1'
 export const DEF = {
   unit: 'kg', restSec: 90, sound: true, vibration: true, keepAwake: true, lang: 'en',
   theme: DEFAULT_THEME, accent: DEFAULT_ACCENT, reduceMotion: false, body: 'male', targetW: null,
-  bodyweight: [], routines: [], week: {}, dayPlan: {},
+  bodyweight: [], routines: [],
+  // BMR/TDEE inputs for the nutrition-goals calculator (SettingsNutrition.jsx). Sex reuses
+  // `body` above rather than duplicating it. All null until the person fills them in — the
+  // calculator treats a missing one as "can't calculate yet", not a silent default.
+  heightCm: null, age: null, activityLevel: null, weightGoal: null,
+  // Which BMR formula the nutrition calculator uses, and the body-fat % that Katch-McArdle
+  // and Cunningham need instead of height/age/sex — see lib/nutrition-goals.js.
+  bmrFormula: 'mifflin', bodyFatPct: null,
+  // Weekly pace (kg/week magnitude, sign comes from weightGoal) for the lose/gain calorie
+  // deficit or surplus — see DEFAULT_RATE_KG in lib/nutrition-goals.js.
+  weightRateKg: 0.5,
+  // %-of-calories macro split (MyFitnessPal-style) — grams are always derived from this ×
+  // nutritionGoals.calories, never entered directly. Defaults to DEFAULT_MACRO_SPLIT in
+  // lib/nutrition-goals.js; kept here (not recomputed on the fly) so a manual tweak persists.
+  macroSplit: { carbsPct: 40, proteinPct: 30, fatPct: 30 },
+  // The weekly plan (a routine pre-assigned to a weekday, plus one-off day overrides) was
+  // removed — a routine is now picked freely each session from /workout instead. `week` and
+  // `dayPlan` stay here, always empty, purely so an old exported backup that still carries
+  // real data in them merges in without crashing; nothing reads either key anymore.
+  week: {}, dayPlan: {},
   exWeights: {}, workouts: [], active: null, customEx: [], gifSize: 'full',
   // Tombstones for explicitly-deleted workouts — see api/server.js mergeWorkoutsInto for why
   // these exist (a stale second device merging workouts by id must be able to tell "never saw
@@ -26,8 +45,8 @@ export const DEF = {
   // server pull, backup import) still falls back to the `showRir` boolean this replaced and
   // keeps the column it had. See effortOf.
   reminder: { on: false, time: '08:00', tz: null }, effort: null,
-  // Nutrition (phase 1, shell only — food search/barcode isn't wired up yet). Date-keyed the
-  // same way S.dayPlan is: { [iso]: [{id, meal, name, qty, kcal, carbsG, fatG, proteinG}] }.
+  // Nutrition (phase 1, shell only — food search/barcode isn't wired up yet).
+  // Date-keyed: { [iso]: [{id, meal, name, qty, kcal, carbsG, fatG, proteinG}] }.
   foodDiary: {},
   nutritionGoals: { calories: 2200, carbsG: 240, fatG: 70, proteinG: 130 }
 }

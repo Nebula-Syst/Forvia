@@ -44,11 +44,12 @@ export default function SettingsAppearance() {
     update(s => { s.theme = th.value })
   }
 
-  return <div className="narrow">
+  return <div className="narrow settings-page">
     <div className="hdr">
       <button className="iconbtn" onClick={() => nav('/settings')} aria-label={t('Settings')}><Icon name="chevronLeft" /></button>
       <div style={{ flex: 1, marginLeft: 10 }}><h1>{t('Appearance')}</h1></div>
     </div>
+    <p className="settings-subtitle">{t('Theme, accent color, and a few visual preferences.')}</p>
 
     {/* Bare, not inside a Section — each swatch is already its own little card, so a
         Section's glass card behind them would just double up. */}

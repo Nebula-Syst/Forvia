@@ -1,16 +1,13 @@
 import { useEffect, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { useStore } from '../store/useStore.js'
-import { effectiveRoutine } from '../lib/history.js'
-import { todayISO } from '../lib/format.js'
 import { t } from '../lib/i18n.js'
 import Icon from './Icon.jsx'
 
-export default function TabBar({ onStart }) {
+export default function TabBar() {
   const nav = useNavigate()
   const loc = useLocation()
   const S = useStore(s => s.S)
-  const update = useStore(s => s.update)
   const user = useStore(s => s.user)
   const isGuest = useStore(s => s.isGuest())
   // Collapsed by default: one round button. Tapping it while idle opens a small speed-dial
@@ -32,49 +29,27 @@ export default function TabBar({ onStart }) {
   }, [loc.pathname])
   if (!user && !isGuest) return null
   const cur = loc.pathname.split('/')[1] || 'home'
-  const on = k => cur === k || (cur === 'history' && k === 'stats') || (cur === 'plan' && k === 'home') || (cur === 'library' && k === 'home')
-  const paused = !!S.active?.paused
+  const on = k => cur === k || (cur === 'history' && k === 'stats') || (cur === 'routines' && k === 'home') || (cur === 'library' && k === 'home')
 
-  const startWorkout = () => {
-    const r = effectiveRoutine(S, todayISO())
-    if (r && r.ex.length) { onStart(r.id); return }
-    nav('/workout')
-  }
-  // Once a session is running the button skips the speed-dial entirely and goes straight
-  // back to being the session's transport control (tap to pause, tap again to resume) —
-  // but only while already on the workout screen. From anywhere else the first tap just
-  // gets you there, so it can't be paused by accident from e.g. Home. No food option
-  // mid-workout either way — sidenavTap below mirrors this for the desktop rail, which
-  // has no speed-dial (its two actions are separate, always-visible buttons instead).
-  const centerTap = () => {
-    if (S.active) {
-      if (cur !== 'workout') { nav('/workout'); return }
-      update(s => { s.active.paused = !s.active.paused }); return
-    }
-    setExpanded(e => !e)
-  }
-  const sidenavTap = () => {
-    if (S.active) {
-      if (cur !== 'workout') { nav('/workout'); return }
-      update(s => { s.active.paused = !s.active.paused }); return
-    }
-    startWorkout()
-  }
-  // The fab's "Workout" pill always opens the routine picker (/workout, with its own
-  // routine list and the two start buttons there) rather than auto-starting today's
-  // routine like the desktop rail's direct button (startWorkout/sidenavTap) does — from
-  // a menu the user just chose to open, jumping straight into a session without a chance
-  // to pick would be surprising.
+  // This button always does the same thing, active workout or not — the speed-dial with
+  // its Workout/Nutrition pills. An active session used to make it skip straight to a
+  // pause toggle instead, which both hid the menu behind an active session and made pausing
+  // one mistap away by accident; ActiveWorkoutPill now owns "get back into the running
+  // session" instead, so this button never has to double as its transport control.
+  const startWorkout = () => nav('/workout')
+  const centerTap = () => setExpanded(e => !e)
+  const sidenavTap = () => startWorkout()
+  // The fab's "Workout" pill just closes the speed-dial before the same nav startWorkout
+  // does directly — kept separate rather than reused because collapsing the fab first is
+  // this path's own concern, not the desktop rail's (sidenavTap has no speed-dial to close).
   const goWorkout = () => { setExpanded(false); nav('/workout') }
   const logFood = () => { setExpanded(false); nav('/nutrition') }
-  const centerCls = (S.active ? (paused ? ' paused' : ' rec') : (expanded ? ' expanded' : '')) + (instant ? ' instant' : '')
+  const centerCls = (expanded ? ' expanded' : '') + (instant ? ' instant' : '')
   // Idle + collapsed shows a neutral "+" rather than the dumbbell — the dumbbell now
   // belongs to just one of the two things this opens (see `.opt.workout` below), so the
   // resting icon can't point at either specifically.
-  const centerIcon = S.active ? (paused ? 'play' : 'pause') : (expanded ? 'xmark' : 'plus')
-  const centerLabel = S.active ? (paused ? t('Resume workout') : t('Pause workout')) : (expanded ? t('Close') : t('Workout options'))
-  const sidenavIcon = S.active ? (paused ? 'play' : 'pause') : 'dumbbell'
-  const sidenavLabel = S.active ? (paused ? t('Resume workout') : t('Pause workout')) : t('Start workout')
+  const centerIcon = expanded ? 'xmark' : 'plus'
+  const centerLabel = expanded ? t('Close') : t('Workout options')
   const Tab = ({ k, icon, to, label }) => (
     <button className={on(k) ? 'on' : ''} onClick={() => nav(to)}>
       <Icon name={icon} /><span>{label}</span>
@@ -82,7 +57,7 @@ export default function TabBar({ onStart }) {
   )
 
   return <>
-    {expanded && !S.active && <div className="fab-scrim" onClick={() => setExpanded(false)} />}
+    {expanded && <div className="fab-scrim" onClick={() => setExpanded(false)} />}
     <nav id="tabbar">
       <Tab k="home" icon="house" to="/home" label={t('Home')} />
       <Tab k="social" icon="heart" to="/social" label={t('Social')} />
@@ -106,9 +81,9 @@ export default function TabBar({ onStart }) {
         <span className="mark"><img src="/icon-512.png" alt="" /></span>
         <span>Forvia</span>
       </div>
-      <button className={'sidestart' + centerCls} onClick={sidenavTap}>
-        <Icon name={sidenavIcon} />
-        <span>{sidenavLabel}</span>
+      <button className="sidestart" onClick={sidenavTap}>
+        <Icon name="dumbbell" />
+        <span>{t('Start workout')}</span>
       </button>
       <button className="sidestart food" onClick={() => nav('/nutrition')}>
         <Icon name="plate" />

@@ -51,8 +51,8 @@ export const allExercises = st => [...(st.customEx || []), ...EXDB]
 // shipping ~140 MB of images into the deployment. `import.meta.env` is undefined in plain
 // Node; the guard keeps this module loadable without Vite.
 // The defaults are absolute on purpose (issue #79). A bare 'img/' resolves against the
-// current document's directory, so on the one two-segment route in the app, /plan/r/:id,
-// every request went to /plan/r/img/… and 404'd — and nginx's extension block has no
+// current document's directory, so on the one two-segment route in the app, /routines/r/:id,
+// every request went to /routines/r/img/… and 404'd — and nginx's extension block has no
 // try_files, so it 404s rather than falling through to index.html, leaving a blank image
 // and nothing in the console.
 const ENV = import.meta.env || {}

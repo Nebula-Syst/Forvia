@@ -14,11 +14,12 @@ import PenaltiesRow from '../../components/PenaltiesRow.jsx'
 export default function SettingsFairPlay() {
   const nav = useNavigate()
 
-  return <div className="narrow">
+  return <div className="narrow settings-page">
     <div className="hdr">
       <button className="iconbtn" onClick={() => nav('/settings')} aria-label={t('Settings')}><Icon name="chevronLeft" /></button>
       <div style={{ flex: 1, marginLeft: 10 }}><h1>{t('How it works')}</h1></div>
     </div>
+    <p className="settings-subtitle">{t('How rank, prestige and fair-play penalties work.')}</p>
 
     <PenaltiesRow />
 

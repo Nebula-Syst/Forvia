@@ -113,11 +113,12 @@ function WebNotifications() {
 export default function SettingsNotifications() {
   const nav = useNavigate()
 
-  return <div className="narrow">
+  return <div className="narrow settings-page">
     <div className="hdr">
       <button className="iconbtn" onClick={() => nav('/settings')} aria-label={t('Settings')}><Icon name="chevronLeft" /></button>
       <div style={{ flex: 1, marginLeft: 10 }}><h1>{t('Notifications')}</h1></div>
     </div>
+    <p className="settings-subtitle">{t('Push alerts and workout-day reminders.')}</p>
 
     {MOBILE ? <NativeReminderSection /> : <WebNotifications />}
   </div>

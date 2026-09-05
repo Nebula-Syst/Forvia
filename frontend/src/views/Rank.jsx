@@ -175,7 +175,10 @@ export default function Rank() {
 
   return <div className="narrow">
     <div className="hdr">
-      <button className="iconbtn" onClick={() => nav('/home')} aria-label={t('Previous')}><Icon name="chevronLeft" /></button>
+      {/* Back to wherever this was opened from (Home, Stats, Settings, the profile page's
+          RankRow all lead here) rather than always landing on Home — same idiom as
+          Penalties.jsx/legal pages. */}
+      <button className="iconbtn" onClick={() => nav(-1)} aria-label={t('Previous')}><Icon name="chevronLeft" /></button>
       <div style={{ flex: 1, marginLeft: 8 }}><h1 style={{ margin: 0 }}>{t('Level')}</h1></div>
     </div>
 

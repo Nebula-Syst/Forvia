@@ -138,20 +138,11 @@ export function buildDemoState() {
     workouts.push(w)
   }
 
-  // A visitor should always have something to press "Start" on, so if they land on a rest day
-  // the next routine in the rotation is moved onto today — which also shows off rescheduling.
-  const dayPlan = {}
-  const tIso = isoOf(today)
-  if (!byWeekday[today.getDay()] && !workouts.some(w => w.d === tIso)) {
-    const order = [push, pull, legs]
-    const lastName = workouts.length ? workouts[workouts.length - 1].name : legs.name
-    dayPlan[tIso] = order[(order.findIndex(r => r.name === lastName) + 1) % order.length].id
-  }
-
+  // `byWeekday` above only decides which routine each FABRICATED past session trained —
+  // there's no weekly schedule to persist alongside it (routines are picked freely each
+  // session from /workout), so nothing about it is written into the returned state.
   return {
     routines: [push, pull, legs],
-    week: { 1: push.id, 3: pull.id, 5: legs.id },
-    dayPlan,
     workouts, bodyweight, exWeights,
     targetW: TARGET_W,
     // The history is rated, so the demo turns the column on and the stats get a scale to

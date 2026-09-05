@@ -18,7 +18,10 @@ export async function passwordRegister(name, email, password, code) {
   return res.user
 }
 /* ---------- account ---------- */
-export const setName = name => api('/api/account/name', { method: 'POST', body: JSON.stringify({ name }) }).then(r => r.user)
+// Takes {firstName, lastName} — see api/server.js POST /api/account/name for why (name
+// alone can't be un-split from a compound given name, so the two parts are the real payload).
+export const setName = ({ firstName, lastName }) => api('/api/account/name', { method: 'POST', body: JSON.stringify({ firstName, lastName }) }).then(r => r.user)
+export const setUsername = username => api('/api/account/username', { method: 'POST', body: JSON.stringify({ username }) })
 export const setPhone = phone => api('/api/account/phone', { method: 'POST', body: JSON.stringify({ phone }) }).then(r => r.user)
 export const setBadges = badges => api('/api/account/badges', { method: 'POST', body: JSON.stringify({ badges }) }).then(r => r.user)
 export const setPassword = (currentPassword, password) => api('/api/account/password', { method: 'POST', body: JSON.stringify({ currentPassword, password }) }).then(r => r.user)
@@ -27,6 +30,8 @@ export const setAvatar = dataUrl => api('/api/account/avatar', { method: 'POST',
 export const removeAvatar = () => api('/api/account/avatar/remove', { method: 'POST', body: '{}' }).then(r => r.user)
 export const resendEmailVerification = () => api('/api/account/email/resend', { method: 'POST', body: '{}' })
 export const deleteAccount = password => api('/api/account/delete', { method: 'POST', body: JSON.stringify({ password }) })
+export const accountSessions = () => api('/api/account/sessions').then(r => r.sessions)
+export const revokeSession = id => api('/api/account/sessions/revoke', { method: 'POST', body: JSON.stringify({ id }) })
 
 /* ---------- social ---------- */
 export async function setPublic(pub) {

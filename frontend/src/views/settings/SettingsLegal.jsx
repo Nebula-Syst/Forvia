@@ -8,11 +8,12 @@ import { Section, Row } from '../../components/ui.jsx'
 // directly rather than nested a level deeper than it needs to be.
 export default function SettingsLegal() {
   const nav = useNavigate()
-  return <div className="narrow">
+  return <div className="narrow settings-page">
     <div className="hdr">
       <button className="iconbtn" onClick={() => nav('/settings')} aria-label={t('Settings')}><Icon name="chevronLeft" /></button>
       <div style={{ flex: 1, marginLeft: 10 }}><h1>{t('Legal')}</h1></div>
     </div>
+    <p className="settings-subtitle">{t('Terms of service and privacy policy.')}</p>
     <Section title={t('Documents')}>
       <Row icon="clipboard" iconTint="var(--grey)" title={t('Terms of service')} onClick={() => nav('/legal/terms')} />
       <Row icon="clipboard" iconTint="var(--grey)" title={t('Privacy policy')} onClick={() => nav('/legal/privacy')} />

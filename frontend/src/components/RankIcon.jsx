@@ -11,7 +11,7 @@ const SLUG_BY_TIER = Object.fromEntries(TIERS.map(t => [t.name, t.slug]))
 // Cache-Control (nginx) means a re-crop is otherwise invisible to anyone who already loaded
 // the old file, hard refresh included. Bumped this round for the alpha-fringe cleanup on
 // all 10 tiers + all 10 prestige levels.
-const RANK_ASSET_VERSION = '3'
+const RANK_ASSET_VERSION = '4'
 
 export default function RankIcon({ tier, size, className = '' }) {
   const slug = SLUG_BY_TIER[tier] || TIERS[0].slug

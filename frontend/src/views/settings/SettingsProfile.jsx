@@ -2,9 +2,11 @@ import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useStore } from '../../store/useStore.js'
 import { useUI } from '../../store/useUI.js'
-import { tierFor } from '../../lib/rank.js'
+import { TIERS, tierFor } from '../../lib/rank.js'
 import { t } from '../../lib/i18n.js'
-import { setBio, setBadges, setAvatar, removeAvatar } from '../../lib/api.js'
+import { setBio, setBadges, setAvatar, removeAvatar, streakTiers as fetchStreakTiers } from '../../lib/api.js'
+import { streakDays } from '../../lib/history.js'
+import { tierForDays, FALLBACK_STREAK_TIERS } from '../../lib/streak.js'
 import Icon from '../../components/Icon.jsx'
 import Avatar from '../../components/Avatar.jsx'
 import ImageCropper from '../../components/ImageCropper.jsx'
@@ -13,45 +15,95 @@ import RankBadge from '../../components/RankBadge.jsx'
 import { Section, Row } from '../../components/ui.jsx'
 
 const MAX_AVATAR_MB = 6
+const MAX_PRESTIGE_BADGE = 10 // caps at the art (see RankIcon.jsx's PrestigeIcon)
 
-// The only two badge types that exist today — more (real milestones) can join this list
-// later without touching the slot/picker code below.
-const BADGE_TYPES = [
-  { id: 'rank', name: 'Rank' },
-  { id: 'prestige', name: 'Prestige' },
+// One entry per rank tier, per prestige level and per streak-badge tier (any one actually
+// reached is pickable, not just the current one) — more (real milestones) can join this
+// list later without touching the slot/picker code below. Each kind shares one "family":
+// only one badge per family may be shown across the 3 slots at a time (see familyOf/pick).
+// Streak tiers are admin-configurable (server-fetched, see lib/streak.js) rather than a
+// fixed list like TIERS, so this is built from whatever's loaded (falling back the same
+// way the streak ring itself does before that fetch lands).
+function buildBadgeTypes(streakTierList) {
+  const streaks = (streakTierList && streakTierList.length ? streakTierList : FALLBACK_STREAK_TIERS)
+  return [
+    ...TIERS.map(t => ({ id: 'rank:' + t.slug, name: t.name, min: t.min })),
+    ...Array.from({ length: MAX_PRESTIGE_BADGE }, (_, i) => i + 1).map(n => ({ id: 'prestige:' + n, min: n })),
+    ...streaks.map((s, i) => ({ id: 'streak:' + s.id, name: s.name, min: s.days, artIdx: Math.min(10, i + 1) })),
+  ]
+}
+const familyOf = id => id.startsWith('rank:') ? 'rank' : id.startsWith('prestige:') ? 'prestige' : id.startsWith('streak:') ? 'streak' : id
+
+// The three families, each its own collapsible group — one flat 27-tile grid was a wall
+// of mostly-locked art to scroll through for what's usually a two-tap pick. Closed by
+// default; opening one doesn't close the others, so comparing e.g. two rank tiers side by
+// side (open both) still works. The family that's actually equipped in this slot starts
+// open, so the sheet doesn't hide your own current pick behind a collapsed group.
+const BADGE_GROUPS = [
+  { id: 'rank', label: 'Rank' },
+  { id: 'prestige', label: 'Prestige' },
+  { id: 'streak', label: 'Streak' },
 ]
 
 // The picker itself — opened as a bottom sheet, same idiom as every other "pick one of
-// a few things" flow in the app (exercisePicker, dayAssignSheet, ...).
-function BadgePickerSheet({ slot, slots, badgeAvailable, level, prestige, tier, toast, onPick, close }) {
+// a few things" flow in the app (exercisePicker, glyphPicker, ...).
+function BadgePickerSheet({ slot, slots, badgeTypes, badgeAvailable, toast, onPick, close }) {
+  const current = slots[slot] ? familyOf(slots[slot]) : null
+  const [open, setOpen] = useState(() => Object.fromEntries(BADGE_GROUPS.map(g => [g.id, g.id === current])))
+  const toggle = fam => setOpen(o => ({ ...o, [fam]: !o[fam] }))
   const pick = type => {
-    if (!badgeAvailable(type.id)) { toast(t('Unlocks at Prestige {0}', 1)); return }
-    const usedIn = slots.indexOf(type.id)
-    if (usedIn !== -1 && usedIn !== slot) { toast(t('Already showing in another slot.')); return }
+    if (!badgeAvailable(type.id)) {
+      const msg = type.id.startsWith('prestige:') ? t('Unlocks at Prestige {0}', type.min)
+        : type.id.startsWith('streak:') ? t('Reach a {0}-day streak to unlock', type.min)
+          : t('Reach level {0} to unlock', type.min)
+      toast(msg)
+      return
+    }
+    const fam = familyOf(type.id)
+    const usedIn = slots.findIndex((s, i) => s && familyOf(s) === fam && i !== slot)
+    if (usedIn !== -1) { toast(t('Already showing in another slot.')); return }
     onPick(slots[slot] === type.id ? null : type.id)
     close()
   }
+  const labelOf = b => b.id.startsWith('rank:') ? b.name : b.id.startsWith('streak:') ? b.name : t('Prestige {0}', b.min)
   return <>
     <h3>{t('Choose a badge')}</h3>
-    <div className="badges-grid">
-      {BADGE_TYPES.map(b => {
-        const available = badgeAvailable(b.id)
-        const selected = slots[slot] === b.id
-        return (
-          <button key={b.id} className={'badge-pick' + (selected ? ' on' : '') + (!available ? ' locked' : '')}
-            onClick={() => pick(b)} aria-label={t(b.name)}>
-            {selected && <Icon name="check" className="badge-pick-check" />}
-            {!available && <Icon name="lock" className="badge-pick-lock" />}
-            <span className="badge-pick-ico">
-              {b.id === 'rank'
-                ? <ProfileBadge type="rank" level={level} tier={tier.name} size={30} />
-                : <ProfileBadge type="prestige" prestige={Math.max(prestige, 1)} size={30} />}
-            </span>
-            <span className="badge-pick-label">{t(b.name)}</span>
+    {BADGE_GROUPS.map(g => {
+      const items = badgeTypes.filter(b => familyOf(b.id) === g.id)
+      const equipped = items.find(b => b.id === slots[slot])
+      return (
+        <div key={g.id} className="badge-group">
+          <button className="badge-group-hdr" onClick={() => toggle(g.id)}>
+            <span className="badge-group-title">{t(g.label)}</span>
+            {equipped && <span className="dim small">{labelOf(equipped)}</span>}
+            <Icon name="chevronDown" className={'lrow-c' + (open[g.id] ? ' rot' : '')} />
           </button>
-        )
-      })}
-    </div>
+          {open[g.id] && (
+            <div className="badges-grid">
+              {items.map(b => {
+                const available = badgeAvailable(b.id)
+                const selected = slots[slot] === b.id
+                return (
+                  <button key={b.id} className={'badge-pick' + (selected ? ' on' : '') + (!available ? ' locked' : '')}
+                    onClick={() => pick(b)} aria-label={labelOf(b)}>
+                    {selected && <Icon name="check" className="badge-pick-check" />}
+                    {!available && <Icon name="lock" className="badge-pick-lock" />}
+                    <span className="badge-pick-ico">
+                      {b.id.startsWith('rank:')
+                        ? <ProfileBadge type="rank" tier={b.name} size={30} />
+                        : b.id.startsWith('streak:')
+                          ? <ProfileBadge type="streak" streakTier={b.artIdx} size={30} />
+                          : <ProfileBadge type="prestige" prestige={b.min} size={30} />}
+                    </span>
+                    <span className="badge-pick-label">{labelOf(b)}</span>
+                  </button>
+                )
+              })}
+            </div>
+          )}
+        </div>
+      )
+    })}
   </>
 }
 
@@ -59,13 +111,16 @@ export default function SettingsProfile() {
   const nav = useNavigate()
   const user = useStore(s => s.user)
   const setUser = useStore(s => s.setUser)
+  const S = useStore(s => s.S)
   const toast = useUI(s => s.toast)
   const openSheet = useUI(s => s.openSheet)
   const [bio, setBioV] = useState(user?.bio || '')
   const [bioOpen, setBioOpen] = useState(false)
   const [avatarBusy, setAvatarBusy] = useState(false)
+  const [tiers, setTiers] = useState(null)
   const fileRef = useRef(null)
   useEffect(() => { setBioV(user?.bio || '') }, [user?.id])
+  useEffect(() => { fetchStreakTiers().then(setTiers).catch(() => setTiers([])) }, [])
 
   if (!user) { nav('/settings'); return null }
 
@@ -102,10 +157,27 @@ export default function SettingsProfile() {
   const perks = user.perks || {}
   const level = user.rank?.level || 1
   const prestige = user.rank?.prestige || 0
+  const streak = Math.max(0, streakDays(S) + (user?.streakBonus || 0))
+  const effStreak = S.workouts.length > 0 ? streak : 0
+  const streakTier = tiers ? tierForDays(streak, tiers) : null
   const tier = tierFor(level)
-  const badgeAvailable = id => id !== 'prestige' || prestige > 0
+  const badgeTypes = buildBadgeTypes(tiers)
+  const badgeAvailable = id => {
+    if (id === 'prestige') return prestige > 0
+    if (id.startsWith('prestige:')) return prestige >= Number(id.slice(9))
+    if (id.startsWith('streak:')) return effStreak >= (badgeTypes.find(b => b.id === id)?.min ?? Infinity)
+    return level >= (badgeTypes.find(b => b.id === id)?.min || Infinity)
+  }
+  // Legacy accounts stored the plain strings 'rank'/'prestige' for the (only ever
+  // current-value) badge — map those to this account's own id so they still match their
+  // family/selection correctly. A legacy 'prestige' with no prestige yet just clears.
+  const badgeIdOf = id => {
+    if (id === 'rank') return 'rank:' + tier.slug
+    if (id === 'prestige') return prestige > 0 ? 'prestige:' + Math.min(prestige, MAX_PRESTIGE_BADGE) : null
+    return id
+  }
 
-  const slots = [0, 1, 2].map(i => user.badges?.[i] || null)
+  const slots = [0, 1, 2].map(i => badgeIdOf(user.badges?.[i] || null))
   const assignSlot = async (slot, id) => {
     const next = [...slots]
     next[slot] = id
@@ -113,8 +185,7 @@ export default function SettingsProfile() {
   }
   const openBadgePicker = slot => {
     openSheet(close => (
-      <BadgePickerSheet slot={slot} slots={slots} badgeAvailable={badgeAvailable}
-        level={level} prestige={prestige} tier={tier} toast={toast}
+      <BadgePickerSheet slot={slot} slots={slots} badgeTypes={badgeTypes} badgeAvailable={badgeAvailable} toast={toast}
         onPick={id => assignSlot(slot, id)} close={close} />
     ))
   }
@@ -146,22 +217,36 @@ export default function SettingsProfile() {
         <div className={'tt' + (perks.animatedName ? ' name-animated' : '')} style={{ fontWeight: 700, fontSize: 18 }}>{user.name}</div>
         {perks.crownBadge && <Icon name="crown" style={{ color: 'var(--gold, var(--yellow))', fontSize: 16 }} />}
       </div>
+      {/* Same public identity shown on the Social profile (Social.jsx) — the handle other
+          accounts actually see, right under the real name here so it's obvious the two
+          are linked without having to open Account settings to check. */}
+      {user.username && <div className="dim small">{'@' + user.username}</div>}
       <div style={{ display: 'flex', justifyContent: 'center', marginTop: 6 }}>
-        <RankBadge level={level} prestige={prestige} size="sm" />
+        <RankBadge level={level} prestige={prestige} streak={effStreak} streakTier={streakTier?.artIdx || 1} size="sm" />
       </div>
       {perks.veteranBadge && <span className="veteran-badge" style={{ marginTop: 4 }}>{t('Veteran')}</span>}
       {bio && <div className="ss profile-bio-text" style={{ marginTop: 6 }}>{bio}</div>}
       <div className="profile-badges">
-        {slots.map((type, slot) => (
-          <button key={slot} className={'badge-slot' + (type ? ' filled' : '')
-            + (type === 'rank' && perks.animatedBadge ? ' pulse' : '')}
-            onClick={() => openBadgePicker(slot)}
-            aria-label={type ? t(BADGE_TYPES.find(b => b.id === type)?.name || type) : t('Empty badge slot')}>
-            {type
-              ? <ProfileBadge type={type} level={level} prestige={prestige} tier={tier.name} size={80} />
-              : <Icon name="plus" />}
-          </button>
-        ))}
+        {slots.map((type, slot) => {
+          const badgeTier = type?.startsWith('rank:') ? TIERS.find(t => t.slug === type.slice(5)) : null
+          const badgePrestige = type?.startsWith('prestige:') ? Number(type.slice(9)) : null
+          const badgeStreak = type?.startsWith('streak:') ? badgeTypes.find(b => b.id === type) : null
+          const filled = badgeTier || badgePrestige || badgeStreak
+          return (
+            <button key={slot} className={'badge-slot' + (type ? ' filled' : '')
+              + (filled && perks.animatedBadge ? ' pulse' : '')}
+              onClick={() => openBadgePicker(slot)}
+              aria-label={badgeTier ? badgeTier.name : badgePrestige ? t('Prestige {0}', badgePrestige) : badgeStreak ? badgeStreak.name : t('Empty badge slot')}>
+              {badgeTier
+                ? <ProfileBadge type="rank" tier={badgeTier.name} size={80} />
+                : badgePrestige
+                  ? <ProfileBadge type="prestige" prestige={badgePrestige} size={80} />
+                  : badgeStreak
+                    ? <ProfileBadge type="streak" streakTier={badgeStreak.artIdx} size={80} />
+                    : <Icon name="plus" />}
+            </button>
+          )
+        })}
       </div>
     </div>
 

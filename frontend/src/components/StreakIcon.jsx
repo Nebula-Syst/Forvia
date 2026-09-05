@@ -8,7 +8,7 @@
 // a hard refresh doesn't reliably bust it either. STREAK_ASSET_VERSION is the same fix
 // RankIcon already uses for this: bump it any time these specific files change, and the
 // query string makes it a new URL, not a cache revalidation.
-const STREAK_ASSET_VERSION = '3'
+const STREAK_ASSET_VERSION = '5'
 export default function StreakIcon({ tier = 1, size, className = '' }) {
   const n = Math.min(10, Math.max(1, tier))
   const s = size ? { width: size, height: size } : null

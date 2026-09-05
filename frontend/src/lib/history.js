@@ -261,24 +261,6 @@ export function setLooksOff(unit, set, cfg, best) {
   const weightOff = Number.isFinite(w) && w > 0 && (best > 0 ? (w > best * 1.75 && w > best + 5) : w > fallbackCeil)
   return { weightOff, repsOff }
 }
-// A day planned as "train, but no fixed routine" rather than a real routine id or rest —
-// same sentinel in S.week[] (weekly recurring plan) and S.dayPlan[] (one-off override).
-// effectiveRoutineId returns it as-is (never resolves to a S.routines entry, by design);
-// callers that need to tell it apart from rest compare against this constant directly.
-export const FREESTYLE_DAY = 'freestyle'
-export function effectiveRoutineId(S, iso) {
-  const ov = S.dayPlan[iso]
-  if (ov === 'rest') return null
-  if (ov === FREESTYLE_DAY) return FREESTYLE_DAY
-  if (ov && S.routines.some(r => r.id === ov)) return ov
-  const wd = new Date(iso + 'T12:00:00').getDay()
-  const wk = S.week[wd]
-  return wk === FREESTYLE_DAY ? FREESTYLE_DAY : (wk || null)
-}
-export function effectiveRoutine(S, iso) {
-  const id = effectiveRoutineId(S, iso)
-  return id ? S.routines.find(r => r.id === id) || null : null
-}
 export function buildSets(S, cfg, options = {}) {
   const last = lastEntryFor(S, cfg.id)
   const n = Math.max(1, cfg.sets || 1)

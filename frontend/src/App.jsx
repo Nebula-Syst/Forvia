@@ -8,9 +8,9 @@ import { setLang, useLang } from './lib/i18n.js'
 import { setNav } from './lib/nav.js'
 import { initBackButton } from './lib/back.js'
 import { useWakeLock } from './lib/wakelock.js'
-import { startFlow } from './sheets.jsx'
 import Icon from './components/Icon.jsx'
 import TabBar from './components/TabBar.jsx'
+import ActiveWorkoutPill from './components/ActiveWorkoutPill.jsx'
 import ErrorBoundary from './components/ErrorBoundary.jsx'
 import Modals from './components/Modals.jsx'
 import Toast from './components/Toast.jsx'
@@ -22,7 +22,7 @@ import Terms from './views/legal/Terms.jsx'
 import Privacy from './views/legal/Privacy.jsx'
 import Home from './views/Home.jsx'
 import Nutrition from './views/Nutrition.jsx'
-import Plan from './views/Plan.jsx'
+import Routines from './views/Routines.jsx'
 import RoutineEdit from './views/RoutineEdit.jsx'
 import Workout, { WorkoutStartActions } from './views/Workout.jsx'
 import Stats from './views/Stats.jsx'
@@ -32,6 +32,7 @@ import Settings from './views/Settings.jsx'
 import SettingsAccount from './views/settings/SettingsAccount.jsx'
 import SettingsProfile from './views/settings/SettingsProfile.jsx'
 import SettingsWorkout from './views/settings/SettingsWorkout.jsx'
+import SettingsNutrition from './views/settings/SettingsNutrition.jsx'
 import SettingsAppearance from './views/settings/SettingsAppearance.jsx'
 import SettingsNotifications from './views/settings/SettingsNotifications.jsx'
 import SettingsData from './views/settings/SettingsData.jsx'
@@ -105,8 +106,8 @@ function Shell() {
             <Routes>
               <Route path="/home" element={<Home />} />
               <Route path="/nutrition" element={<Nutrition />} />
-              <Route path="/plan" element={<Plan />} />
-              <Route path="/plan/r/:id" element={<RoutineEdit />} />
+              <Route path="/routines" element={<Routines />} />
+              <Route path="/routines/r/:id" element={<RoutineEdit />} />
               <Route path="/workout" element={<Workout />} />
               <Route path="/stats" element={<Stats />} />
               <Route path="/history" element={<History />} />
@@ -115,6 +116,7 @@ function Shell() {
               <Route path="/settings/account" element={<SettingsAccount />} />
               <Route path="/settings/profile" element={<SettingsProfile />} />
               <Route path="/settings/workout" element={<SettingsWorkout />} />
+              <Route path="/settings/nutrition" element={<SettingsNutrition />} />
               <Route path="/settings/appearance" element={<SettingsAppearance />} />
               <Route path="/settings/notifications" element={<SettingsNotifications />} />
               <Route path="/settings/data" element={<SettingsData />} />
@@ -141,7 +143,8 @@ function Shell() {
           )}
         </ErrorBoundary>
       </div>
-      <TabBar onStart={startFlow} />
+      <TabBar />
+      <ActiveWorkoutPill />
       <RestTimer />
       <WorkoutStartActions />
       <Modals />
