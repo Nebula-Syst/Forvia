@@ -638,9 +638,10 @@ function currentStreakDays(uid) {
   if (workouts.length) {
     const days = new Set(workouts.map(w => w.d));
     const cur = new Date();
+    let gap = 0;
     for (let i = 0; i < 3650; i++) {
-      if (days.has(isoOf(cur))) streak++;
-      else if (i > 0) break;
+      if (days.has(isoOf(cur))) { streak++; gap = 0; }
+      else if (i > 0) { gap++; if (gap > 3) break; }
       cur.setDate(cur.getDate() - 1);
     }
   }
