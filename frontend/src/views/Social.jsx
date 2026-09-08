@@ -312,6 +312,11 @@ export function UserProfile() {
     socialUser(uid).then(setData).catch(() => setData(false))
   }, [uid])
   useEffect(() => { fetchStreakTiers().then(setStreakTierList).catch(() => setStreakTierList([])) }, [])
+  // Called unconditionally, above the early returns below — data.items doesn't exist yet
+  // on the first render (data is still null), same as PostList/the sheets above passing
+  // an as-yet-null items array through. Keyed on uid so switching to another profile
+  // starts back at 5 instead of carrying over how far you'd scrolled on the last one.
+  const { shown, loadingMore, hasMore, sentinelElRef } = useRevealPaging(data ? data.items : null, uid)
 
   if (data === null) return null
   if (!data) return <div className="narrow social-narrow">
@@ -330,7 +335,8 @@ export function UserProfile() {
   }
 
   const pinnedIds = new Set(data.user.pinnedWorkoutIds || [])
-  return <div className="narrow social-narrow">
+  return <SkeletonTheme baseColor="var(--surface-2)" highlightColor="var(--glass-bg-2)">
+  <div className="narrow social-narrow">
     <div className="hdr"><button className="iconbtn" onClick={() => nav('/social')} aria-label={t('Previous')}><Icon name="chevronLeft" /></button></div>
     <div className={'card' + (data.perks?.borderBeam ? ' border-beam' : '')} style={{ textAlign: 'center' }}>
       <Avatar name={data.user.name} avatarUrl={data.user.avatarUrl} perks={data.perks} size={64} fontSize={22} style={{ margin: '0 auto 10px' }} />
@@ -376,8 +382,52 @@ export function UserProfile() {
     </div>
     <div style={{ height: 14 }} />
     {data.items.length
-      ? <div className="list">{data.items.map(item => <FeedCard key={item.workout.id} item={item} onReact={react} unit={unit} pinned={pinnedIds.has(item.workout.id)} />)}</div>
+      ? <div className="list">
+        {data.items.slice(0, shown).map(item => <FeedCard key={item.workout.id} item={item} onReact={react} unit={unit} pinned={pinnedIds.has(item.workout.id)} />)}
+        {loadingMore && <FeedCardSkeleton />}
+        {hasMore && <div ref={sentinelElRef} style={{ height: 1 }} />}
+      </div>
       : <div className="empty"><div className="ico"><Icon name="dumbbell" /></div>{t('No public workouts yet.')}</div>}
+  </div>
+  </SkeletonTheme>
+}
+
+// Same reveal-N-at-a-time idea as PostList's PAGE_SIZE above, extracted for the search/friends
+// sheets and UserProfile's own workout list below: all three fetch everything in one call (see
+// PostList's comment on why that's fine for a self-hosted instance) but used to mount every
+// row/card at once, which is the actual slow part once a list gets long. Same loadingMore +
+// REVEAL_DELAY_MS beat as PostList too, each caller supplying its own skeleton — one reveal
+// mechanism, one feel, wherever a list can run long. `resetKey` is caller-controlled rather
+// than `items` itself, since e.g. SearchSheet's filtered array gets a new identity on every
+// follow-toggle re-render — tying the reset to that would snap an open list back to 5 rows
+// just from tapping Follow.
+function useRevealPaging(items, resetKey, pageSize = PAGE_SIZE) {
+  const [shown, setShown] = useState(pageSize)
+  const [loadingMore, setLoadingMore] = useState(false)
+  useEffect(() => { setShown(pageSize) }, [resetKey])
+  const sentinelElRef = useRef(null)
+  const liveRef = useRef({ items, shown, loadingMore })
+  liveRef.current = { items, shown, loadingMore }
+  useEffect(() => {
+    const node = sentinelElRef.current
+    if (!node) return
+    const io = new IntersectionObserver(entries => {
+      if (!entries[0].isIntersecting) return
+      const { items, shown, loadingMore } = liveRef.current
+      if (loadingMore || !items || shown >= items.length) return
+      setLoadingMore(true)
+      setTimeout(() => { setShown(s => Math.min(items.length, s + pageSize)); setLoadingMore(false) }, REVEAL_DELAY_MS)
+    }, { rootMargin: '200px' })
+    io.observe(node)
+    return () => io.disconnect()
+  }, [items === null || !items, shown, loadingMore])
+  return { shown, loadingMore, hasMore: !!items && shown < items.length, sentinelElRef }
+}
+
+function PersonRowSkeleton() {
+  return <div className="lrow">
+    <Skeleton circle width={40} height={40} />
+    <span className="lrow-m"><Skeleton width={120} height={14} /></span>
   </div>
 }
 
@@ -412,22 +462,27 @@ function SearchSheet({ close }) {
   const needle = q.trim().toLowerCase()
   const results = !users ? null : !needle ? users : users.filter(u =>
     (u.name || '').toLowerCase().includes(needle) || (u.username || '').toLowerCase().includes(needle))
+  const { shown, loadingMore, hasMore, sentinelElRef } = useRevealPaging(results, needle)
 
-  return <>
+  return <SkeletonTheme baseColor="var(--surface-2)" highlightColor="var(--glass-bg-2)">
     <h3>{t('Search people')}</h3>
     <div className="search"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7" /><path d="m21 21-4.3-4.3" /></svg>
       <input className="input" autoFocus placeholder={t('Search by name or username')} value={q} onChange={e => setQ(e.target.value)} /></div>
     <div style={{ height: 8 }} />
     {results === null ? null : results.length === 0
       ? <div className="empty"><div className="ico"><Icon name="magnifier" /></div>{t('No matches.')}</div>
-      : <div className="sect-b">{results.map(person => (
-        <PersonRow key={person.id} person={person} onOpen={() => { close(); nav('/social/u/' + person.id) }}
-          right={<button className={'btn xs' + (person.following ? '' : ' primary')} onClick={ev => { ev.stopPropagation(); toggleFollow(person) }}>
-            {person.following ? t('Following') : t('Follow')}
-          </button>} />
-      ))}</div>}
+      : <div className="sect-b">
+        {results.slice(0, shown).map(person => (
+          <PersonRow key={person.id} person={person} onOpen={() => { close(); nav('/social/u/' + person.id) }}
+            right={<button className={'btn xs' + (person.following ? '' : ' primary')} onClick={ev => { ev.stopPropagation(); toggleFollow(person) }}>
+              {person.following ? t('Following') : t('Follow')}
+            </button>} />
+        ))}
+        {loadingMore && <PersonRowSkeleton />}
+        {hasMore && <div ref={sentinelElRef} style={{ height: 1 }} />}
+      </div>}
     <div style={{ height: 8 }} />
-  </>
+  </SkeletonTheme>
 }
 const openSearchSheet = () => useUI.getState().openSheet(close => <SearchSheet close={close} />)
 
@@ -435,17 +490,22 @@ const openSearchSheet = () => useUI.getState().openSheet(close => <SearchSheet c
 function FriendsSheet({ close }) {
   const [following, setFollowing] = useState(null)
   useEffect(() => { socialFollowing().then(setFollowing).catch(() => setFollowing([])) }, [])
+  const { shown, loadingMore, hasMore, sentinelElRef } = useRevealPaging(following, !!following)
 
-  return <>
+  return <SkeletonTheme baseColor="var(--surface-2)" highlightColor="var(--glass-bg-2)">
     <h3>{t('Friends')}</h3>
     {following === null ? null : following.length === 0
       ? <div className="empty"><div className="ico"><Icon name="heart" /></div>{t("You're not following anyone yet — search for people to follow them.")}</div>
-      : <div className="sect-b">{following.map(person => (
-        <PersonRow key={person.id} person={person} onOpen={() => { close(); nav('/social/u/' + person.id) }}
-          right={<span className="dim small row" style={{ gap: 4 }}><Icon name="flame" style={{ fontSize: 13 }} />{person.streak || 0}</span>} />
-      ))}</div>}
+      : <div className="sect-b">
+        {following.slice(0, shown).map(person => (
+          <PersonRow key={person.id} person={person} onOpen={() => { close(); nav('/social/u/' + person.id) }}
+            right={<span className="dim small row" style={{ gap: 4 }}><Icon name="flame" style={{ fontSize: 13 }} />{person.streak || 0}</span>} />
+        ))}
+        {loadingMore && <PersonRowSkeleton />}
+        {hasMore && <div ref={sentinelElRef} style={{ height: 1 }} />}
+      </div>}
     <div style={{ height: 8 }} />
-  </>
+  </SkeletonTheme>
 }
 const openFriendsSheet = () => useUI.getState().openSheet(close => <FriendsSheet close={close} />)
 

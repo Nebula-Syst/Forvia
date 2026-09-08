@@ -978,6 +978,9 @@ export default {
   "Legal": "Legal",
   "By creating an account you accept the": "Al crear una cuenta aceptas los",
   "Documents": "Documentos",
+  "Licenses": "Licencias", "Licenses & credits": "Licencias y créditos",
+  "AGPLv3, openGym and other third-party code": "AGPLv3, openGym y otro código de terceros",
+  "Source code": "Código fuente",
   "Terms of service, privacy": "Términos de servicio, privacidad",
 
 // --- Admin panel (added 2026-09-04) — was English-only until now; Users/Tasks/Alpha/Bugs/
