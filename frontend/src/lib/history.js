@@ -364,19 +364,29 @@ export function streakWeeks(S) {
   return streak
 }
 
-// Consecutive CALENDAR DAYS with at least one workout, counting back from today — a
-// different (stricter) rhythm than streakWeeks above, and what the streak-tier badges
-// (RankBadge's streak segment, lib/streak.js) are thresholded on. Same "today missing
-// doesn't break it yet, yesterday missing does" shape as streakWeeks.
+// Count of days with at least one workout, counting back from today — a different (stricter)
+// rhythm than streakWeeks above, and what the streak-tier badges (RankBadge's streak segment,
+// lib/streak.js) are thresholded on. Today missing doesn't break it yet (still time to train),
+// but unlike a plain "yesterday missing does" rule, this tolerates real rest days: a gap of up
+// to 3 consecutive days with no workout is bridged rather than resetting the streak, only a
+// 4th day in a row with nothing logged actually breaks it. The number returned is still a count
+// of days you actually trained, not a calendar span — rest days inside a tolerated gap aren't
+// counted, they're just not held against you either.
 export function streakDays(S) {
   if (!S.workouts.length) return 0
   const days = new Set(S.workouts.map(w => w.d))
   let streak = 0
+  let gap = 0
   const cur = new Date()
   for (let i = 0; i < 3650; i++) {
     const iso = isoOf(cur)
-    if (days.has(iso)) streak++
-    else if (i > 0) break
+    if (days.has(iso)) {
+      streak++
+      gap = 0
+    } else if (i > 0) {
+      gap++
+      if (gap > 3) break
+    }
     cur.setDate(cur.getDate() - 1)
   }
   return streak

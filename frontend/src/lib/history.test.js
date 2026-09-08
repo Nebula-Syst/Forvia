@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
-import { modeOf, isTimed, fmtSec, setLabel, defaultConfig, buildSets, freestyleConfig, exLine, workoutVolume, bestWeightFor, bestWeightForEntry, effortOf, stepEffort, capEffort, isBw, isPerSide, sideReps, repStep, cascadeWeight, insertWarmupRow, removeRowAt, workSetsDone, pairAdjacent, unpairSuperset, supersetUnits } from './history.js'
+import { modeOf, isTimed, fmtSec, setLabel, defaultConfig, buildSets, freestyleConfig, exLine, workoutVolume, bestWeightFor, bestWeightForEntry, effortOf, stepEffort, capEffort, isBw, isPerSide, sideReps, repStep, cascadeWeight, insertWarmupRow, removeRowAt, workSetsDone, pairAdjacent, unpairSuperset, supersetUnits, streakDays } from './history.js'
 import { EXDB } from './exercises.js'
+import { isoOf } from './format.js'
 
 // Real ids out of the shipped catalogue, so the body-part fallback is exercised for real.
 const CARDIO = EXDB.find(e => e.bp === 'cardio').id
@@ -682,5 +683,30 @@ describe('warm-up rows identified by phase alone', () => {
     const next = cascadeWeight(rows, 0, 50)
     expect(next[1].w).toBe(50)
     expect(next[2].w).toBe(100)
+  })
+})
+
+describe('streakDays (rest-day tolerance)', () => {
+  const daysAgo = n => { const d = new Date(); d.setDate(d.getDate() - n); return isoOf(d) }
+  const wo = d => ({ d, entries: [] })
+
+  it('counts a plain unbroken run', () => {
+    const S = { workouts: [wo(daysAgo(0)), wo(daysAgo(1)), wo(daysAgo(2))] }
+    expect(streakDays(S)).toBe(3)
+  })
+
+  it('bridges a gap of up to 3 rest days without resetting', () => {
+    const S = { workouts: [wo(daysAgo(0)), wo(daysAgo(4))] }
+    expect(streakDays(S)).toBe(2)
+  })
+
+  it('breaks on a gap of 4+ days', () => {
+    const S = { workouts: [wo(daysAgo(0)), wo(daysAgo(5))] }
+    expect(streakDays(S)).toBe(1)
+  })
+
+  it('today missing does not break an existing streak', () => {
+    const S = { workouts: [wo(daysAgo(1)), wo(daysAgo(2))] }
+    expect(streakDays(S)).toBe(2)
   })
 })
