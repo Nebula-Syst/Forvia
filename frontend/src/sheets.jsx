@@ -12,7 +12,7 @@ import { starterRoutines } from './lib/starter.js'
 import Media, { Thumb } from './components/Media.jsx'
 import Stepper from './components/Stepper.jsx'
 import Icon from './components/Icon.jsx'
-import { Button, Slider, Switch, Segmented, SelectRow, Row } from './components/ui.jsx'
+import { Button, Slider, Switch, Segmented, SelectRow, Row, NumberField, TextField } from './components/ui.jsx'
 import { glyphOf, GLYPH_GROUPS, DEFAULT_GLYPH } from './lib/glyphs.js'
 import BodyMap from './components/BodyMap.jsx'
 import { exerciseMuscleSnapshot, loadOfWorkouts } from './lib/muscles.js'
@@ -23,7 +23,12 @@ import { nextPrescription, applyPrescription, policyFor, defaultIncrement, POLIC
 import { MOBILE, shareExport } from './lib/mobile.js'
 import { buildCompletedWorkout } from './lib/finish-workout.js'
 import { isWarmupRow } from './lib/workout-model.js'
-import { passwordLogin, passwordRegister, setPassword, deleteAccount, socialComments, socialComment, socialCommentRemove, socialUpload, pinWorkout, unpinWorkout, pinPR, reportBug } from './lib/api.js'
+import { MEALS } from './lib/nutrition.js'
+import { waterGoalForDate } from './lib/nutrition-goals.js'
+import { parseNutritionCSV, mergeNutritionImport } from './lib/import-nutrition.js'
+import { StackedBar } from './components/MacroBars.jsx'
+import LiquidFillGauge from 'react-liquid-gauge'
+import { passwordLogin, passwordRegister, setPassword, deleteAccount, socialComments, socialComment, socialCommentRemove, socialUpload, pinWorkout, unpinWorkout, pinPR, reportBug, foodSearch, foodByBarcode } from './lib/api.js'
 
 const S = () => useStore.getState().S
 const update = (...a) => useStore.getState().update(...a)
@@ -524,6 +529,57 @@ export function importFromApp(file, onDone) {
     }
     ui().openSheet(close => <ImportSummary parsed={parsed} close={close} />)
     onDone && onDone()
+  }
+  rd.onerror = () => toast(t('Could not read that file'))
+  rd.readAsText(file)
+}
+
+// Same "existing days win" summary-then-confirm flow as ImportSummary above, for a food
+// diary CSV instead of a workout history one — see lib/import-nutrition.js.
+function NutritionImportSummary({ parsed, close }) {
+  const st = useStore(s => s.S)
+  const have = Object.keys(parsed.byDate).filter(iso => (st.foodDiary[iso] || []).length).length
+  const fresh = Object.keys(parsed.byDate).length - have
+
+  const doImport = () => {
+    let res
+    update(s => { res = mergeNutritionImport(s, parsed) })
+    close()
+    toast(t('{0} days imported', res.addedDays))
+  }
+
+  return <>
+    <h3>{parsed.source ? t('Import from {0}', parsed.source) : t('Import food diary')}</h3>
+    <div className="muted small" style={{ marginBottom: 12 }}>
+      {parsed.from === parsed.to ? fmtDate(parsed.from, true) : fmtDate(parsed.from, true) + ' – ' + fmtDate(parsed.to, true)}
+    </div>
+    <div className="tiles" style={{ textAlign: 'left' }}>
+      <div className="tile"><div className="l">{t('Days')}</div><div className="v" style={{ fontSize: '1.1rem' }}>{Object.keys(parsed.byDate).length}</div></div>
+      <div className="tile"><div className="l">{t('New')}</div><div className="v" style={{ fontSize: '1.1rem' }}>{fresh}</div></div>
+      <div className="tile"><div className="l">{t('Items')}</div><div className="v" style={{ fontSize: '1.1rem' }}>{parsed.count}</div></div>
+    </div>
+    {have > 0 && <div className="small dim" style={{ margin: '10px 0' }}>
+      {t('{0} days already have data here and will be left alone.', have)}
+    </div>}
+    <div style={{ height: have > 0 ? 0 : 10 }} />
+    <Button variant="primary" onClick={doImport} disabled={!fresh}>
+      {fresh ? t('Import') : t('Nothing new to import')}
+    </Button>
+    <div style={{ height: 8 }} />
+    <Button variant="ghost" className="dim" onClick={close}>{t('Cancel')}</Button>
+  </>
+}
+
+/** Read a food-diary CSV export, then show what it would do. */
+export function importNutritionFromApp(file) {
+  const rd = new FileReader()
+  rd.onload = () => {
+    let parsed
+    try { parsed = parseNutritionCSV(String(rd.result), { fallbackName: t('Imported item') }) }
+    catch (e) { toast(t('Could not read that file')); return }
+    if (parsed.error === 'empty') { toast(t('That file is empty')); return }
+    if (parsed.error) { toast(t("That file's columns aren't recognised — see the docs for supported apps.")); return }
+    ui().openSheet(close => <NutritionImportSummary parsed={parsed} close={close} />)
   }
   rd.onerror = () => toast(t('Could not read that file'))
   rd.readAsText(file)
@@ -1113,7 +1169,7 @@ function WorkoutDetail({ w, close }) {
 export const workoutDetailSheet = w => ui().openSheet(close => <WorkoutDetail w={w} close={close} />)
 
 /* ============================ calendar ============================ */
-function Calendar({ start, close }) {
+function Calendar({ start, onPick, close }) {
   const st = useStore(s => s.S)
   const [cur, setCur] = useState(() => { const d = start ? new Date(start) : new Date(); d.setDate(1); return d })
   const y = cur.getFullYear(), mo = cur.getMonth()
@@ -1129,10 +1185,19 @@ function Calendar({ start, close }) {
   for (let d = 1; d <= daysIn; d++) {
     const iso = y + '-' + String(mo + 1).padStart(2, '0') + '-' + String(d).padStart(2, '0')
     const ws = byDay[iso]
-    // No more "planned"/"rescheduled" dots — a day either has a logged workout or it doesn't.
-    // Every day opens the day-detail sheet now, workout or not — it also carries that
-    // date's nutrition, which is worth seeing even on a rest day.
-    cells.push(<button key={d} className={'cal-d' + (ws ? ' has' : '') + (iso === todayISO() ? ' today' : '')} onClick={() => { close(); dayDetailSheet(iso) }}><span>{d}</span><i className={ws ? 'done' : ''} /></button>)
+    const ate = (st.foodDiary[iso] || []).length > 0
+    // Trained and ate are tracked independently — see the has-workout/has-food CSS — so a
+    // day can carry either tint, both, or neither. Every day still opens the day-detail
+    // sheet (or calls onPick, browsing from Nutrition.jsx), workout or not.
+    cells.push(
+      <button key={d} className={'cal-d' + (ws ? ' has-workout' : '') + (ate ? ' has-food' : '') + (iso === todayISO() ? ' today' : '')} onClick={() => { close(); onPick ? onPick(iso) : dayDetailSheet(iso) }}>
+        <span>{d}</span>
+        <span className="dots">
+          {ws && <i className="workout" />}
+          {ate && <i className="food" />}
+        </span>
+      </button>
+    )
   }
   return <>
     <div className="row between" style={{ marginBottom: 2 }}>
@@ -1144,11 +1209,12 @@ function Calendar({ start, close }) {
     <div className="cal-grid">{['Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa', 'Su'].map(l => <div key={l} className="cal-h">{t(l)}</div>)}{cells}</div>
     <div className="cal-legend">
       <span><i style={{ background: 'var(--acc)' }} />{t('Trained')}</span>
+      <span><i style={{ background: 'var(--blue)' }} />{t('Ate')}</span>
     </div>
-    <div className="small dim" style={{ textAlign: 'center', marginTop: 10 }}>{t('Tap a day for its workout and nutrition log')}</div>
+    <div className="small dim" style={{ textAlign: 'center', marginTop: 10 }}>{onPick ? t('Tap a day to view it') : t('Tap a day for its workout and nutrition log')}</div>
   </>
 }
-export const calendarSheet = start => ui().openSheet(close => <Calendar start={start} close={close} />)
+export const calendarSheet = (start, onPick) => ui().openSheet(close => <Calendar start={start} onPick={onPick} close={close} />)
 
 /* ============================ day detail (workout + nutrition) ============================ */
 // One sheet for "what happened on this date" — reached from the month calendar and from
@@ -1422,3 +1488,652 @@ function doFinishWorkout() {
   const xp = workoutXp(w) + prs.length * PR_XP
   ui().openSheet(close => <FinishSummary w={w} prs={prs} e1prs={e1prs} xp={xp} close={close} />, { locked: true })
 }
+
+/* ============================ nutrition: food logging ============================ */
+// The "phase 1 shell" the diary shipped with had a real S.foodDiary/S.nutritionGoals model
+// but no way to actually put food into it — every add button just toasted "coming soon".
+// These three sheets are that missing piece: search (Open Food Facts, proxied server-side —
+// see api/server.js), a custom entry for anything not in that database, and a barcode scan
+// where the browser supports one. All three end the same way: push a logged item onto
+// S.foodDiary[dateIso], synced like everything else in S — `dateIso` is whatever day
+// Nutrition.jsx currently has open (its own calendar picker, not necessarily today).
+
+// Meal labels computed fresh on every call (not a module constant) so they follow a language
+// switch — derived from the shared MEALS list (lib/nutrition.js) so the order here matches
+// the chronological breakfast→lunch→snack→dinner order used everywhere else.
+const mealOptions = () => MEALS.map(m => ({ value: m.key, label: m.name() }))
+
+// Weight vs. units — shared by LogQuantitySheet (a searched/scanned food only ever reports
+// per-100g macros, so "units" there also needs a weight-per-unit to convert through) and
+// CustomFoodForm (which collects the rate directly in whichever unit you pick).
+const FOOD_QTY_MODES = () => [{ value: 'weight', label: t('By weight') }, { value: 'unit', label: t('By units') }]
+
+function logFoodItem(dateIso, meal, item) {
+  update(s => {
+    const list = s.foodDiary[dateIso] || (s.foodDiary[dateIso] = [])
+    list.push({ id: uid(), meal, ...item })
+  })
+  toast(t('Food logged'))
+}
+
+function LogQuantitySheet({ dateIso, mealKey, food, close }) {
+  const [mode, setMode] = useState('weight')
+  const [grams, setGrams] = useState(100)
+  const [units, setUnits] = useState(1)
+  // Open Food Facts only ever reports per-100g macros, never a per-unit rate — logging "3 of
+  // these" still has to go through grams somewhere, so unit mode also asks the weight of one
+  // unit and converts. Once saved, though, the item stores `units` (not grams) and its own
+  // baked-in per-unit kcal/macros, same as a unit-mode CustomFoodForm entry — editing it
+  // later (EditFoodSheet) just scales the unit count, the gram conversion doesn't resurface.
+  const [unitGrams, setUnitGrams] = useState(100)
+  const [meal, setMeal] = useState(mealKey)
+  const [detail, setDetail] = useState(false)
+  const goals = S().nutritionGoals
+  const effectiveGrams = mode === 'weight' ? (grams || 0) : (units || 0) * (unitGrams || 0)
+  const factor = effectiveGrams / 100
+  const kcal = Math.round(food.kcal100 * factor)
+  const carbs = Math.round(food.carbs100 * factor)
+  const fat = Math.round(food.fat100 * factor)
+  const protein = Math.round(food.protein100 * factor)
+  const save = () => {
+    if (mode === 'weight') {
+      if (!grams || grams <= 0) { toast(t('Enter a valid amount')); return }
+      logFoodItem(dateIso, meal, { name: food.name, grams, kcal, carbsG: carbs, fatG: fat, proteinG: protein })
+    } else {
+      if (!units || units <= 0 || !unitGrams || unitGrams <= 0) { toast(t('Enter a valid amount')); return }
+      logFoodItem(dateIso, meal, { name: food.name, units, kcal, carbsG: carbs, fatG: fat, proteinG: protein })
+    }
+    close()
+  }
+  return <>
+    <h3>{food.name}</h3>
+    <Segmented options={FOOD_QTY_MODES()} value={mode} onChange={setMode} />
+    <div style={{ height: 12 }} />
+    {/* A plain NumberField has no styling of its own outside a .stp/.unit-field wrapper —
+        left bare here it fell back to the browser's native (white) input chrome. */}
+    {mode === 'weight'
+      ? <div className="unit-field" style={{ width: 140, margin: '2px 0 14px' }}>
+        <NumberField value={grams} decimal={false} onChange={setGrams} />
+        <span className="dim">{t('grams')}</span>
+      </div>
+      : <div className="row" style={{ gap: 10, margin: '2px 0 14px' }}>
+        <div className="unit-field" style={{ flex: 1 }}>
+          <NumberField value={units} decimal={false} onChange={setUnits} />
+          <span className="dim">{t('units')}</span>
+        </div>
+        <div className="unit-field" style={{ flex: 1 }}>
+          <NumberField value={unitGrams} decimal={false} onChange={setUnitGrams} />
+          <span className="dim">{t('g/unit')}</span>
+        </div>
+      </div>}
+    <Segmented options={mealOptions()} value={meal} onChange={setMeal} />
+    <div style={{ height: 16 }} />
+    {/* Same bar language as Nutrition.jsx's meal cards (a calorie bar + 3 macro bars against
+        the day's goals) rather than the old bare "46 kcal · C 12g · G 0g · P 0g" text card —
+        prior={0} since this is a single not-yet-logged item, not a cumulative meal total. */}
+    <div className="row between" style={{ marginBottom: 4 }}>
+      <span className="small" style={{ fontWeight: 600 }}>{t('Calories')}</span>
+      <span className="small" style={{ color: 'var(--label-2)' }}>{t('{0} kcal', kcal)}</span>
+    </div>
+    <div style={{ marginBottom: 12 }}><StackedBar prior={0} own={kcal} goal={goals.calories} color="var(--acc)" /></div>
+    <div className="row" style={{ gap: 10 }}>
+      {[
+        { l: t('Carbs'), v: carbs, g: goals.carbsG, c: 'var(--orange)' },
+        { l: t('Fat'), v: fat, g: goals.fatG, c: 'var(--indigo)' },
+        { l: t('Protein'), v: protein, g: goals.proteinG, c: 'var(--blue)' },
+      ].map((m, i) => (
+        <div key={i} style={{ flex: 1 }}>
+          <div className="row between" style={{ marginBottom: 4 }}>
+            <span style={{ fontSize: 11, color: 'var(--label-2)' }}>{m.l}</span>
+            {detail && <span style={{ fontSize: 11, color: 'var(--label-2)' }}>{m.v}g</span>}
+          </div>
+          <StackedBar prior={0} own={m.v} goal={m.g} color={m.c} />
+          {detail && <div className="dim small" style={{ marginTop: 4, textAlign: 'center' }}>{Math.round(m.g ? m.v / m.g * 100 : 0)}%</div>}
+        </div>
+      ))}
+    </div>
+    {detail && <>
+      <div className="divider" style={{ margin: '14px 0 10px' }} />
+      {/* The 4 headline macros above are only ever the ones the search/barcode result
+          actually reported for — sugars, fibre, saturated fat and salt come from the same
+          Open Food Facts product, when it has them (extraNutriments in api/server.js omits
+          any that are genuinely missing rather than showing a fake 0). */}
+      {['satFat100', 'sugars100', 'fiber100', 'salt100'].some(k => food[k] != null)
+        ? <div className="list">
+          {food.satFat100 != null && <div className="row between" style={{ padding: '7px 0' }}><span className="small dim">{t('Saturated fat')}</span><span className="small">{Math.round(food.satFat100 * factor * 10) / 10}g</span></div>}
+          {food.sugars100 != null && <div className="row between" style={{ padding: '7px 0' }}><span className="small dim">{t('Sugars')}</span><span className="small">{Math.round(food.sugars100 * factor * 10) / 10}g</span></div>}
+          {food.fiber100 != null && <div className="row between" style={{ padding: '7px 0' }}><span className="small dim">{t('Fiber')}</span><span className="small">{Math.round(food.fiber100 * factor * 10) / 10}g</span></div>}
+          {food.salt100 != null && <div className="row between" style={{ padding: '7px 0' }}><span className="small dim">{t('Salt')}</span><span className="small">{Math.round(food.salt100 * factor * 10) / 10}g</span></div>}
+        </div>
+        : <div className="dim small">{t('No further nutrition data for this item.')}</div>}
+    </>}
+    <div style={{ height: 8 }} />
+    <button className="small" style={{ background: 'none', border: 'none', padding: 0, color: 'var(--label-2)', fontWeight: 600 }} onClick={() => setDetail(v => !v)}>
+      {detail ? t('Show less') : t('See all nutrients')}
+    </button>
+    <div style={{ height: 14 }} />
+    <Button variant="primary" onClick={save}>{t('Log food')}</Button>
+  </>
+}
+export const logQuantitySheet = (dateIso, mealKey, food) => ui().openSheet(close => <LogQuantitySheet dateIso={dateIso} mealKey={mealKey} food={food} close={close} />)
+
+// A custom food's macros are entered as a rate (per 100g, or per single unit — "manzana" is
+// the same food whether you log 200g of it or 10 of them) plus a quantity in whichever unit
+// the rate is in, exactly like a searched result's kcal100/grams — not a flat total for
+// "whatever I ate right now". That's what lets EditFoodSheet later touch only the quantity
+// and never the macros directly, the same as it already does for search/barcode results.
+function CustomFoodForm({ dateIso, mealKey, close }) {
+  const [name, setName] = useState('')
+  const [mode, setMode] = useState('weight')
+  const [kcalRate, setKcalRate] = useState(0)
+  const [carbsRate, setCarbsRate] = useState(0)
+  const [fatRate, setFatRate] = useState(0)
+  const [proteinRate, setProteinRate] = useState(0)
+  const [qty, setQty] = useState(100)
+  const [meal, setMeal] = useState(mealKey)
+  const switchMode = m => { setMode(m); setQty(m === 'weight' ? 100 : 1) }
+  const factor = mode === 'weight' ? (qty || 0) / 100 : (qty || 0)
+  const kcal = Math.round(kcalRate * factor)
+  const carbs = Math.round(carbsRate * factor)
+  const fat = Math.round(fatRate * factor)
+  const protein = Math.round(proteinRate * factor)
+  const save = () => {
+    const n = name.trim()
+    if (!n) { toast(t('Enter a name')); return }
+    if (!qty || qty <= 0) { toast(t('Enter a valid amount')); return }
+    const item = { name: n, kcal, carbsG: carbs, fatG: fat, proteinG: protein }
+    if (mode === 'weight') item.grams = qty; else item.units = qty
+    logFoodItem(dateIso, meal, item)
+    // Also remembered in "Mis alimentos" (Settings → Nutrition) so this exact food/mode can
+    // be re-logged in a different quantity later without retyping its macros — skipped if
+    // the same name+mode is already there (edited from Settings, or logged once before).
+    update(s => {
+      if (!s.customFoods.some(f => f.name.toLowerCase() === n.toLowerCase() && f.mode === mode)) {
+        s.customFoods.push({ id: uid(), name: n, mode, kcal: kcalRate, carbs: carbsRate, fat: fatRate, protein: proteinRate })
+      }
+    })
+    close()
+  }
+  return <>
+    <h3>{t('Create custom food')}</h3>
+    <TextField autoFocus placeholder={t('Name')} value={name} onChange={e => setName(e.target.value)} style={{ marginBottom: 12, width: '100%' }} />
+    <Segmented options={FOOD_QTY_MODES()} value={mode} onChange={switchMode} />
+    <div className="dim small" style={{ margin: '12px 0 6px' }}>{mode === 'weight' ? t('Per 100g') : t('Per unit')}</div>
+    <div className="grid2" style={{ marginBottom: 12 }}>
+      <div><div className="dim small" style={{ marginBottom: 4 }}>{t('Calories')}</div><NumberField value={kcalRate} decimal={false} onChange={setKcalRate} /></div>
+      <div><div className="dim small" style={{ marginBottom: 4 }}>{t('Carbs')} (g)</div><NumberField value={carbsRate} onChange={setCarbsRate} /></div>
+      <div><div className="dim small" style={{ marginBottom: 4 }}>{t('Fat')} (g)</div><NumberField value={fatRate} onChange={setFatRate} /></div>
+      <div><div className="dim small" style={{ marginBottom: 4 }}>{t('Protein')} (g)</div><NumberField value={proteinRate} onChange={setProteinRate} /></div>
+    </div>
+    <div className="unit-field" style={{ width: 140, marginBottom: 12 }}>
+      <NumberField value={qty} decimal={false} onChange={setQty} />
+      <span className="dim">{mode === 'weight' ? t('grams') : t('units')}</span>
+    </div>
+    <Segmented options={mealOptions()} value={meal} onChange={setMeal} />
+    <div style={{ height: 14 }} />
+    <div className="card" style={{ textAlign: 'center', padding: 14 }}>
+      <div style={{ fontSize: 22, fontWeight: 800 }}>{kcal} <span className="dim small" style={{ fontWeight: 500 }}>kcal</span></div>
+      <div className="dim small" style={{ marginTop: 4 }}>{carbs}g · {fat}g · {protein}g</div>
+    </div>
+    <div style={{ height: 14 }} />
+    <Button variant="primary" onClick={save}>{t('Log food')}</Button>
+  </>
+}
+export const customFoodSheet = (dateIso, mealKey) => ui().openSheet(close => <CustomFoodForm dateIso={dateIso} mealKey={mealKey} close={close} />)
+
+// Logging a quantity of an already-defined "Mis alimentos" food (FoodSearchSheet's results,
+// or re-logging from Settings) — its rate is already in the right unit (per 100g for
+// mode:'weight', per single unit for mode:'unit'), so unlike LogQuantitySheet's Open Food
+// Facts flow there's no weight/unit toggle or gram conversion to offer, just the one
+// quantity its mode already implies.
+function LogCustomFoodSheet({ dateIso, mealKey, food, close }) {
+  const [qty, setQty] = useState(food.mode === 'weight' ? 100 : 1)
+  const [meal, setMeal] = useState(mealKey)
+  const factor = food.mode === 'weight' ? (qty || 0) / 100 : (qty || 0)
+  const kcal = Math.round(food.kcal * factor)
+  const carbs = Math.round(food.carbs * factor)
+  const fat = Math.round(food.fat * factor)
+  const protein = Math.round(food.protein * factor)
+  const save = () => {
+    if (!qty || qty <= 0) { toast(t('Enter a valid amount')); return }
+    const item = { name: food.name, kcal, carbsG: carbs, fatG: fat, proteinG: protein }
+    if (food.mode === 'weight') item.grams = qty; else item.units = qty
+    logFoodItem(dateIso, meal, item)
+    close()
+  }
+  return <>
+    <h3>{food.name}</h3>
+    <div className="unit-field" style={{ width: 140, margin: '14px 0' }}>
+      <NumberField value={qty} decimal={false} onChange={setQty} />
+      <span className="dim">{food.mode === 'weight' ? t('grams') : t('units')}</span>
+    </div>
+    <Segmented options={mealOptions()} value={meal} onChange={setMeal} />
+    <div style={{ height: 14 }} />
+    <div className="card" style={{ textAlign: 'center', padding: 14 }}>
+      <div style={{ fontSize: 22, fontWeight: 800 }}>{kcal} <span className="dim small" style={{ fontWeight: 500 }}>kcal</span></div>
+      <div className="dim small" style={{ marginTop: 4 }}>{carbs}g · {fat}g · {protein}g</div>
+    </div>
+    <div style={{ height: 14 }} />
+    <Button variant="primary" onClick={save}>{t('Log food')}</Button>
+  </>
+}
+export const logCustomFoodSheet = (dateIso, mealKey, food) => ui().openSheet(close => <LogCustomFoodSheet dateIso={dateIso} mealKey={mealKey} food={food} close={close} />)
+
+// Creating or editing a "Mis alimentos" definition itself (Settings → Nutrition → My foods)
+// — just the rate, no quantity or meal, since those only make sense at logging time.
+function CustomFoodDefForm({ existing, close }) {
+  const [name, setName] = useState(existing?.name || '')
+  const [mode, setMode] = useState(existing?.mode || 'weight')
+  const [kcalRate, setKcalRate] = useState(existing?.kcal ?? 0)
+  const [carbsRate, setCarbsRate] = useState(existing?.carbs ?? 0)
+  const [fatRate, setFatRate] = useState(existing?.fat ?? 0)
+  const [proteinRate, setProteinRate] = useState(existing?.protein ?? 0)
+  const save = () => {
+    const n = name.trim()
+    if (!n) { toast(t('Enter a name')); return }
+    update(s => {
+      if (existing) {
+        const f = s.customFoods.find(x => x.id === existing.id)
+        if (f) { f.name = n; f.mode = mode; f.kcal = kcalRate; f.carbs = carbsRate; f.fat = fatRate; f.protein = proteinRate }
+      } else {
+        s.customFoods.push({ id: uid(), name: n, mode, kcal: kcalRate, carbs: carbsRate, fat: fatRate, protein: proteinRate })
+      }
+    })
+    toast(existing ? t('Food updated') : t('Food saved'))
+    close()
+  }
+  const del = () => {
+    update(s => { s.customFoods = s.customFoods.filter(x => x.id !== existing.id) })
+    toast(t('Food removed'))
+    close()
+  }
+  return <>
+    <h3>{existing ? existing.name : t('New food')}</h3>
+    <TextField autoFocus placeholder={t('Name')} value={name} onChange={e => setName(e.target.value)} style={{ margin: '14px 0 12px', width: '100%' }} />
+    <Segmented options={FOOD_QTY_MODES()} value={mode} onChange={setMode} />
+    <div className="dim small" style={{ margin: '12px 0 6px' }}>{mode === 'weight' ? t('Per 100g') : t('Per unit')}</div>
+    <div className="grid2">
+      <div><div className="dim small" style={{ marginBottom: 4 }}>{t('Calories')}</div><NumberField value={kcalRate} decimal={false} onChange={setKcalRate} /></div>
+      <div><div className="dim small" style={{ marginBottom: 4 }}>{t('Carbs')} (g)</div><NumberField value={carbsRate} onChange={setCarbsRate} /></div>
+      <div><div className="dim small" style={{ marginBottom: 4 }}>{t('Fat')} (g)</div><NumberField value={fatRate} onChange={setFatRate} /></div>
+      <div><div className="dim small" style={{ marginBottom: 4 }}>{t('Protein')} (g)</div><NumberField value={proteinRate} onChange={setProteinRate} /></div>
+    </div>
+    <div style={{ height: 14 }} />
+    <Button variant="primary" onClick={save}>{t('Save changes')}</Button>
+    {existing && <><div style={{ height: 8 }} /><Button variant="danger" onClick={del}>{t('Delete')}</Button></>}
+  </>
+}
+export const customFoodDefSheet = existing => ui().openSheet(close => <CustomFoodDefForm existing={existing} close={close} />)
+
+// "Mis comidas" — saving a meal card's current items as a reusable bundle (Nutrition.jsx's
+// clipboard button) and logging one back into the diary (FoodSearchSheet's search results).
+function saveMealTotals(items) {
+  return { kcal: items.reduce((n, it) => n + (it.kcal || 0), 0), count: items.length }
+}
+function logSavedMeal(dateIso, meal, savedMeal) {
+  update(s => {
+    const list = s.foodDiary[dateIso] || (s.foodDiary[dateIso] = [])
+    savedMeal.items.forEach(it => list.push({ ...it, id: uid(), meal }))
+  })
+  toast(t('Meal logged'))
+}
+function SaveMealForm({ items, close }) {
+  const [name, setName] = useState('')
+  const { kcal, count } = saveMealTotals(items)
+  const save = () => {
+    const n = name.trim()
+    if (!n) { toast(t('Enter a name')); return }
+    update(s => { s.savedMeals.push({ id: uid(), name: n, items: items.map(({ id, meal, ...rest }) => rest) }) })
+    toast(t('Meal saved'))
+    close()
+  }
+  return <>
+    <h3>{t('Save as meal')}</h3>
+    <TextField autoFocus placeholder={t('Name')} value={name} onChange={e => setName(e.target.value)} style={{ width: '100%', margin: '14px 0 12px' }} />
+    <div className="list">
+      {items.map((it, i) => <div key={i} className="item"><div className="grow tt">{it.name}</div><span style={{ fontWeight: 700 }}>{it.kcal} kcal</span></div>)}
+    </div>
+    <div className="dim small" style={{ margin: '8px 4px 0' }}>{t('{0} items · {1} kcal', count, kcal)}</div>
+    <div style={{ height: 14 }} />
+    <Button variant="primary" onClick={save}>{t('Save')}</Button>
+  </>
+}
+export const saveMealSheet = items => ui().openSheet(close => <SaveMealForm items={items} close={close} />)
+
+// Viewing (and deleting) a saved meal from Settings → Nutrition → "My meals" — no editing its
+// items here, same reasoning as a custom food's macros: that belongs to whatever created it.
+function SavedMealDetailSheet({ meal, close }) {
+  const del = () => {
+    update(s => { s.savedMeals = s.savedMeals.filter(m => m.id !== meal.id) })
+    toast(t('Meal removed'))
+    close()
+  }
+  return <>
+    <h3>{meal.name}</h3>
+    <div className="list" style={{ margin: '14px 0' }}>
+      {meal.items.map((it, i) => <div key={i} className="item"><div className="grow tt">{it.name}</div><span style={{ fontWeight: 700 }}>{it.kcal} kcal</span></div>)}
+    </div>
+    <Button variant="danger" onClick={del}>{t('Delete')}</Button>
+  </>
+}
+export const savedMealDetailSheet = meal => ui().openSheet(close => <SavedMealDetailSheet meal={meal} close={close} />)
+
+// Editing (and deleting) an already-logged item — reached from NutritionDiary.jsx's "See
+// all" list, the one place a food item renders as its own row rather than folded into a
+// meal's "X and N more" summary. Quantity is the only thing that's ever editable here —
+// never calories/macros directly — so an item with a `grams` or `units` quantity (a search
+// result, a barcode scan, or a weight/unit custom food — see CustomFoodForm) rescales
+// kcal/macros off its own current per-quantity ratio when you drag the amount. An item with
+// neither (only truly old data from before quantities existed) has no ratio to scale from,
+// so this only offers moving it to a different meal or deleting it.
+function EditFoodSheet({ dateIso, item, close }) {
+  const qtyKind = item.grams != null ? 'grams' : item.units != null ? 'units' : null
+  const initialQty = qtyKind ? item[qtyKind] : null
+  const ratio = qtyKind && initialQty ? { kcal: item.kcal / initialQty, carbs: item.carbsG / initialQty, fat: item.fatG / initialQty, protein: item.proteinG / initialQty } : null
+  const [qty, setQty] = useState(initialQty || 100)
+  const [meal, setMeal] = useState(item.meal)
+  const kcal = ratio ? Math.round(ratio.kcal * qty) : item.kcal
+  const carbs = ratio ? Math.round(ratio.carbs * qty) : item.carbsG
+  const fat = ratio ? Math.round(ratio.fat * qty) : item.fatG
+  const protein = ratio ? Math.round(ratio.protein * qty) : item.proteinG
+  const save = () => {
+    update(s => {
+      const it = (s.foodDiary[dateIso] || []).find(x => x.id === item.id)
+      if (!it) return
+      it.meal = meal
+      if (ratio) { it[qtyKind] = qty; it.kcal = kcal; it.carbsG = carbs; it.fatG = fat; it.proteinG = protein }
+    })
+    toast(t('Food updated'))
+    close()
+  }
+  const del = () => {
+    update(s => { s.foodDiary[dateIso] = (s.foodDiary[dateIso] || []).filter(x => x.id !== item.id) })
+    toast(t('Food removed'))
+    close()
+  }
+  return <>
+    <h3>{item.name}</h3>
+    {ratio && <div className="unit-field" style={{ width: 140, margin: '14px 0' }}>
+      <NumberField value={qty} decimal={false} onChange={setQty} />
+      <span className="dim">{qtyKind === 'grams' ? t('grams') : t('units')}</span>
+    </div>}
+    <Segmented options={mealOptions()} value={meal} onChange={setMeal} />
+    {ratio && <>
+      <div style={{ height: 14 }} />
+      <div className="card" style={{ textAlign: 'center', padding: 14 }}>
+        <div style={{ fontSize: 22, fontWeight: 800 }}>{kcal} <span className="dim small" style={{ fontWeight: 500 }}>kcal</span></div>
+        <div className="dim small" style={{ marginTop: 4 }}>{carbs}g · {fat}g · {protein}g</div>
+      </div>
+    </>}
+    <div style={{ height: 14 }} />
+    <Button variant="primary" onClick={save}>{t('Save changes')}</Button>
+    <div style={{ height: 8 }} />
+    <Button variant="danger" onClick={del}>{t('Delete')}</Button>
+  </>
+}
+export const editFoodSheet = (dateIso, item) => ui().openSheet(close => <EditFoodSheet dateIso={dateIso} item={item} close={close} />)
+
+// Best-effort: the native BarcodeDetector only ships in Chromium-based browsers today, so
+// FoodSearchSheet below hides the "Scan barcode" row entirely rather than opening this to a
+// dead camera on Safari/Firefox. `stopped` guards every async continuation (the detect loop,
+// the lookup after a hit) against running past an unmount or a hit already handled.
+function BarcodeScanSheet({ dateIso, mealKey, close }) {
+  const videoRef = useRef(null)
+  const [status, setStatus] = useState('starting')
+  useEffect(() => {
+    let stream = null, raf = null, stopped = false
+    const stop = () => { if (stream) stream.getTracks().forEach(tr => tr.stop()) }
+    async function start() {
+      try {
+        const detector = new window.BarcodeDetector({ formats: ['ean_13', 'ean_8', 'upc_a', 'upc_e'] })
+        stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } })
+        if (stopped) { stop(); return }
+        videoRef.current.srcObject = stream
+        await videoRef.current.play()
+        setStatus('scanning')
+        const loop = async () => {
+          if (stopped) return
+          try {
+            const codes = await detector.detect(videoRef.current)
+            if (codes.length) {
+              stopped = true
+              stop()
+              const code = codes[0].rawValue
+              const food = await foodByBarcode(code).catch(() => null)
+              close()
+              if (food) logQuantitySheet(dateIso, mealKey, food)
+              else toast(t('Product not found — try search instead'))
+              return
+            }
+          } catch { /* a frame with no readable code — keep scanning */ }
+          raf = requestAnimationFrame(loop)
+        }
+        raf = requestAnimationFrame(loop)
+      } catch (e) {
+        if (!stopped) setStatus('error')
+      }
+    }
+    start()
+    return () => { stopped = true; if (raf) cancelAnimationFrame(raf); stop() }
+  }, [])
+  return <>
+    <h3>{t('Scan barcode')}</h3>
+    {status === 'error'
+      ? <div className="empty">{t('Could not access the camera.')}</div>
+      : <video ref={videoRef} muted playsInline style={{ width: '100%', borderRadius: 12, background: '#000', aspectRatio: '3/4', objectFit: 'cover' }} />}
+    <div style={{ height: 10 }} />
+    <Button variant="ghost" onClick={close}>{t('Cancel')}</Button>
+  </>
+}
+export const barcodeScanSheet = (dateIso, mealKey) => ui().openSheet(close => <BarcodeScanSheet dateIso={dateIso} mealKey={mealKey} close={close} />, { locked: true })
+
+function FoodSearchSheet({ dateIso, mealKey, close }) {
+  const [q, setQ] = useState('')
+  const [items, setItems] = useState(null)
+  const [busy, setBusy] = useState(false)
+  const canScan = typeof window !== 'undefined' && 'BarcodeDetector' in window
+  // "Mis alimentos" (Settings → Nutrition) surfaces here too — reusing a food you defined
+  // once (see CustomFoodForm/CustomFoodDefForm) shouldn't mean retyping its macros every time.
+  const customFoods = useStore(s => s.S.customFoods)
+  const savedMeals = useStore(s => s.S.savedMeals)
+  const myMatches = q.trim() ? customFoods.filter(f => f.name.toLowerCase().includes(q.trim().toLowerCase())) : []
+  const mealMatches = q.trim() ? savedMeals.filter(m => m.name.toLowerCase().includes(q.trim().toLowerCase())) : []
+  useEffect(() => {
+    const query = q.trim()
+    if (!query) { setItems(null); setBusy(false); return }
+    setBusy(true)
+    const h = setTimeout(() => {
+      foodSearch(query).then(setItems).catch(() => { setItems([]); toast(t('Search unavailable — try again')) }).finally(() => setBusy(false))
+    }, 350)
+    return () => clearTimeout(h)
+  }, [q])
+
+  return <>
+    <h3>{t('Add food')}</h3>
+    <div className="search"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7" /><path d="m21 21-4.3-4.3" /></svg>
+      <input className="input" autoFocus placeholder={t('Search foods…')} value={q} onChange={e => setQ(e.target.value)} /></div>
+    <div style={{ height: 10 }} />
+    <div className="list">
+      <div className="item" onClick={() => { close(); customFoodSheet(dateIso, mealKey) }}>
+        <div className="thumb thumb-x"><Icon name="sparkles" /></div>
+        <div className="grow"><div className="tt">{t('Create custom food')}</div><div className="ss">{t('Enter calories and macros yourself')}</div></div>
+        <Icon name="plus" className="chev" />
+      </div>
+      {canScan && <div className="item" onClick={() => { close(); barcodeScanSheet(dateIso, mealKey) }}>
+        <div className="thumb thumb-x"><Icon name="barcode" /></div>
+        <div className="grow"><div className="tt">{t('Scan barcode')}</div></div>
+        <Icon name="chevronRight" className="chev" />
+      </div>}
+      {myMatches.map(f => (
+        <div key={f.id} className="item" onClick={() => { close(); logCustomFoodSheet(dateIso, mealKey, f) }}>
+          <div className="thumb thumb-x"><Icon name="sparkles" /></div>
+          <div className="grow"><div className="tt">{f.name}</div><div className="ss">{f.mode === 'weight' ? t('{0} kcal / 100g', f.kcal) : t('{0} kcal / unit', f.kcal)}</div></div>
+          <Icon name="chevronRight" className="chev" />
+        </div>
+      ))}
+      {mealMatches.map(m => (
+        <div key={m.id} className="item" onClick={() => { logSavedMeal(dateIso, mealKey, m); close() }}>
+          <div className="thumb thumb-x"><Icon name="clipboard" /></div>
+          <div className="grow"><div className="tt">{m.name}</div><div className="ss">{t('{0} items · {1} kcal', m.items.length, saveMealTotals(m.items).kcal)}</div></div>
+          <Icon name="chevronRight" className="chev" />
+        </div>
+      ))}
+      {items === null || items.length === 0
+        ? (q.trim() && !busy && items && !myMatches.length && !mealMatches.length && <div className="empty">{t('No matches — try a different search or add it yourself.')}</div>)
+        : items.map((food, i) => (
+          <div key={food.code || i} className="item" onClick={() => { close(); logQuantitySheet(dateIso, mealKey, food) }}>
+            <div className="grow"><div className="tt">{food.name}</div><div className="ss">{t('{0} kcal / 100g', food.kcal100)}</div></div>
+            <Icon name="chevronRight" className="chev" />
+          </div>
+        ))}
+    </div>
+  </>
+}
+export const foodSearchSheet = (dateIso, mealKey) => ui().openSheet(close => <FoodSearchSheet dateIso={dateIso} mealKey={mealKey} close={close} />)
+
+// Water isn't itemized (Nutrition.jsx's waterLog is a plain per-day ml total), so this sheet
+// starts from whatever's already logged for the day (not 0 — the gauge is meant to read as
+// "here's today so far", not an empty add-on tank) and presets/custom amounts build on top
+// of that; save just writes the resulting total back.
+// Real container sizes (not equal-ish generic steps) — water isn't weighed like food, so a
+// glass/bottle you can picture is a faster way to log it than typing a number every time.
+const WATER_PRESETS = [
+  { ml: 150, icon: 'glassSmall' },
+  { ml: 250, icon: 'glass' },
+  { ml: 500, icon: 'bottleSmall' },
+  { ml: 1000, icon: 'bottleLarge' },
+]
+function WaterLogSheet({ dateIso, close }) {
+  const initial = S().waterLog[dateIso] || 0
+  const [amount, setAmount] = useState(initial)
+  const [editOpen, setEditOpen] = useState(false)
+  const [customOpen, setCustomOpen] = useState(false)
+  const [customMl, setCustomMl] = useState(200)
+  const goal = waterGoalForDate(S().nutritionGoals.waterMl || 2000, S().waterProtocol, dateIso)
+  const add = ml => setAmount(a => Math.max(0, a + ml))
+  const save = () => {
+    if (amount !== initial) {
+      update(s => { s.waterLog[dateIso] = Math.max(0, amount) })
+      toast(t('Water logged'))
+    }
+    close()
+  }
+  const del = () => {
+    update(s => { s.waterLog[dateIso] = 0 })
+    toast(t('Water removed'))
+    close()
+  }
+  const pct = Math.min(100, goal ? (amount / goal) * 100 : 0)
+  return <>
+    <h3>{t('Log how much water you drink.')}</h3>
+    <div className="row" style={{ justifyContent: 'center', gap: 6, margin: '4px 0 2px' }}>
+      <span className="dim small">{t('Total volume')}</span>
+      <button className="iconbtn" style={{ width: 22, height: 22 }} onClick={() => setEditOpen(v => !v)} aria-label={t('Edit')}><Icon name="pencil" style={{ fontSize: 11 }} /></button>
+    </div>
+    {editOpen && <div style={{ display: 'flex', justifyContent: 'center', margin: '8px 0' }}>
+      <div className="unit-field" style={{ width: 140 }}>
+        <NumberField value={amount} decimal={false} onChange={setAmount} />
+        <span className="dim">ml</span>
+      </div>
+    </div>}
+    <div style={{ display: 'flex', justifyContent: 'center', margin: '4px 0 16px' }}>
+      {/* react-liquid-gauge (d3-shape wave path + d3-ease rise/wave animation) — the water
+          actually rises and ripples with the logged amount instead of a hand-rolled CSS
+          fake. gradientStops={[]} skips its default d3-color gradient calc, which otherwise
+          runs unconditionally and can't parse a CSS var() for waveStyle.fill. */}
+      <LiquidFillGauge
+        width={140} height={140}
+        value={pct}
+        riseAnimation
+        waveAnimation={pct > 0}
+        waveFrequency={2}
+        waveAmplitude={pct > 0 && pct < 100 ? 1.4 : 0}
+        gradientStops={[]}
+        circleStyle={{ fill: 'var(--surface-2)' }}
+        waveStyle={{ fill: 'var(--blue)' }}
+        textStyle={{ fill: 'var(--label)' }}
+        waveTextStyle={{ fill: '#fff' }}
+        textRenderer={({ width: w, height: h, textSize }) => {
+          const r = Math.min(w, h) / 2
+          const valuePx = textSize * r * 0.4, labelPx = valuePx * 0.4
+          return <tspan>
+            <tspan x="0" dy="-0.2em" style={{ fontSize: valuePx, fontWeight: 800 }}>{amount}</tspan>
+            <tspan x="0" dy="1.3em" style={{ fontSize: labelPx, fontWeight: 600 }}>ml</tspan>
+          </tspan>
+        }}
+      />
+    </div>
+    <div className="dim small" style={{ textAlign: 'center', marginBottom: 22 }}>{t('Your daily goal: {0} ml', goal)}</div>
+    <div className="row" style={{ gap: 8 }}>
+      {WATER_PRESETS.map(p => (
+        <button key={p.ml} style={{ textAlign: 'center', flex: 1, background: 'none', border: 'none', padding: 0 }} onClick={() => add(p.ml)}>
+          <div style={{ width: 48, height: 48, margin: '0 auto', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'color-mix(in srgb, var(--blue) 18%, transparent)', color: 'var(--blue)' }}>
+            <Icon name={p.icon} style={{ fontSize: 24 }} />
+          </div>
+          <div className="small" style={{ margin: '8px 0 0' }}>{t('{0} ml', p.ml)}</div>
+        </button>
+      ))}
+    </div>
+    <div style={{ textAlign: 'center', marginTop: 14 }}>
+      <button className="small" style={{ background: 'none', border: 'none', padding: 0, color: 'var(--label-2)', fontWeight: 600 }} onClick={() => setCustomOpen(v => !v)}>{t('Custom amount')}</button>
+    </div>
+    {customOpen && <div className="row" style={{ gap: 10, alignItems: 'center', marginTop: 14 }}>
+      <div className="unit-field" style={{ flex: 1 }}>
+        <NumberField value={customMl} decimal={false} onChange={setCustomMl} />
+        <span className="dim">ml</span>
+      </div>
+      <Button variant="tinted" onClick={() => { if (customMl > 0) add(customMl); setCustomOpen(false) }}>{t('Add')}</Button>
+    </div>}
+    <div style={{ height: 18 }} />
+    <Button variant="primary" onClick={save}>{t('Save')}</Button>
+    {initial > 0 && <><div style={{ height: 8 }} /><Button variant="danger" onClick={del}>{t('Delete')}</Button></>}
+  </>
+}
+export const waterLogSheet = dateIso => ui().openSheet(close => <WaterLogSheet dateIso={dateIso} close={close} />)
+
+// Fasting goal (FastingCard's gear icon) — a handful of common protocol presets (hours
+// fasting : hours eating adds to 24) plus a free-entry field for anything else.
+const FASTING_PRESETS = [16, 18, 20, 23]
+function FastingGoalForm({ current, close }) {
+  const [hours, setHours] = useState(current)
+  const save = () => {
+    if (!hours || hours <= 0 || hours >= 24) { toast(t('Enter a valid amount')); return }
+    update(s => { s.fasting.goalHours = hours })
+    close()
+  }
+  return <>
+    <h3>{t('Fasting goal')}</h3>
+    <div className="row" style={{ gap: 8, margin: '14px 0' }}>
+      {FASTING_PRESETS.map(h => (
+        <button key={h} className={'chip' + (hours === h ? ' on' : '')} onClick={() => setHours(h)}>{h}:{24 - h}</button>
+      ))}
+    </div>
+    <div className="unit-field" style={{ width: 140 }}>
+      <NumberField value={hours} decimal={false} onChange={setHours} />
+      <span className="dim">{t('hours')}</span>
+    </div>
+    <div style={{ height: 14 }} />
+    <Button variant="primary" onClick={save}>{t('Save')}</Button>
+  </>
+}
+export const fastingGoalSheet = current => ui().openSheet(close => <FastingGoalForm current={current} close={close} />)
+
+// The full diary list's (NutritionDiary.jsx) "Todos los alimentos ▾" selector — same
+// small option-list idiom as everywhere else that picks one of a few named things, not a
+// bespoke dropdown widget.
+function MealFilterSheet({ value, onPick, close }) {
+  const options = [{ key: 'all', label: t('All meals'), icon: 'list' }, ...MEALS.map(m => ({ key: m.key, label: m.name(), icon: m.icon }))]
+  return <>
+    <h3>{t('Show')}</h3>
+    <div className="list">
+      {options.map(o => (
+        <div key={o.key} className={'item' + (o.key === value ? ' on' : '')} onClick={() => { close(); onPick(o.key) }}>
+          <div className="thumb thumb-x"><Icon name={o.icon} /></div>
+          <div className="grow tt">{o.label}</div>
+          {o.key === value && <Icon name="check" style={{ color: 'var(--acc)' }} />}
+        </div>
+      ))}
+    </div>
+  </>
+}
+export const mealFilterSheet = (value, onPick) => ui().openSheet(close => <MealFilterSheet value={value} onPick={onPick} close={close} />)

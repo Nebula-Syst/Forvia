@@ -60,6 +60,20 @@ const P = {
   pullup: <><path d="M3.6 5.1h16.8M8.5 5.5v2.3M15.5 5.5v2.3" /><circle cx="12" cy="9.6" r="1.8" /><path d="m8.5 7.8 3.5 5 3.5-5M12 13.3v3.9M12 17.2l-2.1 3.2M12 17.2l2.1 3.2" /></>,
   kettlebell: <><path d="M9.5 11V9.6a2.5 2.5 0 0 1 5 0V11" /><path d="M14.9 11.8c2.2 1.5 3.6 3.9 3.6 6.4a1.6 1.6 0 0 1-1.6 1.6H7.1a1.6 1.6 0 0 1-1.6-1.6c0-2.5 1.4-4.9 3.6-6.4Z" /></>,
   plate: <><circle cx="12" cy="12" r="8.2" /><circle cx="12" cy="12" r="2.7" /></>,
+  /* ---- food (Nutrition's meal cards) ---- */
+  cup: <><path d="M6 9.6h10v5.2a3.8 3.8 0 0 1-3.8 3.8h-2.4A3.8 3.8 0 0 1 6 14.8Z" /><path d="M16 10.8h1.4a2.1 2.1 0 0 1 0 4.2H16" /><path d="M9.2 5.2c0 1-1.1 1-1.1 2M13.2 5.2c0 1-1.1 1-1.1 2" /></>,
+  burger: <><path d="M4.2 10.4a7.8 5.4 0 0 1 15.6 0Z" /><path d="M4 13.2h16" /><path d="M4.6 15.8h14.8a1 1 0 0 1 1 1 2.4 2.4 0 0 1-2.4 2.4H6a2.4 2.4 0 0 1-2.4-2.4 1 1 0 0 1 1-1Z" /></>,
+  bowl: <><path d="M3.6 11.8h16.8c0 4.1-3.8 7.4-8.4 7.4s-8.4-3.3-8.4-7.4Z" /><path d="M9.6 11.8c-.5-1.7.5-2.8.5-4.4M14.4 11.8c.5-1.7-.5-2.8-.5-4.4" /></>,
+  cookie: <><circle cx="12" cy="12" r="8.2" /><circle cx="9.2" cy="9.6" r="1" fill="currentColor" stroke="none" /><circle cx="15" cy="10.4" r="1" fill="currentColor" stroke="none" /><circle cx="11.4" cy="15" r="1" fill="currentColor" stroke="none" /><circle cx="15.4" cy="14.8" r="1" fill="currentColor" stroke="none" /></>,
+  barcode: <path d="M4 4.6v14.8M6.6 4.6v14.8M8.6 4.6v14.8M11.6 4.6v14.8M13.6 4.6v14.8M16.6 4.6v14.8M19.4 4.6v14.8" />,
+  drop: <path d="M12 3.6c3 4 6 7.7 6 11a6 6 0 0 1-12 0c0-3.3 3-7 6-11Z" />,
+  // Water-log preset sizes (sheets.jsx's WaterLogSheet) — same silhouette pair (tumbler,
+  // bottle) drawn small and drawn large within the shared 24×24 frame, so "bigger container"
+  // reads from the glyph itself rather than from a size prop no other icon in the set uses.
+  glassSmall: <path d="M9 9h6l-.7 8.3q-.1.7-.8.7h-3q-.7 0-.8-.7Z" />,
+  glass: <path d="M7.5 4h9l-1.2 14.8q-.1 1.2-1.3 1.2h-4q-1.2 0-1.3-1.2Z" />,
+  bottleSmall: <path d="M10.6 6h2.8v2.4l2 1.8v8.4q0 1.4-1.4 1.4h-4q-1.4 0-1.4-1.4v-8.4l2-1.8Z" />,
+  bottleLarge: <path d="M9.6 2.4h4.8v3.6l2 1.8v11q0 1.6-1.6 1.6h-5.6q-1.6 0-1.6-1.6v-11l2-1.8Z" />,
   machine: <><path d="M12 3.6v3.1" /><rect x="6.6" y="6.7" width="10.8" height="12.9" rx="1.9" /><path d="M9 10.1h6M9 13.2h6M9 16.3h6" /></>,
   bike: <><circle cx="6.2" cy="16.2" r="3.5" /><circle cx="17.8" cy="16.2" r="3.5" /><path d="m6.2 16.2 4.3-7.4h4.9l2.4 7.4M9.3 8.8h4.5M13.8 8.8l-2.6 7.4" /></>,
   swim: <><circle cx="8.8" cy="8.2" r="1.8" /><path d="m10.9 10 4.6-2.2 3.3 3.4" /><path d="M3.5 15.6c1.6-1.3 3.1-1.3 4.7 0s3.1 1.3 4.7 0 3.1-1.3 4.7 0c.9.7 1.7.9 2.6.5" /></>,
@@ -101,6 +115,9 @@ const P = {
   sun: <><circle cx="12" cy="12" r="4.4" /><path d="M12 3.6v2M12 18.4v2M20.4 12h-2M5.6 12h-2M17.94 6.06l-1.42 1.42M7.48 16.52l-1.42 1.42M17.94 17.94l-1.42-1.42M7.48 7.48 6.06 6.06" /></>,
   key: <><circle cx="8.2" cy="15.8" r="3.8" /><path d="m10.9 13.1 8-8M16.6 7.4l2 2M14.6 9.4l2 2" /></>,
   lock: <><rect x="5" y="10.4" width="14" height="10" rx="2.8" /><path d="M8.4 10.4V7.8a3.6 3.6 0 0 1 7.2 0v2.6" /></>,
+  // Same body as `lock`, but the shackle swings up and away instead of plugging into the
+  // right side — reads as "open" even at a small size, where a subtle gap wouldn't.
+  unlock: <><rect x="5" y="10.4" width="14" height="10" rx="2.8" /><path d="M8.4 10.4V7.6a3.6 3.6 0 0 1 6.1-2.5" /></>,
   download: <path d="M12 3.8v11.4M7.6 11.2 12 15.6l4.4-4.4M4.6 19.4h14.8" />,
   upload: <path d="M12 15.6V4.2M7.6 8.2 12 3.8l4.4 4.4M4.6 19.4h14.8" />,
   wrench: <path d="M15.2 3.9a5 5 0 0 0-4.8 6.6l-6 6a2.1 2.1 0 0 0 3 3l6-6a5 5 0 0 0 6.1-6.3l-2.9 2.9-2.8-.7-.7-2.8Z" />,

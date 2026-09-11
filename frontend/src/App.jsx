@@ -23,6 +23,7 @@ import Privacy from './views/legal/Privacy.jsx'
 import Licenses from './views/legal/Licenses.jsx'
 import Home from './views/Home.jsx'
 import Nutrition from './views/Nutrition.jsx'
+import NutritionDiary from './views/NutritionDiary.jsx'
 import Routines from './views/Routines.jsx'
 import RoutineEdit from './views/RoutineEdit.jsx'
 import Workout, { WorkoutStartActions } from './views/Workout.jsx'
@@ -34,6 +35,8 @@ import SettingsAccount from './views/settings/SettingsAccount.jsx'
 import SettingsProfile from './views/settings/SettingsProfile.jsx'
 import SettingsWorkout from './views/settings/SettingsWorkout.jsx'
 import SettingsNutrition from './views/settings/SettingsNutrition.jsx'
+import SettingsNutritionFoods from './views/settings/SettingsNutritionFoods.jsx'
+import SettingsNutritionMeals from './views/settings/SettingsNutritionMeals.jsx'
 import SettingsAppearance from './views/settings/SettingsAppearance.jsx'
 import SettingsNotifications from './views/settings/SettingsNotifications.jsx'
 import SettingsData from './views/settings/SettingsData.jsx'
@@ -107,6 +110,7 @@ function Shell() {
             <Routes>
               <Route path="/home" element={<Home />} />
               <Route path="/nutrition" element={<Nutrition />} />
+              <Route path="/nutrition/diary" element={<NutritionDiary />} />
               <Route path="/routines" element={<Routines />} />
               <Route path="/routines/r/:id" element={<RoutineEdit />} />
               <Route path="/workout" element={<Workout />} />
@@ -118,6 +122,8 @@ function Shell() {
               <Route path="/settings/profile" element={<SettingsProfile />} />
               <Route path="/settings/workout" element={<SettingsWorkout />} />
               <Route path="/settings/nutrition" element={<SettingsNutrition />} />
+              <Route path="/settings/nutrition/foods" element={<SettingsNutritionFoods />} />
+              <Route path="/settings/nutrition/meals" element={<SettingsNutritionMeals />} />
               <Route path="/settings/appearance" element={<SettingsAppearance />} />
               <Route path="/settings/notifications" element={<SettingsNotifications />} />
               <Route path="/settings/data" element={<SettingsData />} />

@@ -140,3 +140,65 @@ export function computeNutritionGoals(input, split = DEFAULT_MACRO_SPLIT, rateKg
 
   return { calories: Math.round(calories), ...macroGramsFromSplit(calories, split) }
 }
+
+// --- Water ---
+//
+// Independent of the calorie/macro calculator above: it only needs a weigh-in (and,
+// optionally, an activity level for a small bump), so it can produce a number well before
+// height/age/BMR formula are all filled in — those are irrelevant to how much water someone
+// needs. 35 ml/kg is a commonly cited general baseline (EFSA-style guidance sits in the same
+// range); the activity multipliers are the same shape as ACTIVITY_MULTIPLIERS above but much
+// gentler, since sweat loss scales with actual training volume far more than TDEE does.
+const WATER_ML_PER_KG = 35
+const WATER_ACTIVITY_MULT = { sedentary: 1, light: 1.08, moderate: 1.15, active: 1.25, very_active: 1.35 }
+export function computeWaterGoal(weightKg, activityLevel) {
+  if (!isPositiveNumber(weightKg)) return null
+  const mult = WATER_ACTIVITY_MULT[activityLevel] || 1
+  return Math.round((weightKg * WATER_ML_PER_KG * mult) / 50) * 50
+}
+
+// "Peak week" water manipulation ("water loading/cutting") — some competitive bodybuilders
+// use before a show or shoot: several days of deliberately elevated water intake first (the
+// kidneys adapt by dialing down ADH/aldosterone and excreting more), then a sharp cut to
+// near-nothing in the last 1-2 days — the hormonal response doesn't reverse instantly, so
+// output keeps outrunning intake for a while, giving a real but temporary whole-body fluid
+// deficit. It is NOT a selective subcutaneous drain (there's no renal mechanism that targets
+// fluid by anatomical location) — sodium/potassium/glycogen management affects how a given
+// fluid change distributes between compartments far more than the water manipulation itself,
+// and none of that is something this calculator accounts for. Optional and off by default
+// (waterProtocol.mode 'normal' in useStore.js); this only ever scales what computeWaterGoal
+// already produced for a given day, never changes the underlying baseline itself.
+export const DEFAULT_LOAD_DAYS = 7
+export const DEFAULT_CUT_DAYS = 2
+const WATER_LOAD_FRAC = 1.5   // during the load phase: intake goal well above normal
+const WATER_CUT_MIN_FRAC = 0.15  // on the peak day itself: intake goal well below normal
+export function daysUntil(targetIso, fromIso) {
+  const a = new Date(fromIso + 'T12:00:00'), b = new Date(targetIso + 'T12:00:00')
+  return Math.round((b - a) / 86400000)
+}
+// Three windows relative to the peak date: more than `loadDays` out (or after peak day —
+// rehydration resumes immediately) is just `baseGoal`; from `loadDays` out through `cutDays`
+// out is a flat elevated load phase; from `cutDays` out down to the peak day itself ramps
+// linearly from the load level down to WATER_CUT_MIN_FRAC.
+export function waterGoalForDate(baseGoal, protocol, dateIso) {
+  if (!baseGoal || !protocol || protocol.mode !== 'taper' || !protocol.peakDate) return baseGoal
+  const loadDays = protocol.loadDays || DEFAULT_LOAD_DAYS
+  const cutDays = Math.min(protocol.cutDays || DEFAULT_CUT_DAYS, loadDays)
+  const daysOut = daysUntil(protocol.peakDate, dateIso)
+  if (daysOut > loadDays || daysOut < 0) return baseGoal
+  const frac = daysOut > cutDays
+    ? WATER_LOAD_FRAC
+    : cutDays > 0
+      ? WATER_CUT_MIN_FRAC + (WATER_LOAD_FRAC - WATER_CUT_MIN_FRAC) * (daysOut / cutDays)
+      : WATER_CUT_MIN_FRAC
+  return Math.round(baseGoal * frac / 50) * 50
+}
+// Which phase `dateIso` falls in, for the Settings page's status line — 'normal' | 'load' | 'cut'.
+export function waterPhaseForDate(protocol, dateIso) {
+  if (!protocol || protocol.mode !== 'taper' || !protocol.peakDate) return 'normal'
+  const loadDays = protocol.loadDays || DEFAULT_LOAD_DAYS
+  const cutDays = Math.min(protocol.cutDays || DEFAULT_CUT_DAYS, loadDays)
+  const daysOut = daysUntil(protocol.peakDate, dateIso)
+  if (daysOut > loadDays || daysOut < 0) return 'normal'
+  return daysOut > cutDays ? 'load' : 'cut'
+}

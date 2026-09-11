@@ -90,6 +90,10 @@ export const adminStreakTierAdd = (name, days) => api('/api/admin/streak-tiers',
 export const adminStreakTierUpdate = (id, name, days) => api('/api/admin/streak-tiers/update', { method: 'POST', body: JSON.stringify({ id, name, days }) }).then(r => r.tiers)
 export const adminStreakTierRemove = id => api('/api/admin/streak-tiers/remove', { method: 'POST', body: JSON.stringify({ id }) }).then(r => r.tiers)
 
+/* ---------- nutrition: food search (Open Food Facts proxy) ---------- */
+export const foodSearch = q => api('/api/nutrition/search?q=' + encodeURIComponent(q)).then(r => r.items)
+export const foodByBarcode = code => api('/api/nutrition/barcode?code=' + encodeURIComponent(code)).then(r => r.item)
+
 /* ---------- bug reports ---------- */
 export const reportBug = (message, page) => api('/api/bugs', { method: 'POST', body: JSON.stringify({ message, page }) })
 export const adminBugs = () => api('/api/admin/bugs').then(r => r.reports)

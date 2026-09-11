@@ -45,10 +45,36 @@ export const DEF = {
   // server pull, backup import) still falls back to the `showRir` boolean this replaced and
   // keeps the column it had. See effortOf.
   reminder: { on: false, time: '08:00', tz: null }, effort: null,
-  // Nutrition (phase 1, shell only — food search/barcode isn't wired up yet).
-  // Date-keyed: { [iso]: [{id, meal, name, qty, kcal, carbsG, fatG, proteinG}] }.
+  // Nutrition. Date-keyed: { [iso]: [{id, meal, name, grams, kcal, carbsG, fatG, proteinG}] }.
   foodDiary: {},
-  nutritionGoals: { calories: 2200, carbsG: 240, fatG: 70, proteinG: 130 }
+  // waterAuto: true means SettingsNutrition.jsx keeps recomputing waterMl from bodyweight +
+  // activity level (lib/nutrition-goals.js computeWaterGoal) whenever either changes — same
+  // "always live-applied" idea as calories/macros above it. Editing it by hand sets this
+  // false so a real override isn't silently overwritten by the next weigh-in.
+  nutritionGoals: { calories: 2200, carbsG: 240, fatG: 70, proteinG: 130, waterMl: 2000, waterAuto: true },
+  // Date-keyed running total in ml — a day's water isn't itemized (nothing to edit per-glass,
+  // just add/undo), unlike foodDiary which needs individual entries to remove one bad log.
+  waterLog: {},
+  // Optional "peak week" water loading/cutting protocol (see waterGoalForDate in
+  // lib/nutrition-goals.js) — off by default. peakDate is an ISO date string; loadDays is how
+  // many days out the elevated-intake load phase begins, cutDays is how many days out it
+  // switches to ramping down toward the peak day itself.
+  waterProtocol: { mode: 'normal', peakDate: null, loadDays: 7, cutDays: 2 },
+  // "Mis alimentos" (Settings → Nutrition) — reusable food definitions, one rate (per 100g
+  // if mode:'weight', per single unit if mode:'unit') per food, distinct from foodDiary's
+  // logged instances of eating one. Created either from Settings directly or automatically
+  // the first time a given name+mode is logged via "Create custom food" (see sheets.jsx),
+  // so a food defined once can be re-logged in a different quantity without retyping macros.
+  customFoods: [],
+  // "Mis comidas" — a named bundle of already-scaled food items (same shape foodDiary logs,
+  // minus `id`/`meal`) saved from one meal card's current contents (see saveMealSheet), so a
+  // combination eaten again gets logged as one tap instead of re-adding each food.
+  savedMeals: [],
+  // Intermittent fasting (FastingCard on Nutrition.jsx) — `active` is null or {start: ms} for
+  // a fast in progress; ending one moves it into `log` as {id, start, end} (ms timestamps).
+  // goalHours is the target fasting window (16 for a 16:8 protocol, etc.), independent of any
+  // particular day so it keeps applying fast after fast until changed.
+  fasting: { goalHours: 16, active: null, log: [] }
 }
 const clone = o => JSON.parse(JSON.stringify(o))
 

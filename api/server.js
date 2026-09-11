@@ -1057,6 +1057,19 @@ function feedItemsFor(uids, me) {
   return items.slice(0, FEED_LIMIT);
 }
 
+// Beyond the 4 headline macros, Open Food Facts' `nutriments` blob usually carries a handful
+// more per-100g values — only included when actually present (undefined, not 0, for a
+// product that genuinely doesn't report one) so sheets.jsx's "see all nutrients" detail only
+// renders rows it actually has data for.
+function extraNutriments(n) {
+  const out = {};
+  if (n['saturated-fat_100g'] != null) out.satFat100 = Math.round(n['saturated-fat_100g'] * 10) / 10;
+  if (n['sugars_100g'] != null) out.sugars100 = Math.round(n['sugars_100g'] * 10) / 10;
+  if (n['fiber_100g'] != null) out.fiber100 = Math.round(n['fiber_100g'] * 10) / 10;
+  if (n['salt_100g'] != null) out.salt100 = Math.round(n['salt_100g'] * 10) / 10;
+  return out;
+}
+
 /* ---------- routes ---------- */
 const routes = {
   'GET /api/health': async (req, res) => json(res, 200, { ok: true, users: db.users.length }),
@@ -1077,6 +1090,77 @@ const routes = {
   'GET /api/streak-tiers': async (req, res) => {
     const sorted = [...db.streakTiers].sort((a, b) => a.days - b.days);
     json(res, 200, { tiers: sorted });
+  },
+
+  /* ---------- nutrition: food search (Open Food Facts proxy) ---------- */
+  // Open Food Facts (openfoodfacts.org, ODbL) is the one real food database Forvia's diary
+  // logs against — same reasoning as the exercise catalogue's own third-party source (see
+  // NOTICE.md): a real product database is millions of entries, far too big to bundle, so
+  // the frontend never calls it directly — this is a thin, signed-in-only proxy instead
+  // (keeps the integration swappable later without touching the client, and matches how
+  // every other outbound call in this file — SMTP, web push — stays server-side). Per-100g
+  // macros come back as-is; the frontend scales them by whatever quantity gets logged.
+  'GET /api/nutrition/search': async (req, res) => {
+    const user = readSession(req);
+    if (!user) return json(res, 401, { error: 'not signed in' });
+    const q = (new URL(req.url, 'http://x').searchParams.get('q') || '').trim();
+    if (!q) return json(res, 200, { items: [] });
+    try {
+      // search-a-licious (Open Food Facts' current Elasticsearch-backed search, replacing
+      // the legacy cgi/search.pl and api/v2/search — both returned 503s against the main
+      // world.openfoodfacts.org app server as of this writing, this one lives on its own
+      // subdomain and answered fine) — same fields as the barcode lookup below except
+      // `brands` comes back as an array here, not a comma string.
+      const url = 'https://search.openfoodfacts.org/search?' + new URLSearchParams({
+        q, page_size: '20', fields: 'code,product_name,brands,nutriments',
+      });
+      const r = await fetch(url, { headers: { 'User-Agent': 'Forvia (self-hosted gym tracker) - github.com/Nebula-Syst/Forvia' }, signal: AbortSignal.timeout(8000) });
+      const data = await r.json();
+      const items = (data.hits || [])
+        .filter(p => p.product_name && p.nutriments && p.nutriments['energy-kcal_100g'] != null)
+        .map(p => ({
+          code: p.code || null,
+          name: p.product_name + (p.brands && p.brands[0] ? ' — ' + p.brands[0].trim() : ''),
+          kcal100: Math.round(p.nutriments['energy-kcal_100g'] || 0),
+          carbs100: Math.round(p.nutriments['carbohydrates_100g'] || 0),
+          fat100: Math.round(p.nutriments['fat_100g'] || 0),
+          protein100: Math.round(p.nutriments['proteins_100g'] || 0),
+          ...extraNutriments(p.nutriments),
+        }))
+        .slice(0, 20);
+      json(res, 200, { items });
+    } catch (e) {
+      json(res, 200, { items: [], error: 'search unavailable' });
+    }
+  },
+
+  // Same proxy, one product by barcode — the frontend's barcode scanner (a browser
+  // BarcodeDetector where available) only ever hands this a decoded digit string.
+  'GET /api/nutrition/barcode': async (req, res) => {
+    const user = readSession(req);
+    if (!user) return json(res, 401, { error: 'not signed in' });
+    const code = (new URL(req.url, 'http://x').searchParams.get('code') || '').replace(/\D/g, '');
+    if (!code) return json(res, 400, { error: 'code required' });
+    try {
+      const url = `https://world.openfoodfacts.org/api/v2/product/${code}.json?` + new URLSearchParams({ fields: 'code,product_name,brands,nutriments' });
+      const r = await fetch(url, { headers: { 'User-Agent': 'Forvia (self-hosted gym tracker) - github.com/Nebula-Syst/Forvia' }, signal: AbortSignal.timeout(8000) });
+      const data = await r.json();
+      const p = data.product;
+      if (data.status !== 1 || !p || !p.nutriments || p.nutriments['energy-kcal_100g'] == null) return json(res, 404, { error: 'not found' });
+      json(res, 200, {
+        item: {
+          code,
+          name: (p.product_name || code) + (p.brands ? ' — ' + p.brands.split(',')[0].trim() : ''),
+          kcal100: Math.round(p.nutriments['energy-kcal_100g'] || 0),
+          carbs100: Math.round(p.nutriments['carbohydrates_100g'] || 0),
+          fat100: Math.round(p.nutriments['fat_100g'] || 0),
+          protein100: Math.round(p.nutriments['proteins_100g'] || 0),
+          ...extraNutriments(p.nutriments),
+        },
+      });
+    } catch (e) {
+      json(res, 502, { error: 'lookup unavailable' });
+    }
   },
 
   /* ---------- alpha waitlist (public, cross-origin from the landing page) ---------- */

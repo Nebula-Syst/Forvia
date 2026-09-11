@@ -953,6 +953,19 @@ h4.sec{
 .field::placeholder,.input::placeholder{color:var(--label-3)}
 .field:focus,.input:focus{box-shadow:inset 0 0 0 2px var(--acc);border-color:transparent}
 .field.area,textarea.input{min-height:92px;resize:vertical;line-height:1.42}
+/* NumberField's own base look — a plain `<NumberField>` dropped somewhere with no `.stp` or
+   `.unit-field` wrapper around it (CustomFoodForm's/EditFoodSheet's grid2 macro fields, e.g.)
+   used to fall through to the browser's native input chrome (a stark white box in dark
+   theme) since only those two wrapped contexts styled `.num` at all. Both keep their own
+   more specific `.stp .num`/`.unit-field .num` rules below, which reset this back to
+   transparent since their parent already draws the box. */
+.num{
+  width:100%;background:var(--glass-bg-2);border:1px solid var(--glass-border);border-radius:var(--r);
+  box-shadow:var(--shadow-sm);color:var(--label);
+  padding:13px 15px;font-size:17px;letter-spacing:-.012em;outline:none;
+  transition:box-shadow var(--fast),border-color var(--fast);
+}
+.num:focus{box-shadow:inset 0 0 0 2px var(--acc);border-color:transparent}
 .bio-field{position:relative}
 .bio-field textarea.input{resize:none;padding-bottom:26px}
 .bio-field textarea.input:focus{box-shadow:inset 0 0 0 2px var(--acc)}
@@ -1112,9 +1125,11 @@ h4.sec{
 .stp .val i{font-style:normal;font-size:12px;color:var(--label-2);flex:none}
 .stp .num{
   width:100%;min-width:0;text-align:center;background:none;border:none;outline:none;
+  box-shadow:none;border-radius:0;
   font-size:17px;font-weight:500;letter-spacing:-.012em;padding:0;
   -moz-appearance:textfield;appearance:textfield;
 }
+.stp .num:focus{box-shadow:none}
 .stp .num::-webkit-inner-spin-button{display:none}
 
 /* --- slider --- */
@@ -1693,9 +1708,11 @@ body.resting .active-pill{bottom:calc(210px + var(--sab))}
 }
 .unit-field .num{
   flex:1;min-width:0;text-align:right;background:none;border:none;outline:none;
+  box-shadow:none;border-radius:0;
   font-size:17px;font-weight:500;letter-spacing:-.012em;padding:0;color:var(--label-1);
   -moz-appearance:textfield;appearance:textfield;
 }
+.unit-field .num:focus{box-shadow:none}
 .unit-field .num::-webkit-inner-spin-button{display:none}
 .unit-field .dim{font-size:13px;flex:none}
 @media (max-width:420px){
@@ -1781,10 +1798,17 @@ body.resting .active-pill{bottom:calc(210px + var(--sab))}
   font-weight:400;font-size:15px;color:var(--label);transition:background var(--fast),transform var(--fast) var(--ease);
 }
 .cal-d:active{background:var(--surface-2);transform:scale(.94)}
-.cal-d.has{background:var(--acc-soft);color:var(--acc)}
+/* Trained and ate are independent signals (same "two halves" idea as Home's attendance
+   ring), so a day carries both tints/dots rather than one state winning — a day you did
+   both reads as visibly "more" than a day you only did one, not identical to it. */
+.cal-d.has-workout{background:var(--acc-soft);color:var(--acc)}
+.cal-d.has-food{background:color-mix(in srgb, var(--blue) 16%, transparent);color:var(--blue)}
+.cal-d.has-workout.has-food{background:linear-gradient(135deg, var(--acc-soft) 0 50%, color-mix(in srgb, var(--blue) 16%, transparent) 50% 100%)}
 .cal-d.today{box-shadow:inset 0 0 0 1.8px var(--acc)}
+.cal-d .dots{display:flex;gap:3px}
 .cal-d i{width:5px;height:5px;border-radius:50%;background:transparent}
-.cal-d i.done{background:var(--acc)}
+.cal-d i.workout{background:var(--acc)}
+.cal-d i.food{background:var(--blue)}
 .cal-legend{display:flex;gap:14px;justify-content:center;margin-top:12px;font-size:12px;color:var(--label-3)}
 .cal-legend i{display:inline-block;width:6px;height:6px;border-radius:50%;margin-right:5px}
 

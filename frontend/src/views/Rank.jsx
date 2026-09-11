@@ -376,7 +376,9 @@ export default function Rank() {
       </div>
     </div>}
 
-    <TasksCard />
+    {/* 22px — same top gap h4.sec uses everywhere else a new section starts — so this
+        doesn't sit flush against whichever tab's content ends right above it. */}
+    <div style={{ marginTop: 22 }}><TasksCard /></div>
     <PenaltiesRow onlyPending />
   </div>
 }

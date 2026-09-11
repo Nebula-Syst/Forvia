@@ -1,12 +1,15 @@
-import { useEffect } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useStore } from '../../store/useStore.js'
 import { useUI } from '../../store/useUI.js'
 import { t, dateLocale } from '../../lib/i18n.js'
 import { lastBW } from '../../lib/history.js'
 import { LB_TO_KG } from '../../lib/recovery.js'
-import { bwSheet } from '../../sheets.jsx'
-import { ACTIVITY_LEVELS, WEIGHT_GOALS, BMR_FORMULAS, DEFAULT_BMR_FORMULA, formulaNeedsBodyFat, DEFAULT_MACRO_SPLIT, RATE_STEPS_KG, DEFAULT_RATE_KG, missingNutritionInputs, computeNutritionGoals, setMacroSplitPct } from '../../lib/nutrition-goals.js'
+import { todayISO, fmtDate } from '../../lib/format.js'
+import { MOBILE, shareExport } from '../../lib/mobile.js'
+import { exportNutritionCSV } from '../../lib/import-nutrition.js'
+import { bwSheet, calendarSheet, importNutritionFromApp } from '../../sheets.jsx'
+import { ACTIVITY_LEVELS, WEIGHT_GOALS, BMR_FORMULAS, DEFAULT_BMR_FORMULA, formulaNeedsBodyFat, DEFAULT_MACRO_SPLIT, RATE_STEPS_KG, DEFAULT_RATE_KG, missingNutritionInputs, computeNutritionGoals, setMacroSplitPct, computeWaterGoal, waterGoalForDate, waterPhaseForDate, daysUntil, DEFAULT_LOAD_DAYS, DEFAULT_CUT_DAYS } from '../../lib/nutrition-goals.js'
 import Icon from '../../components/Icon.jsx'
 import Ring from '../../components/Ring.jsx'
 import { Section, Row, SelectRow, Segmented, Slider, NumberField } from '../../components/ui.jsx'
@@ -120,6 +123,34 @@ export default function SettingsNutrition() {
   const nav = useNavigate()
   const S = useStore(s => s.S)
   const { update } = useStore()
+  // Locked by default — a slider mid-scroll list is an easy accidental drag (a touch meant
+  // to scroll past it lands on the track first and drags the value instead). Local-only,
+  // not persisted: it's a scroll-safety guard for this visit, not a real setting.
+  const [macrosLocked, setMacrosLocked] = useState(true)
+  const toast = useUI(s => s.toast)
+  const importNutriInput = useRef(null)
+
+  const doExportNutrition = async () => {
+    const csv = exportNutritionCSV(S)
+    const filename = `forvia-nutrition-${new Date().toISOString().slice(0, 10)}.csv`
+    if (MOBILE) {
+      try { await shareExport(csv, filename) }
+      catch (e) { toast(t('Import failed: {0}', e.message || String(e))) }
+      return
+    }
+    const blob = new Blob([csv], { type: 'text/csv' })
+    const a = document.createElement('a')
+    a.href = URL.createObjectURL(blob)
+    a.download = filename
+    a.click()
+    URL.revokeObjectURL(a.href)
+    toast(t('Food diary exported'))
+  }
+  const onImportNutrition = e => {
+    const file = e.target.files?.[0]
+    e.target.value = ''
+    if (file) importNutritionFromApp(file)
+  }
 
   const bw = lastBW(S)
   const weightKg = bw ? (S.unit === 'lb' ? Math.round(bw.w * LB_TO_KG * 10) / 10 : bw.w) : null
@@ -139,11 +170,31 @@ export default function SettingsNutrition() {
     if (!computed) return
     const g = S.nutritionGoals
     if (g.calories === computed.calories && g.proteinG === computed.proteinG && g.fatG === computed.fatG && g.carbsG === computed.carbsG) return
-    update(s => { s.nutritionGoals = { ...computed } })
+    update(s => { s.nutritionGoals = { ...s.nutritionGoals, ...computed } })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [computed?.calories, computed?.proteinG, computed?.fatG, computed?.carbsG])
 
+  // Water's own auto-apply, independent of the calorie effect above — it only needs a
+  // weigh-in, not the full BMR input set, so it can start computing well before "missing"
+  // above clears. `waterAuto` (default true — see useStore.js) opts out once someone edits
+  // the number by hand, the same way a manual override sticks anywhere else in this app.
+  const waterAuto = S.nutritionGoals.waterAuto !== false
+  const computedWater = computeWaterGoal(weightKg, S.activityLevel)
+  useEffect(() => {
+    if (!waterAuto || !computedWater) return
+    if (S.nutritionGoals.waterMl === computedWater) return
+    update(s => { s.nutritionGoals.waterMl = computedWater })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [waterAuto, computedWater])
+
   const setPct = (pctKey, v) => update(s => { s.macroSplit = setMacroSplitPct(s.macroSplit || DEFAULT_MACRO_SPLIT, pctKey, v) })
+  const waterMl = S.nutritionGoals.waterMl || 2000
+  const protocol = S.waterProtocol || { mode: 'normal', peakDate: null, loadDays: DEFAULT_LOAD_DAYS, cutDays: DEFAULT_CUT_DAYS }
+  const loadDays = protocol.loadDays || DEFAULT_LOAD_DAYS
+  const cutDays = Math.min(protocol.cutDays || DEFAULT_CUT_DAYS, loadDays)
+  const daysToPeak = protocol.peakDate ? daysUntil(protocol.peakDate, todayISO()) : null
+  const todayGoal = waterGoalForDate(waterMl, protocol, todayISO())
+  const todayPhase = waterPhaseForDate(protocol, todayISO())
 
   return <div className="narrow settings-page">
     <div className="hdr">
@@ -160,7 +211,11 @@ export default function SettingsNutrition() {
     )}
 
     {computed && (
-      <div className="nutgoal-hero card">
+      <div className="nutgoal-hero card" style={{ position: 'relative' }}>
+        <button className="iconbtn" style={{ position: 'absolute', top: 10, right: 10, width: 30, height: 30 }}
+          onClick={() => setMacrosLocked(v => !v)} aria-label={macrosLocked ? t('Unlock to adjust') : t('Lock')}>
+          <Icon name={macrosLocked ? 'lock' : 'unlock'} style={{ fontSize: 13 }} />
+        </button>
         <div className="nutgoal-cals">
           <Ring size={104} stroke={10} pct={1} color="var(--acc)">
             <div style={{ textAlign: 'center' }}>
@@ -181,7 +236,12 @@ export default function SettingsNutrition() {
                 </span>
                 <span className="dim small">{grams}g · {pct}%</span>
               </div>
-              <Slider value={pct} min={0} max={100} step={5} onChange={v => setPct(m.pctKey, v)} className="nutgoal-slider" />
+              {/* Locked: pointer-events:none lets a touch that starts on the track pass
+                  straight through to the page and scroll normally, instead of the slider's
+                  own onPointerDown grabbing it and dragging the value. */}
+              <div style={{ pointerEvents: macrosLocked ? 'none' : 'auto', opacity: macrosLocked ? 0.55 : 1, transition: 'opacity .15s' }}>
+                <Slider value={pct} min={0} max={100} step={5} onChange={v => setPct(m.pctKey, v)} className="nutgoal-slider" />
+              </div>
             </div>
           })}
         </div>
@@ -238,5 +298,80 @@ export default function SettingsNutrition() {
         value={bw ? `${bw.w} ${S.unit}` : null}
         accessory="chevron" onClick={() => bwSheet()} />
     </Section>
+
+    <Section title={t('Water')} footer={waterAuto
+      ? t('Calculated from your bodyweight and activity level.')
+      : t('Set manually — tap "Auto-calculate" to let it follow your bodyweight again.')}>
+      <Row icon="drop" iconTint="var(--blue)" title={t('Daily water goal')}>
+        <UnitField value={waterMl} unit="ml" onChange={v => update(s => { s.nutritionGoals.waterMl = v || 0; s.nutritionGoals.waterAuto = false })} />
+      </Row>
+      {!waterAuto && computedWater != null && (
+        <Row icon="reset" iconTint="var(--acc)" title={t('Auto-calculate')}
+          onClick={() => update(s => { s.nutritionGoals.waterAuto = true; s.nutritionGoals.waterMl = computedWater })} />
+      )}
+      <Row icon="flag" iconTint="var(--orange)" title={t('Peak week: water loading/cutting')}
+        subtitle={t('Load water for several days, then cut it sharply before the day itself')}>
+        <Segmented className="seg-inline"
+          options={[{ value: 'normal', label: t('Off') }, { value: 'taper', label: t('On') }]}
+          value={protocol.mode}
+          onChange={v => update(s => { s.waterProtocol.mode = v })} />
+      </Row>
+      {protocol.mode === 'taper' && <>
+        <div className="card" style={{ display: 'flex', alignItems: 'flex-start', gap: 12, margin: '10px 2px 12px', borderColor: 'var(--yellow)' }}>
+          <Icon name="warnTriangle" style={{ fontSize: 20, color: 'var(--yellow)', flex: 'none', marginTop: 2 }} />
+          <div className="small">{t("This mimics water loading and cutting for peak week: several days of higher-than-normal intake, then a sharp cut before the day itself. It does not selectively remove subcutaneous water — it affects whole-body fluid, and its safety also depends on sodium/potassium management this app doesn't cover. Use at your own risk, ideally under a coach's supervision.")}</div>
+        </div>
+        <Row icon="calendar" iconTint="var(--red)" title={t('Peak date')}
+          value={protocol.peakDate ? fmtDate(protocol.peakDate, true) : t('Not set')}
+          accessory="chevron"
+          onClick={() => calendarSheet(new Date((protocol.peakDate || todayISO()) + 'T12:00:00'), iso => update(s => { s.waterProtocol.peakDate = iso }))} />
+        <div className="grid2" style={{ padding: '12px 14px' }}>
+          <div>
+            <div className="dim small" style={{ marginBottom: 4 }}>{t('Load days')}</div>
+            <div className="unit-field" style={{ width: '100%' }}>
+              <NumberField value={loadDays} decimal={false} onChange={v => update(s => { s.waterProtocol.loadDays = Math.max(cutDays + 1, v || 0) })} />
+              <span className="dim">{t('days')}</span>
+            </div>
+          </div>
+          <div>
+            <div className="dim small" style={{ marginBottom: 4 }}>{t('Cut days')}</div>
+            <div className="unit-field" style={{ width: '100%' }}>
+              <NumberField value={cutDays} decimal={false} onChange={v => update(s => { s.waterProtocol.cutDays = Math.max(0, Math.min(loadDays - 1, v || 0)) })} />
+              <span className="dim">{t('days')}</span>
+            </div>
+          </div>
+        </div>
+        {protocol.peakDate && (
+          <div className="dim small" style={{ padding: '10px 14px 14px' }}>
+            {daysToPeak > loadDays
+              ? t('Loading starts in {0} days.', daysToPeak - loadDays)
+              : daysToPeak >= 0
+                ? (todayPhase === 'load' ? t("Today (loading): {0} ml.", todayGoal) : t("Today (cutting): {0} ml.", todayGoal))
+                : t('Peak day has passed — back to your normal goal.')}
+          </div>
+        )}
+      </>}
+    </Section>
+
+    <Section title={t('My foods')} footer={t('Create foods here to reuse them later without retyping their macros.')}>
+      <Row icon="sparkles" iconTint="var(--purple)" title={t('My foods')}
+        value={S.customFoods.length || null}
+        accessory="chevron" onClick={() => nav('/settings/nutrition/foods')} />
+    </Section>
+
+    <Section title={t('My meals')} footer={t('Save a combination of foods once, log it again in one tap.')}>
+      <Row icon="clipboard" iconTint="var(--teal)" title={t('My meals')}
+        value={S.savedMeals.length || null}
+        accessory="chevron" onClick={() => nav('/settings/nutrition/meals')} />
+    </Section>
+
+    <Section title={t('Food diary data')}>
+      <Row icon="upload" iconTint="var(--blue)" title={t('Import from another app')}
+        subtitle={t('MyFitnessPal, Cronometer, or a CSV export')} accessory="chevron"
+        onClick={() => importNutriInput.current?.click()} />
+      <Row icon="download" iconTint="var(--teal)" title={t('Export food diary (CSV)')}
+        accessory="chevron" onClick={doExportNutrition} />
+    </Section>
+    <input ref={importNutriInput} type="file" accept=".csv" style={{ display: 'none' }} onChange={onImportNutrition} />
   </div>
 }

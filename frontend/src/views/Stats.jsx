@@ -3,10 +3,12 @@ import { useStore } from '../store/useStore.js'
 import { useUI } from '../store/useUI.js'
 import { EXIDX } from '../lib/exercises.js'
 import { lastBW, streakWeeks, setLabel, modeOf, effortOf, metricModeForEntry, metricRowsForEntry, bestWeightForEntry } from '../lib/history.js'
-import { fmtNum, fmtDate, fmtVol, todayISO, weekKey } from '../lib/format.js'
+import { fmtNum, fmtDate, fmtVol, todayISO, weekKey, isoOf } from '../lib/format.js'
+import { waterGoalForDate } from '../lib/nutrition-goals.js'
 import { t, nameFor } from '../lib/i18n.js'
 import { bwSheet, goalSheet, calendarSheet, workoutDetailSheet, WorkoutRow, bwDeltaColor } from '../sheets.jsx'
 import LineChart from '../components/LineChart.jsx'
+import NutritionTrendChart from '../components/NutritionTrendChart.jsx'
 import Heatmap from '../components/Heatmap.jsx'
 import Icon from '../components/Icon.jsx'
 import BodyMap, { BodyMapLegend } from '../components/BodyMap.jsx'
@@ -295,6 +297,7 @@ export default function Stats() {
   const [range, setRange] = useState(90)
   const [exId, setExId] = useState(null)
   const [exMetric, setExMetric] = useState('top')
+  const [nutriRange, setNutriRange] = useState(30)
   const now = Date.now()
   const kind = displayScale(S)
   const hd = scaleName(kind)
@@ -378,6 +381,33 @@ export default function Stats() {
   if (showE1) exOpts.push({ value: 'e1rm', label: t('Est. 1RM') })
   if (showEff) exOpts.push({ value: 'effort', label: t('Effort') })
 
+  // Calories, macros and water are three different kinds of measurement (energy, mass,
+  // volume) — cramming all five onto one shared axis (even normalized to %) still implied
+  // they were the same kind of thing. Three separate charts instead: calories and water each
+  // get their own plain LineChart in their real unit (same as the bodyweight chart above),
+  // and only the three macros — all grams, all genuinely comparable — share one chart via
+  // NutritionTrendChart's %-of-goal normalization. Only days with something actually logged
+  // get a point; an un-logged day is a gap, not 0.
+  const nutriDays = []
+  for (let i = nutriRange - 1; i >= 0; i--) { const d = new Date(); d.setDate(d.getDate() - i); nutriDays.push(isoOf(d)) }
+  const foodSeriesPts = key => nutriDays.map(iso => {
+    const items = S.foodDiary[iso] || []
+    if (!items.length) return null
+    return { t: new Date(iso + 'T12:00:00').getTime(), y: items.reduce((n, it) => n + (it[key] || 0), 0), d: iso }
+  }).filter(Boolean)
+  const waterSeriesPts = nutriDays.map(iso => {
+    const v = S.waterLog[iso] || 0
+    return v > 0 ? { t: new Date(iso + 'T12:00:00').getTime(), y: v, d: iso } : null
+  }).filter(Boolean)
+  const kcalPts = foodSeriesPts('kcal')
+  const macroSeries = [
+    { key: 'carbsG', label: t('Carbs'), color: 'var(--orange)', unit: 'g', points: foodSeriesPts('carbsG'), goal: S.nutritionGoals.carbsG },
+    { key: 'fatG', label: t('Fat'), color: 'var(--indigo)', unit: 'g', points: foodSeriesPts('fatG'), goal: S.nutritionGoals.fatG },
+    { key: 'proteinG', label: t('Protein'), color: 'var(--blue)', unit: 'g', points: foodSeriesPts('proteinG'), goal: S.nutritionGoals.proteinG },
+  ]
+  const waterGoalToday = waterGoalForDate(S.nutritionGoals.waterMl || 2000, S.waterProtocol, todayISO())
+  const hasNutrition = kcalPts.length > 0 || waterSeriesPts.length > 0 || macroSeries.some(s => s.points.length > 0)
+
   return <>
     <div className="tiles">
       <div className="tile"><div className="l"><Icon name="dumbbell" />{t('Workouts')}</div><div className="v">{workouts.length}</div></div>
@@ -444,6 +474,32 @@ export default function Stats() {
         </> : <div className="muted small">{t('Finish your first workout to see progress curves here.')}</div>}
       </div>
     </div>
+
+    {hasNutrition && <div className="card">
+      <div className="row between" style={{ marginBottom: 8 }}>
+        <h2 style={{ margin: 0 }}>{t('Nutrition')}</h2>
+        <Segmented className="seg-range" value={nutriRange} onChange={setNutriRange}
+          options={[{ value: 7, label: t('Week') }, { value: 30, label: '30d' }, { value: 90, label: '90d' }]} />
+      </div>
+      {/* One card, three sections — calories/macros/water still each get their own chart in
+          their own real unit (see the comment above nutriDays), just grouped as one object
+          on the page instead of three separate boxes. */}
+      {kcalPts.length > 0 && <>
+        <div className="divider" style={{ margin: '4px 0 12px' }} />
+        <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 8 }}>{t('Calories')}</div>
+        <div className="chart"><LineChart points={kcalPts} h={130} unit="kcal" color="var(--acc)" goal={S.nutritionGoals.calories} /></div>
+      </>}
+      {macroSeries.some(s => s.points.length > 0) && <>
+        <div className="divider" style={{ margin: '16px 0 12px' }} />
+        <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 8 }}>{t('Macros')}</div>
+        <NutritionTrendChart series={macroSeries} h={150} />
+      </>}
+      {waterSeriesPts.length > 0 && <>
+        <div className="divider" style={{ margin: '16px 0 12px' }} />
+        <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 8 }}>{t('Water')}</div>
+        <div className="chart"><LineChart points={waterSeriesPts} h={130} unit="ml" color="var(--teal)" goal={waterGoalToday} /></div>
+      </>}
+    </div>}
 
     {workouts.length > 0 && <>
       <h4 className="sec">{t('Recent workouts')}</h4>
