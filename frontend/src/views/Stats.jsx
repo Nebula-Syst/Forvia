@@ -390,22 +390,25 @@ export default function Stats() {
   // get a point; an un-logged day is a gap, not 0.
   const nutriDays = []
   for (let i = nutriRange - 1; i >= 0; i--) { const d = new Date(); d.setDate(d.getDate() - i); nutriDays.push(isoOf(d)) }
+  const foodDiary = S.foodDiary || {}
+  const waterLog = S.waterLog || {}
+  const nutritionGoals = S.nutritionGoals || {}
   const foodSeriesPts = key => nutriDays.map(iso => {
-    const items = S.foodDiary[iso] || []
+    const items = foodDiary[iso] || []
     if (!items.length) return null
     return { t: new Date(iso + 'T12:00:00').getTime(), y: items.reduce((n, it) => n + (it[key] || 0), 0), d: iso }
   }).filter(Boolean)
   const waterSeriesPts = nutriDays.map(iso => {
-    const v = S.waterLog[iso] || 0
+    const v = waterLog[iso] || 0
     return v > 0 ? { t: new Date(iso + 'T12:00:00').getTime(), y: v, d: iso } : null
   }).filter(Boolean)
   const kcalPts = foodSeriesPts('kcal')
   const macroSeries = [
-    { key: 'carbsG', label: t('Carbs'), color: 'var(--orange)', unit: 'g', points: foodSeriesPts('carbsG'), goal: S.nutritionGoals.carbsG },
-    { key: 'fatG', label: t('Fat'), color: 'var(--indigo)', unit: 'g', points: foodSeriesPts('fatG'), goal: S.nutritionGoals.fatG },
-    { key: 'proteinG', label: t('Protein'), color: 'var(--blue)', unit: 'g', points: foodSeriesPts('proteinG'), goal: S.nutritionGoals.proteinG },
+    { key: 'carbsG', label: t('Carbs'), color: 'var(--orange)', unit: 'g', points: foodSeriesPts('carbsG'), goal: nutritionGoals.carbsG },
+    { key: 'fatG', label: t('Fat'), color: 'var(--indigo)', unit: 'g', points: foodSeriesPts('fatG'), goal: nutritionGoals.fatG },
+    { key: 'proteinG', label: t('Protein'), color: 'var(--blue)', unit: 'g', points: foodSeriesPts('proteinG'), goal: nutritionGoals.proteinG },
   ]
-  const waterGoalToday = waterGoalForDate(S.nutritionGoals.waterMl || 2000, S.waterProtocol, todayISO())
+  const waterGoalToday = waterGoalForDate(nutritionGoals.waterMl || 2000, S.waterProtocol, todayISO())
   const hasNutrition = kcalPts.length > 0 || waterSeriesPts.length > 0 || macroSeries.some(s => s.points.length > 0)
 
   return <>
@@ -487,7 +490,7 @@ export default function Stats() {
       {kcalPts.length > 0 && <>
         <div className="divider" style={{ margin: '4px 0 12px' }} />
         <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 8 }}>{t('Calories')}</div>
-        <div className="chart"><LineChart points={kcalPts} h={130} unit="kcal" color="var(--acc)" goal={S.nutritionGoals.calories} /></div>
+        <div className="chart"><LineChart points={kcalPts} h={130} unit="kcal" color="var(--acc)" goal={nutritionGoals.calories} /></div>
       </>}
       {macroSeries.some(s => s.points.length > 0) && <>
         <div className="divider" style={{ margin: '16px 0 12px' }} />
