@@ -112,3 +112,33 @@ export const anticheatAppeal = (id, message) => api('/api/anticheat/appeal', { m
 export const anticheatAck = id => api('/api/anticheat/ack', { method: 'POST', body: JSON.stringify({ id }) })
 export const adminAnticheat = () => api('/api/admin/anticheat').then(r => r.penalties)
 export const adminAnticheatReview = (id, decision, reviewNote) => api('/api/admin/anticheat/review', { method: 'POST', body: JSON.stringify({ id, decision, reviewNote }) })
+
+/* ---------- coach application ---------- */
+export const coachApply = (experience, certifications, message, documentDataUrl) => api('/api/coach/apply', { method: 'POST', body: JSON.stringify({ experience, certifications, message, documentDataUrl }) })
+export const adminCoachRequests = () => api('/api/admin/coach-requests').then(r => r.requests)
+export const adminCoachApprove = id => api('/api/admin/coach-requests/approve', { method: 'POST', body: JSON.stringify({ id }) })
+export const adminCoachDismiss = id => api('/api/admin/coach-requests/dismiss', { method: 'POST', body: JSON.stringify({ id }) })
+export const coachRequestDocumentUrl = id => '/api/admin/coach-requests/document?id=' + encodeURIComponent(id)
+
+/* ---------- coach + box (WODbuster-style) ---------- */
+export const coachCreateBox = name => api('/api/coach/box', { method: 'POST', body: JSON.stringify({ name }) }).then(r => r.box)
+export const coachBoxes = () => api('/api/coach/boxes').then(r => r.boxes)
+export const coachBox = boxId => api('/api/coach/box?boxId=' + encodeURIComponent(boxId)).then(r => r.box)
+export const coachBoxRoster = boxId => api('/api/coach/box/roster?boxId=' + encodeURIComponent(boxId)).then(r => r.roster)
+export const coachRemoveMember = (boxId, athleteId) => api('/api/coach/box/member/remove', { method: 'POST', body: JSON.stringify({ boxId, athleteId }) })
+export const coachCreateInvite = boxId => api('/api/coach/box/invite', { method: 'POST', body: JSON.stringify({ boxId }) }).then(r => r.invite)
+export const coachRevokeInvite = (boxId, code) => api('/api/coach/box/invite/revoke', { method: 'POST', body: JSON.stringify({ boxId, code }) })
+export const boxJoin = code => api('/api/box/join', { method: 'POST', body: JSON.stringify({ code }) }).then(r => r.box)
+export const athleteBoxes = () => api('/api/athlete/boxes').then(r => r.boxes)
+export const coachAthleteWorkouts = (athleteId, days) => api('/api/coach/athlete/workouts?athleteId=' + encodeURIComponent(athleteId) + (days ? '&days=' + days : '')).then(r => r.workouts)
+
+/* ---------- routine assignment ---------- */
+export const coachAssignRoutine = (boxId, athleteId, routine) => api('/api/coach/box/assign-routine', { method: 'POST', body: JSON.stringify({ boxId, athleteId, routine }) }).then(r => r.assignment)
+export const athleteRoutineAssignments = () => api('/api/athlete/routine-assignments').then(r => r.assignments)
+export const athleteApplyAssignment = id => api('/api/athlete/routine-assignments/apply', { method: 'POST', body: JSON.stringify({ id }) })
+
+/* ---------- WOD of the day + box leaderboard ---------- */
+export const coachSetWod = (boxId, wod) => api('/api/coach/box/wod', { method: 'POST', body: JSON.stringify({ boxId, ...wod }) }).then(r => r.wod)
+export const boxWod = (boxId, date) => api('/api/box/wod?boxId=' + encodeURIComponent(boxId) + (date ? '&date=' + date : ''))
+export const boxWodResult = (boxId, wodId, value) => api('/api/box/wod/result', { method: 'POST', body: JSON.stringify({ boxId, wodId, value }) }).then(r => r.result)
+export const boxLeaderboard = (boxId, date) => api('/api/coach/box/leaderboard?boxId=' + encodeURIComponent(boxId) + (date ? '&date=' + date : ''))

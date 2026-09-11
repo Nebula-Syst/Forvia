@@ -28,7 +28,7 @@ import { waterGoalForDate } from './lib/nutrition-goals.js'
 import { parseNutritionCSV, mergeNutritionImport } from './lib/import-nutrition.js'
 import { StackedBar } from './components/MacroBars.jsx'
 import LiquidFillGauge from 'react-liquid-gauge'
-import { passwordLogin, passwordRegister, setPassword, deleteAccount, socialComments, socialComment, socialCommentRemove, socialUpload, pinWorkout, unpinWorkout, pinPR, reportBug, foodSearch, foodByBarcode } from './lib/api.js'
+import { passwordLogin, passwordRegister, setPassword, deleteAccount, socialComments, socialComment, socialCommentRemove, socialUpload, pinWorkout, unpinWorkout, pinPR, reportBug, foodSearch, foodByBarcode, coachAssignRoutine } from './lib/api.js'
 
 const S = () => useStore.getState().S
 const update = (...a) => useStore.getState().update(...a)
@@ -261,6 +261,46 @@ function ReportBugForm({ close }) {
 }
 export function reportBugSheet() {
   ui().openSheet(close => <ReportBugForm close={close} />)
+}
+
+/* ============================ coach: assign a routine ============================ */
+// The coach picks one of their OWN routines (S().routines — same list Routines.jsx manages)
+// and a target: one specific athlete from the roster, or the whole box. The server stamps a
+// fresh routine id on save (POST /api/coach/box/assign-routine) so every athlete who later
+// applies it gets an independently-editable copy — this sheet just picks and sends, it never
+// mutates the coach's own routine.
+function AssignRoutineForm({ box, roster, close, onDone }) {
+  const routines = S().routines || []
+  const [routineId, setRoutineId] = useState(routines[0]?.id || '')
+  const [athleteId, setAthleteId] = useState('__all__')
+  const [busy, setBusy] = useState(false)
+  const send = async () => {
+    const routine = routines.find(r => r.id === routineId)
+    if (!routine) return toast(t('Pick a routine'))
+    setBusy(true)
+    try {
+      await coachAssignRoutine(box.id, athleteId === '__all__' ? null : athleteId, routine)
+      toast(t('Routine assigned'))
+      close()
+      onDone && onDone()
+    } catch (e) { toast(e.message || t('Could not save')) }
+    finally { setBusy(false) }
+  }
+  return <>
+    <h3>{t('Assign a routine')}</h3>
+    {!routines.length ? (
+      <div className="muted small" style={{ margin: '10px 0' }}>{t('Create a routine of your own first, then come back to assign it.')}</div>
+    ) : <>
+      <div className="muted small" style={{ margin: '10px 0 6px' }}>{t('Routine')}</div>
+      <Segmented options={routines.map(r => ({ value: r.id, label: r.name }))} value={routineId} onChange={setRoutineId} />
+      <div className="muted small" style={{ margin: '14px 0 6px' }}>{t('Assign to')}</div>
+      <Segmented options={[{ value: '__all__', label: t('Whole box') }, ...roster.map(a => ({ value: a.id, label: a.name }))]} value={athleteId} onChange={setAthleteId} />
+      <Button variant="primary" style={{ marginTop: 16 }} onClick={send} disabled={busy}>{t('Assign')}</Button>
+    </>}
+  </>
+}
+export function assignRoutineSheet(box, roster, onDone) {
+  ui().openSheet(close => <AssignRoutineForm box={box} roster={roster} close={close} onDone={onDone} />)
 }
 
 /* ============================ social: comments on a workout ============================ */

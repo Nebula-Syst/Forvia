@@ -57,6 +57,15 @@ import AdminLog from './views/admin/AdminLog.jsx'
 import AdminAlpha from './views/admin/AdminAlpha.jsx'
 import AdminBugs from './views/admin/AdminBugs.jsx'
 import AdminAnticheat from './views/admin/AdminAnticheat.jsx'
+import AdminCoachRequests from './views/admin/AdminCoachRequests.jsx'
+import CoachApply from './views/CoachApply.jsx'
+import CoachBoxes from './views/coach/CoachBoxes.jsx'
+import CoachBox from './views/coach/CoachBox.jsx'
+import CoachAthlete from './views/coach/CoachAthlete.jsx'
+import MyBoxes from './views/MyBoxes.jsx'
+import BoxJoin from './views/BoxJoin.jsx'
+import BoxWod from './views/BoxWod.jsx'
+import BoxLeaderboard from './views/BoxLeaderboard.jsx'
 import { DEFAULT_ACCENT } from './lib/palette.js'
 
 bindUI(useUI)   // lets the shared controls open sheets without importing the store at module scope
@@ -145,6 +154,15 @@ function Shell() {
               <Route path="/admin/alpha" element={user?.admin ? <AdminAlpha /> : <Navigate to="/home" replace />} />
               <Route path="/admin/bugs" element={user?.admin ? <AdminBugs /> : <Navigate to="/home" replace />} />
               <Route path="/admin/anticheat" element={user?.admin ? <AdminAnticheat /> : <Navigate to="/home" replace />} />
+              <Route path="/admin/coach-requests" element={user?.admin ? <AdminCoachRequests /> : <Navigate to="/home" replace />} />
+              <Route path="/coach/apply" element={user ? <CoachApply /> : <Navigate to="/home" replace />} />
+              <Route path="/coach" element={user?.coach ? <CoachBoxes /> : <Navigate to="/home" replace />} />
+              <Route path="/coach/box/:boxId" element={user?.coach ? <CoachBox /> : <Navigate to="/home" replace />} />
+              <Route path="/coach/box/:boxId/athlete/:athleteId" element={user?.coach ? <CoachAthlete /> : <Navigate to="/home" replace />} />
+              <Route path="/settings/boxes" element={user ? <MyBoxes /> : <Navigate to="/home" replace />} />
+              <Route path="/box/join/:code" element={user ? <BoxJoin /> : <Navigate to="/home" replace />} />
+              <Route path="/box/:boxId/wod" element={user ? <BoxWod /> : <Navigate to="/home" replace />} />
+              <Route path="/box/:boxId/leaderboard" element={user ? <BoxLeaderboard /> : <Navigate to="/home" replace />} />
               <Route path="*" element={<Navigate to="/home" replace />} />
             </Routes>
           )}

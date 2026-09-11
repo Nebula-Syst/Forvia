@@ -61,7 +61,7 @@ const SECRET = fs.readFileSync(secretFile, 'utf8').trim();
 // why this stays one big in-memory object instead of being queried per-request. Same shape
 // db.json's arrays always had: users, subs (push), invites, follows, reactions, comments
 // (social), tasks/taskCompletions (daily-task catalog + awards), cheatPenalties (anti-cheat).
-let db = { users: [], subs: [], invites: [], follows: [], reactions: [], comments: [], tasks: [], taskCompletions: [], cheatPenalties: [], alphaRequests: [], bugReports: [], exerciseOverrides: [], muscleGroups: [], streakTiers: [] };
+let db = { users: [], subs: [], invites: [], follows: [], reactions: [], comments: [], tasks: [], taskCompletions: [], cheatPenalties: [], alphaRequests: [], bugReports: [], exerciseOverrides: [], muscleGroups: [], streakTiers: [], coachRequests: [], boxes: [], boxMemberships: [], boxInvites: [], routineAssignments: [], wods: [], wodResults: [] };
 // A user can hold several employee types at once (e.g. both founder and admin), not one
 // flat role — employeeTypes is an array, filtered to the known set on every read so a
 // stale/tampered value in db.json can never grant something that isn't in EMPLOYEE_TYPES.
@@ -97,6 +97,10 @@ const publicUser = user => {
   const rank = rankFor(user.id);
   return {
     id: user.id, name: user.name, admin: isAdmin(user), employeeTypes: employeeTypesOf(user),
+    // A real human coach managing a roster of athletes — granted manually by an admin after
+    // reviewing a coachRequests application (POST /api/coach/apply), never self-serve. Plain
+    // boolean, not part of EMPLOYEE_TYPES: this is an athlete-facing capability, not a staff role.
+    coach: !!user.coach,
     // firstName/lastName are the real source of truth once set (see POST /api/account/name) —
     // `name` is still what the rest of the app reads to display someone, kept in sync from
     // the two parts server-side so nothing else has to change. null on accounts that have
@@ -128,6 +132,9 @@ const socialUser = user => ({
   id: user.id, name: user.name, username: user.username || null, perks: perksFor(user.id),
   bio: user.bio || '', avatarUrl: avatarUrlOf(user), badges: badgesFor(user, rankFor(user.id)),
   pinnedWorkoutIds: user.pinnedWorkoutIds || [], pinnedPR: user.pinnedPR || null,
+  // Not sensitive (unlike admin, which gates real backend privilege) — a box roster or
+  // leaderboard can show a "Coach" badge next to the box owner's name for free.
+  coach: !!user.coach,
 });
 // Shared by GET /api/social/comments and the POST /api/social/comment response, so the
 // field list only lives in one place.
@@ -206,6 +213,11 @@ function mergeWorkoutsInto(uid, incoming) {
 const UPLOAD_MIME = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp' };
 const uploadsDir = uid => path.join(DATA, 'uploads', uid.replace(/[^a-zA-Z0-9_-]/g, ''));
 const MAX_IMAGE_BYTES = 6 * 1024 * 1024;
+// Coach-application proof documents (a certification, an ID card) — same uploads dir as photos,
+// but PDFs are a real, common case here (photos aren't), so this is its own mime map rather than
+// widening UPLOAD_MIME (which every photo-upload call site assumes is images-only).
+const DOCUMENT_MIME = { 'application/pdf': 'pdf', 'image/jpeg': 'jpg', 'image/png': 'png' };
+const MAX_DOCUMENT_BYTES = 10 * 1024 * 1024;
 
 /* ---------- WebSocket (real-time push to an already-open app) ---------- */
 // sendPush below reaches a closed app; this reaches an open one instantly, no polling involved.
@@ -1019,6 +1031,27 @@ function perksFor(uid) {
 // disappear from everyone's feed/leaderboard/discovery on their very next request.
 const isPublic = uid => { const u = db.users.find(x => x.id === uid); return !!u && !!u.public && !u.disabled; };
 const followingOf = uid => db.follows.filter(f => f.followerId === uid).map(f => f.followeeId).filter(isPublic);
+
+/* ---------- coach + box ---------- */
+// Same discipline as isPublic() above: re-derived fresh on every call, never cached from
+// join/box-creation time. A coach losing a box, or an athlete leaving one, must lose/gain
+// visibility on the very next request — not retroactively enforced against a stale check.
+const isCoachOfBox = (coachId, boxId) => {
+  const box = db.boxes.find(b => b.id === boxId);
+  return !!box && box.coachId === coachId;
+};
+const isCoachOfAthlete = (coachId, athleteUid) => {
+  const myBoxIds = new Set(db.boxes.filter(b => b.coachId === coachId).map(b => b.id));
+  return db.boxMemberships.some(m => m.userId === athleteUid && myBoxIds.has(m.boxId));
+};
+const isMemberOfBox = (userId, boxId) => db.boxMemberships.some(m => m.userId === userId && m.boxId === boxId);
+// Guard for /api/coach/* — resolves the caller and 401/403s if they aren't an approved coach.
+function requireCoach(req, res) {
+  const user = readSession(req);
+  if (!user) { json(res, 401, { error: 'not signed in' }); return null; }
+  if (!user.coach) { audit(req, 'coach.denied', { ok: false, user }); json(res, 403, { error: 'forbidden' }); return null; }
+  return user;
+}
 // Not real pagination — the frontend fetches this whole list in one call and reveals it
 // 5 cards at a time as you scroll (Social.jsx PAGE_SIZE), so FEED_LIMIT only exists as a
 // sanity ceiling against a pathological follow graph, not a page size. A self-hosted
@@ -1185,6 +1218,47 @@ const routes = {
     saveDb();
     audit(req, 'alpha.apply', { name, msg: email });
     json(res, 200, { ok: true }, headers);
+  },
+
+  /* ---------- coach application (a logged-in user applying to become a coach) ---------- */
+  // Unlike alpha/apply this requires a session — coach status attaches to an existing account,
+  // it isn't a new-signup gate. Re-submitting while pending/approved updates the existing
+  // request instead of piling up duplicates, same idea as alpha/apply's email-keyed dedup.
+  'POST /api/coach/apply': async (req, res) => {
+    const user = readSession(req);
+    if (!user) return json(res, 401, { error: 'not signed in' });
+    if (user.coach) return json(res, 400, { error: 'already a coach' });
+    const body = await readBody(req);
+    const experience = String(body.experience || '').trim().slice(0, 500);
+    const certifications = String(body.certifications || '').trim().slice(0, 500);
+    const message = String(body.message || '').trim().slice(0, 500);
+    if (!experience) return json(res, 400, { error: 'tell us about your coaching experience' });
+    const existing = db.coachRequests.find(r => r.userId === user.id && r.status !== 'dismissed');
+    // Proof document (a certification, an ID) — required; a data: URL same shape as
+    // social/upload's own photo body, just with a document-specific mime set (PDFs included).
+    // Re-submitting with a new file replaces the old one on disk; re-submitting without one
+    // (editing just the text fields) keeps whatever document is already on file.
+    const raw = String(body.documentDataUrl || '');
+    const m = raw ? /^data:(application\/pdf|image\/jpeg|image\/png);base64,([a-zA-Z0-9+/=]+)$/.exec(raw) : null;
+    if (raw && !m) return json(res, 400, { error: 'unsupported document format — PDF, JPEG or PNG only' });
+    if (!m && !existing?.documentFile) return json(res, 400, { error: 'attach a document proving you’re a trainer/coach' });
+    const row = existing || { id: crypto.randomBytes(8).toString('base64url'), userId: user.id, created: new Date().toISOString() };
+    row.experience = experience; row.certifications = certifications; row.message = message;
+    row.status = 'pending';
+    if (existing) row.updated = new Date().toISOString();
+    if (m) {
+      const buf = Buffer.from(m[2], 'base64');
+      if (buf.length > MAX_DOCUMENT_BYTES) return json(res, 413, { error: 'document too large' });
+      if (row.documentFile) fs.unlink(path.join(uploadsDir(user.id), row.documentFile), () => {});
+      const file = 'coachdoc-' + crypto.randomBytes(10).toString('base64url') + '.' + DOCUMENT_MIME[m[1]];
+      fs.mkdirSync(uploadsDir(user.id), { recursive: true });
+      fs.writeFileSync(path.join(uploadsDir(user.id), file), buf);
+      row.documentFile = file;
+    }
+    if (!existing) db.coachRequests.push(row);
+    saveDb();
+    audit(req, 'coach.apply', { user });
+    json(res, 200, { ok: true });
   },
 
   /* ---------- bug reports (alpha issue tracker) ---------- */
@@ -1985,6 +2059,59 @@ div{max-width:360px}h1{font-size:20px;margin:0 0 8px}p{color:#9db8a8;line-height
     json(res, 200, { ok: true });
   },
 
+  /* ---------- coach applications (admin side) ---------- */
+  'GET /api/admin/coach-requests': async (req, res) => {
+    if (!requireAdmin(req, res)) return;
+    // Joined in for display — the row itself only stores userId, unlike alphaRequests which
+    // has no matching account yet to look name/email up from.
+    const requests = [...db.coachRequests].reverse().map(r => {
+      const u = db.users.find(x => x.id === r.userId);
+      return { ...r, name: u?.name || null, email: u?.email || null };
+    });
+    json(res, 200, { requests });
+  },
+  // Serves the applicant's proof document to an admin reviewing the request — narrowly scoped
+  // to coach-request documents rather than widening GET /api/uploads' own visibility rule
+  // (owner-or-public) to admins, which would hand admins every private workout photo too.
+  'GET /api/admin/coach-requests/document': async (req, res) => {
+    if (!requireAdmin(req, res)) return;
+    const q = new URL(req.url, 'http://x').searchParams;
+    const reqRow = db.coachRequests.find(r => r.id === (q.get('id') || ''));
+    if (!reqRow || !reqRow.documentFile) return json(res, 404, { error: 'not found' });
+    const ext = reqRow.documentFile.slice(reqRow.documentFile.lastIndexOf('.') + 1);
+    const mime = Object.entries(DOCUMENT_MIME).find(([, e]) => e === ext)?.[0] || 'application/octet-stream';
+    fs.readFile(path.join(uploadsDir(reqRow.userId), reqRow.documentFile), (err, buf) => {
+      if (err) return json(res, 404, { error: 'not found' });
+      res.writeHead(200, { 'Content-Type': mime, 'Cache-Control': 'private, max-age=0' });
+      res.end(buf);
+    });
+  },
+  'POST /api/admin/coach-requests/approve': async (req, res) => {
+    const admin = requireAdmin(req, res); if (!admin) return;
+    const body = await readBody(req);
+    const reqRow = db.coachRequests.find(r => r.id === body.id);
+    if (!reqRow) return json(res, 404, { error: 'no such request' });
+    const applicant = db.users.find(u => u.id === reqRow.userId);
+    if (!applicant) return json(res, 404, { error: 'applicant account no longer exists' });
+    reqRow.status = 'approved';
+    reqRow.reviewedBy = admin.id;
+    reqRow.reviewedAt = new Date().toISOString();
+    applicant.coach = true;
+    saveDb();
+    audit(req, 'admin.coach.approve', { user: admin, target: applicant });
+    json(res, 200, { ok: true });
+  },
+  'POST /api/admin/coach-requests/dismiss': async (req, res) => {
+    const admin = requireAdmin(req, res); if (!admin) return;
+    const body = await readBody(req);
+    const reqRow = db.coachRequests.find(r => r.id === body.id);
+    if (!reqRow) return json(res, 404, { error: 'no such request' });
+    reqRow.status = 'dismissed';
+    saveDb();
+    audit(req, 'admin.coach.dismiss', { user: admin, msg: reqRow.userId });
+    json(res, 200, { ok: true });
+  },
+
   /* ---------- bug reports (admin side) ---------- */
   'GET /api/admin/bugs': async (req, res) => {
     if (!requireAdmin(req, res)) return;
@@ -2602,7 +2729,289 @@ div{max-width:360px}h1{font-size:20px;margin:0 0 8px}p{color:#9db8a8;line-height
     saveDb();
     audit(req, 'social.comment.remove', { user: me, msg: c.id });
     json(res, 200, { ok: true });
-  }
+  },
+
+  /* ---------- coach + box (WODbuster-style: a coach's roster of athletes) ---------- */
+  'POST /api/coach/box': async (req, res) => {
+    const coach = requireCoach(req, res); if (!coach) return;
+    const body = await readBody(req);
+    const name = String(body.name || '').trim().slice(0, 60);
+    if (!name) return json(res, 400, { error: 'name required' });
+    const box = { id: crypto.randomBytes(8).toString('base64url'), name, coachId: coach.id, created: new Date().toISOString() };
+    db.boxes.push(box);
+    saveDb();
+    audit(req, 'coach.box.create', { user: coach, msg: box.name });
+    json(res, 200, { box });
+  },
+
+  'GET /api/coach/boxes': async (req, res) => {
+    const coach = requireCoach(req, res); if (!coach) return;
+    const boxes = db.boxes.filter(b => b.coachId === coach.id).map(b => ({
+      ...b, members: db.boxMemberships.filter(m => m.boxId === b.id).length,
+    }));
+    json(res, 200, { boxes });
+  },
+
+  'GET /api/coach/box': async (req, res) => {
+    const coach = requireCoach(req, res); if (!coach) return;
+    const q = new URL(req.url, 'http://x').searchParams;
+    const box = db.boxes.find(b => b.id === (q.get('boxId') || ''));
+    if (!box || box.coachId !== coach.id) return json(res, 404, { error: 'not found' });
+    json(res, 200, { box });
+  },
+
+  // Athlete roster — stats reused wholesale from the existing social/leaderboard machinery
+  // (statsFor, currentStreakDays) rather than a third independent implementation.
+  'GET /api/coach/box/roster': async (req, res) => {
+    const coach = requireCoach(req, res); if (!coach) return;
+    const boxId = new URL(req.url, 'http://x').searchParams.get('boxId') || '';
+    if (!isCoachOfBox(coach.id, boxId)) return json(res, 404, { error: 'not found' });
+    const roster = db.boxMemberships.filter(m => m.boxId === boxId).map(m => {
+      const u = db.users.find(x => x.id === m.userId);
+      if (!u) return null;
+      return { ...socialUser(u), joined: m.joined, streakDays: currentStreakDays(u.id), ...statsFor(u.id) };
+    }).filter(Boolean);
+    json(res, 200, { roster });
+  },
+
+  'POST /api/coach/box/member/remove': async (req, res) => {
+    const coach = requireCoach(req, res); if (!coach) return;
+    const body = await readBody(req);
+    const boxId = String(body.boxId || '');
+    if (!isCoachOfBox(coach.id, boxId)) return json(res, 404, { error: 'not found' });
+    const before = db.boxMemberships.length;
+    db.boxMemberships = db.boxMemberships.filter(m => !(m.boxId === boxId && m.userId === body.athleteId));
+    if (db.boxMemberships.length === before) return json(res, 404, { error: 'not a member' });
+    saveDb();
+    audit(req, 'coach.box.member.remove', { user: coach, msg: body.athleteId });
+    json(res, 200, { ok: true });
+  },
+
+  // A box invite is a standing join link for a whole roster, not a single-use account invite —
+  // usedBy/usedAt are just "who most recently redeemed it" telemetry; only revoked blocks
+  // redemption (POST /api/box/join below never sets usedBy to gate reuse).
+  'POST /api/coach/box/invite': async (req, res) => {
+    const coach = requireCoach(req, res); if (!coach) return;
+    const body = await readBody(req);
+    const boxId = String(body.boxId || '');
+    if (!isCoachOfBox(coach.id, boxId)) return json(res, 404, { error: 'not found' });
+    let code;
+    do { code = crypto.randomBytes(8).toString('hex').toUpperCase(); } while (db.boxInvites.some(i => i.code === code));
+    const invite = { code, boxId, createdBy: coach.id, created: new Date().toISOString() };
+    db.boxInvites.push(invite);
+    saveDb();
+    audit(req, 'coach.invite.create', { user: coach, msg: code });
+    json(res, 200, { invite });
+  },
+
+  'POST /api/coach/box/invite/revoke': async (req, res) => {
+    const coach = requireCoach(req, res); if (!coach) return;
+    const body = await readBody(req);
+    const boxId = String(body.boxId || '');
+    if (!isCoachOfBox(coach.id, boxId)) return json(res, 404, { error: 'not found' });
+    const inv = db.boxInvites.find(i => i.code === String(body.code || '').toUpperCase() && i.boxId === boxId);
+    if (!inv) return json(res, 404, { error: 'no such code' });
+    inv.revoked = true;
+    saveDb();
+    audit(req, 'coach.invite.revoke', { user: coach, msg: inv.code });
+    json(res, 200, { ok: true });
+  },
+
+  'POST /api/box/join': async (req, res) => {
+    const me = readSession(req);
+    if (!me) return json(res, 401, { error: 'not signed in' });
+    const body = await readBody(req);
+    const code = String(body.code || '').trim().toUpperCase();
+    const invite = db.boxInvites.find(i => i.code === code && !i.revoked);
+    if (!invite) return json(res, 404, { error: 'invalid or revoked code' });
+    const box = db.boxes.find(b => b.id === invite.boxId);
+    if (!box) return json(res, 404, { error: 'box no longer exists' });
+    if (!isMemberOfBox(me.id, box.id)) {
+      db.boxMemberships.push({ id: crypto.randomBytes(8).toString('base64url'), boxId: box.id, userId: me.id, joined: new Date().toISOString() });
+    }
+    invite.usedBy = me.id;
+    invite.usedAt = new Date().toISOString();
+    saveDb();
+    audit(req, 'coach.box.join', { user: me, msg: box.id });
+    json(res, 200, { box });
+  },
+
+  // Cheap "am I in a box" check for the athlete-side UI — no store slice needed for this.
+  'GET /api/athlete/boxes': async (req, res) => {
+    const me = readSession(req);
+    if (!me) return json(res, 401, { error: 'not signed in' });
+    const boxes = db.boxMemberships.filter(m => m.userId === me.id).map(m => {
+      const box = db.boxes.find(b => b.id === m.boxId);
+      if (!box) return null;
+      const coach = db.users.find(u => u.id === box.coachId);
+      return { ...box, coachName: coach?.name || null };
+    }).filter(Boolean);
+    json(res, 200, { boxes });
+  },
+
+  // A coach's view of one athlete's actual training — deliberately richer than the social
+  // feed's trimmed shape (feedItemsFor strips weight/reps even for consenting public profiles,
+  // because that's a peer-to-peer surface). A coach giving real feedback needs the real numbers,
+  // so this returns full entries (target/plan/each set's weight+reps+done) via its own
+  // serializer, kept entirely separate so the social feed's privacy contract is untouched.
+  'GET /api/coach/athlete/workouts': async (req, res) => {
+    const coach = requireCoach(req, res); if (!coach) return;
+    const q = new URL(req.url, 'http://x').searchParams;
+    const athleteId = q.get('athleteId') || '';
+    if (!isCoachOfAthlete(coach.id, athleteId)) return json(res, 404, { error: 'not found' });
+    const days = Math.min(Math.max(parseInt(q.get('days') || '90', 10) || 90, 1), 365);
+    const cutoff = Date.now() - days * 86400000;
+    const workouts = (readState(athleteId)?.workouts || [])
+      .filter(w => (w.end || w.start || 0) >= cutoff)
+      .sort((a, b) => (b.end || b.start || 0) - (a.end || a.start || 0))
+      .map(w => ({
+        id: w.id, d: w.d, start: w.start, end: w.end, name: w.name, vol: w.vol || 0, prs: w.prs || [],
+        entries: (w.entries || []).map(e => ({ id: e.id, target: e.target || null, sets: e.sets || [], notes: e.notes || null })),
+      }));
+    json(res, 200, { workouts });
+  },
+
+  /* ---------- routine assignment ---------- */
+  // The coach picks/edits a routine client-side ({id,name,emoji,ex:[...]}, same shape
+  // RoutineEdit.jsx already produces) and hands it here; the server stamps a fresh id so every
+  // athlete who applies it ends up with an independently-editable copy, never a shared id.
+  // athleteId: null means "whole box," resolved against CURRENT membership at read time below —
+  // never fanned out / snapshotted at assign time.
+  'POST /api/coach/box/assign-routine': async (req, res) => {
+    const coach = requireCoach(req, res); if (!coach) return;
+    const body = await readBody(req);
+    const boxId = String(body.boxId || '');
+    if (!isCoachOfBox(coach.id, boxId)) return json(res, 404, { error: 'not found' });
+    const routine = body.routine;
+    if (!routine || typeof routine !== 'object' || !routine.name) return json(res, 400, { error: 'routine required' });
+    const athleteId = body.athleteId ? String(body.athleteId) : null;
+    if (athleteId && !isMemberOfBox(athleteId, boxId)) return json(res, 404, { error: 'not a member of this box' });
+    const assignment = {
+      id: crypto.randomBytes(8).toString('base64url'),
+      boxId, coachId: coach.id, athleteId,
+      routine: { ...routine, id: crypto.randomBytes(8).toString('base64url') },
+      created: new Date().toISOString(), appliedBy: {},
+    };
+    db.routineAssignments.push(assignment);
+    saveDb();
+    audit(req, 'coach.routine.assign', { user: coach, msg: (athleteId || 'whole box') + ':' + routine.name });
+    json(res, 200, { assignment });
+  },
+
+  // Assignments that currently apply to me (direct, or whole-box while I'm still a member)
+  // and that I haven't applied yet.
+  'GET /api/athlete/routine-assignments': async (req, res) => {
+    const me = readSession(req);
+    if (!me) return json(res, 401, { error: 'not signed in' });
+    const myBoxIds = new Set(db.boxMemberships.filter(m => m.userId === me.id).map(m => m.boxId));
+    const assignments = db.routineAssignments
+      .filter(a => (a.athleteId === me.id || (a.athleteId === null && myBoxIds.has(a.boxId))) && !a.appliedBy?.[me.id])
+      .map(a => {
+        const coach = db.users.find(u => u.id === a.coachId);
+        const box = db.boxes.find(b => b.id === a.boxId);
+        return { id: a.id, routine: a.routine, created: a.created, coachName: coach?.name || null, boxName: box?.name || null };
+      });
+    json(res, 200, { assignments });
+  },
+
+  // Marks the assignment "seen/applied" server-side so it stops showing as pending — the
+  // actual copy into the athlete's own S.routines happens client-side via the normal
+  // PUT /api/data sync path, not here (per-user training state is that endpoint's concern).
+  'POST /api/athlete/routine-assignments/apply': async (req, res) => {
+    const me = readSession(req);
+    if (!me) return json(res, 401, { error: 'not signed in' });
+    const body = await readBody(req);
+    const a = db.routineAssignments.find(x => x.id === body.id);
+    if (!a) return json(res, 404, { error: 'no such assignment' });
+    a.appliedBy = a.appliedBy || {};
+    a.appliedBy[me.id] = new Date().toISOString();
+    saveDb();
+    audit(req, 'coach.routine.applied', { user: me, msg: a.routine?.name || a.id });
+    json(res, 200, { ok: true });
+  },
+
+  /* ---------- WOD of the day + box leaderboard (WODbuster-style) ---------- */
+  // One WOD per box per day — re-submitting the same date edits it in place rather than
+  // erroring, same low-friction "edit by re-submitting" idiom as alpha/apply's dedup.
+  'POST /api/coach/box/wod': async (req, res) => {
+    const coach = requireCoach(req, res); if (!coach) return;
+    const body = await readBody(req);
+    const boxId = String(body.boxId || '');
+    if (!isCoachOfBox(coach.id, boxId)) return json(res, 404, { error: 'not found' });
+    const date = String(body.date || '').trim();
+    const name = String(body.name || '').trim().slice(0, 80);
+    const scoringType = ['time', 'reps', 'weight', 'rounds'].includes(body.scoringType) ? body.scoringType : 'reps';
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return json(res, 400, { error: 'date required (YYYY-MM-DD)' });
+    if (!name) return json(res, 400, { error: 'name required' });
+    const description = String(body.description || '').trim().slice(0, 1000);
+    let wod = db.wods.find(w => w.boxId === boxId && w.date === date);
+    if (wod) { wod.name = name; wod.description = description; wod.scoringType = scoringType; }
+    else { wod = { id: crypto.randomBytes(8).toString('base64url'), boxId, date, name, description, scoringType, created: new Date().toISOString(), createdBy: coach.id }; db.wods.push(wod); }
+    saveDb();
+    audit(req, 'coach.wod.create', { user: coach, msg: date + ':' + name });
+    json(res, 200, { wod });
+  },
+
+  'GET /api/box/wod': async (req, res) => {
+    const me = readSession(req);
+    if (!me) return json(res, 401, { error: 'not signed in' });
+    const q = new URL(req.url, 'http://x').searchParams;
+    const boxId = q.get('boxId') || '';
+    const box = db.boxes.find(b => b.id === boxId);
+    if (!box || !(box.coachId === me.id || isMemberOfBox(me.id, boxId))) return json(res, 404, { error: 'not found' });
+    const date = q.get('date') || isoOf(new Date());
+    const wod = db.wods.find(w => w.boxId === boxId && w.date === date) || null;
+    const myResult = wod ? db.wodResults.find(r => r.wodId === wod.id && r.athleteId === me.id) || null : null;
+    json(res, 200, { wod, myResult });
+  },
+
+  'POST /api/box/wod/result': async (req, res) => {
+    const me = readSession(req);
+    if (!me) return json(res, 401, { error: 'not signed in' });
+    const body = await readBody(req);
+    const boxId = String(body.boxId || '');
+    if (!isMemberOfBox(me.id, boxId)) return json(res, 404, { error: 'not found' });
+    const wod = db.wods.find(w => w.id === body.wodId && w.boxId === boxId);
+    if (!wod) return json(res, 404, { error: 'no such wod' });
+    const value = Number(body.value);
+    if (!isFinite(value) || value < 0) return json(res, 400, { error: 'a valid result value is required' });
+    let row = db.wodResults.find(r => r.wodId === wod.id && r.athleteId === me.id);
+    if (row) row.value = value;
+    else { row = { id: crypto.randomBytes(8).toString('base64url'), wodId: wod.id, athleteId: me.id, value, loggedAt: new Date().toISOString() }; db.wodResults.push(row); }
+    row.loggedAt = new Date().toISOString();
+    saveDb();
+    audit(req, 'coach.wod.result', { user: me, msg: wod.id + ':' + value });
+    json(res, 200, { result: row });
+  },
+
+  // Visible to the coach AND any current member — WODbuster leaderboards are whole-box, not
+  // coach-only. Roster is CURRENT boxMemberships (not a follow graph), same structural shape
+  // as the (otherwise dead) GET /api/social/leaderboard: roster → per-user stat → sort → flat
+  // unpaginated array.
+  'GET /api/coach/box/leaderboard': async (req, res) => {
+    const me = readSession(req);
+    if (!me) return json(res, 401, { error: 'not signed in' });
+    const q = new URL(req.url, 'http://x').searchParams;
+    const boxId = q.get('boxId') || '';
+    const box = db.boxes.find(b => b.id === boxId);
+    if (!box || !(box.coachId === me.id || isMemberOfBox(me.id, boxId))) return json(res, 404, { error: 'not found' });
+    const date = q.get('date') || isoOf(new Date());
+    const wod = db.wods.find(w => w.boxId === boxId && w.date === date) || null;
+    const memberIds = db.boxMemberships.filter(m => m.boxId === boxId).map(m => m.userId);
+    const ascending = wod?.scoringType === 'time';
+    const rows = memberIds.map(uid => {
+      const u = db.users.find(x => x.id === uid);
+      if (!u) return null;
+      const result = wod ? db.wodResults.find(r => r.wodId === wod.id && r.athleteId === uid) : null;
+      return { ...socialUser(u), value: result ? result.value : null };
+    }).filter(Boolean).sort((a, b) => {
+      if (a.value == null && b.value == null) return 0;
+      if (a.value == null) return 1;
+      if (b.value == null) return -1;
+      return ascending ? a.value - b.value : b.value - a.value;
+    });
+    json(res, 200, { wod, leaderboard: rows });
+  },
 };
 
 /* ---------- boot ---------- */

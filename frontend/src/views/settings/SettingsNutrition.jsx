@@ -372,6 +372,12 @@ export default function SettingsNutrition() {
       <Row icon="download" iconTint="var(--teal)" title={t('Export food diary (CSV)')}
         accessory="chevron" onClick={doExportNutrition} />
     </Section>
-    <input ref={importNutriInput} type="file" accept=".csv" style={{ display: 'none' }} onChange={onImportNutrition} />
+    {/* A bare extension with no real MIME type alongside it makes Capacitor's Android file
+        chooser (BridgeWebChromeClient.getValidTypes, which looks "csv" up in Android's own
+        MimeTypeMap and finds nothing on many OEM builds) hand the system picker an empty
+        allowed-types list — the picker then opens with everything filtered out, which reads
+        to a user as the import being silently blocked. Real MIME types alongside the
+        extension guarantee at least one match. */}
+    <input ref={importNutriInput} type="file" accept=".csv,text/csv,text/comma-separated-values,application/csv,application/vnd.ms-excel" style={{ display: 'none' }} onChange={onImportNutrition} />
   </div>
 }

@@ -37,6 +37,8 @@ export default function Admin() {
         onClick={() => nav('/admin/streaks')} />
       <Tile icon="sparkles" tint="var(--acc)" title={t('Alpha requests')} subtitle={t('Access requests from the landing page')} full
         onClick={() => nav('/admin/alpha')} />
+      <Tile icon="shield" tint="var(--indigo)" title={t('Coach requests')} subtitle={t('Applications to become a coach')} full
+        onClick={() => nav('/admin/coach-requests')} />
       <Tile icon="flag" tint="var(--red)" title={t('Bug reports')} subtitle={t('What users flagged from Settings')} full
         onClick={() => nav('/admin/bugs')} />
       <Tile icon="warnTriangle" tint="var(--orange)" title={t('Fair play')} subtitle={t('Anti-cheat penalties and appeals')} full

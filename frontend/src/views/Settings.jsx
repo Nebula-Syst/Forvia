@@ -47,6 +47,14 @@ export default function Settings() {
           <Tile icon="medal" tint="var(--yellow)" title={t('Level & Prestige')} subtitle={t('Tier progress, perks')}
             onClick={() => nav('/rank')} />
         )}
+        {user?.coach && (
+          <Tile icon="shield" tint="var(--indigo)" title={t('Coach dashboard')} subtitle={t('Roster, routines, WOD')}
+            onClick={() => nav('/coach')} />
+        )}
+        {user && !user.coach && (
+          <Tile icon="shield" tint="var(--indigo)" title={t('Become a coach')} subtitle={t('Manage a box of athletes')}
+            onClick={() => nav('/coach/apply')} />
+        )}
       </div>
     )}
 

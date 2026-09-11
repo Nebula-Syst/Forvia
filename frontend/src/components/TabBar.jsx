@@ -11,8 +11,8 @@ export default function TabBar() {
   const user = useStore(s => s.user)
   const isGuest = useStore(s => s.isGuest())
   // Collapsed by default: one round button. Tapping it while idle opens a small speed-dial
-  // — the button itself becomes a cancel/close circle, and two option pills (workout,
-  // food) fan out above it. Tapping cancel/the scrim closes it with the normal grow/shrink
+  // — the button itself becomes a cancel/close circle, and four option pills (workout,
+  // food, coach, box) fan out above it in a column. Tapping cancel/the scrim closes it with the normal grow/shrink
   // animation; a route change (tapping one of the two pills, or any other nav) closes it
   // instantly instead — the page underneath has already swapped by the time a `--fast`
   // transition would finish, so animating it only leaves the pill visibly floating over
@@ -44,12 +44,18 @@ export default function TabBar() {
   // this path's own concern, not the desktop rail's (sidenavTap has no speed-dial to close).
   const goWorkout = () => { setExpanded(false); nav('/workout') }
   const logFood = () => { setExpanded(false); nav('/nutrition') }
+  // Coach: straight to the dashboard once approved, otherwise the application form — same
+  // fork Settings.jsx's own "Coach dashboard"/"Become a coach" rows use.
+  const goCoach = () => { setExpanded(false); nav(user?.coach ? '/coach' : '/coach/apply') }
+  // Box: the athlete-side hub (joined boxes, join-by-code, pending routine assignments) —
+  // this replaces the "My boxes" row that used to live in Settings.
+  const goBox = () => { setExpanded(false); nav('/settings/boxes') }
   const centerCls = (expanded ? ' expanded' : '') + (instant ? ' instant' : '')
   // Idle + collapsed shows a neutral "+" rather than the dumbbell — the dumbbell now
-  // belongs to just one of the two things this opens (see `.opt.workout` below), so the
-  // resting icon can't point at either specifically.
+  // belongs to just one of the things this opens (see `.opt.workout` below), so the
+  // resting icon can't point at any one of them specifically.
   const centerIcon = expanded ? 'xmark' : 'plus'
-  const centerLabel = expanded ? t('Close') : t('Workout options')
+  const centerLabel = expanded ? t('Close') : t('Quick actions')
   const Tab = ({ k, icon, to, label }) => (
     <button className={on(k) ? 'on' : ''} onClick={() => nav(to)}>
       <Icon name={icon} /><span>{label}</span>
@@ -63,8 +69,10 @@ export default function TabBar() {
       <Tab k="social" icon="heart" to="/social" label={t('Social')} />
       <div className={'startfab' + centerCls}>
         <div className="optrow">
-          <button className="opt workout" onClick={goWorkout} aria-label={t('Start workout')} tabIndex={expanded ? 0 : -1}><span>{t('Workout')}</span></button>
+          <button className="opt coach" onClick={goCoach} aria-label={user?.coach ? t('Coach dashboard') : t('Become a coach')} tabIndex={expanded ? 0 : -1}><span>{t('Coach')}</span></button>
+          <button className="opt box" onClick={goBox} aria-label={t('My boxes')} tabIndex={expanded ? 0 : -1}><span>{t('Box')}</span></button>
           <button className="opt food" onClick={logFood} aria-label={t('Log food')} tabIndex={expanded ? 0 : -1}><span>{t('Nutrition')}</span></button>
+          <button className="opt workout" onClick={goWorkout} aria-label={t('Start workout')} tabIndex={expanded ? 0 : -1}><span>{t('Workout')}</span></button>
         </div>
         <button className="main" onClick={centerTap} aria-label={centerLabel}><Icon name={centerIcon} /></button>
       </div>
@@ -85,9 +93,17 @@ export default function TabBar() {
         <Icon name="dumbbell" />
         <span>{t('Start workout')}</span>
       </button>
-      <button className="sidestart food" onClick={() => nav('/nutrition')}>
+      <button className="sidestart glass" onClick={() => nav('/nutrition')}>
         <Icon name="plate" />
         <span>{t('Log food')}</span>
+      </button>
+      <button className="sidestart glass" onClick={goCoach}>
+        <Icon name="shield" />
+        <span>{user?.coach ? t('Coach dashboard') : t('Become a coach')}</span>
+      </button>
+      <button className="sidestart glass" onClick={goBox}>
+        <Icon name="trophy" />
+        <span>{t('My boxes')}</span>
       </button>
       <Tab k="home" icon="house" to="/home" label={t('Home')} />
       <Tab k="social" icon="heart" to="/social" label={t('Social')} />

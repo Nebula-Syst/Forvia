@@ -124,7 +124,10 @@ export default function SettingsData() {
       <Row icon="trash" iconTint="var(--red)" title={t('Reset everything')} danger accessory="chevron" onClick={doReset} />
     </Section>
 
-    <input ref={importAppInput} type="file" accept=".csv,.xml" style={{ display: 'none' }} onChange={onImportApp} />
+    {/* Same fix as SettingsNutrition.jsx's own CSV input: bare extensions alone (no real
+        MIME type) can leave Capacitor's Android file chooser with an empty allowed-types
+        list, which reads as the import being silently blocked. */}
+    <input ref={importAppInput} type="file" accept=".csv,.xml,text/csv,text/comma-separated-values,application/csv,application/vnd.ms-excel,text/xml,application/xml" style={{ display: 'none' }} onChange={onImportApp} />
     <input ref={importBackupInput} type="file" accept=".json,application/json" style={{ display: 'none' }} onChange={onImportBackup} />
   </div>
 }

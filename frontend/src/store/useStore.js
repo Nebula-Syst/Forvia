@@ -10,6 +10,8 @@ import { DEFAULT_ACCENT, DEFAULT_THEME } from '../lib/palette.js'
 import { checkNowForLevelUp } from '../lib/levelWatch.js'
 import { checkNowForCheatReveal } from '../lib/anticheatWatch.js'
 import { wsConnect, wsDisconnect } from '../lib/ws.js'
+import { athleteRoutineAssignments, athleteApplyAssignment } from '../lib/api.js'
+import { uid } from '../lib/format.js'
 
 const KEY = 'gym_state_v1'
 export const DEF = {
@@ -185,6 +187,24 @@ export const useStore = create((set, get) => {
       try { const me = await api('/api/me'); get().setUser(me.user); checkNowForLevelUp(me.user) } catch (e) { /* offline — keep what we have */ }
     },
 
+    // Coach-assigned routines waiting to be copied into this athlete's own S.routines — see
+    // GET /api/athlete/routine-assignments (api/server.js). Fetched at boot and again after
+    // applying one; best-effort, like refreshUser, since a coach relationship is optional.
+    pendingAssignments: [],
+    async refreshPendingAssignments() {
+      if (!get().user) return
+      try { set({ pendingAssignments: await athleteRoutineAssignments() }) } catch (e) { /* offline — keep what we have */ }
+    },
+    // Marks the assignment applied server-side, then copies the routine into this athlete's
+    // own S.routines via the same local update()/pushState() path routine creation already
+    // uses — the server never writes into per-user training state directly (see the endpoint's
+    // own comment). A fresh id keeps this copy independently editable from the coach's original.
+    async applyRoutineAssignment(assignment) {
+      await athleteApplyAssignment(assignment.id)
+      get().update(s => { s.routines.push({ ...assignment.routine, id: uid(), assignedBy: assignment.coachName || null }) })
+      set({ pendingAssignments: get().pendingAssignments.filter(a => a.id !== assignment.id) })
+    },
+
     async pushState() {
       if (!get().user) return
       clearTimeout(pushTm)
@@ -287,6 +307,7 @@ export const useStore = create((set, get) => {
         const me = await api('/api/me')
         get().setUser(me.user)
         await get().pullState()
+        get().refreshPendingAssignments()
         // Re-stamp the reminder's timezone on every load — keeps it correct if you're travelling,
         // without needing to revisit Settings.
         const tz = localTZ()
