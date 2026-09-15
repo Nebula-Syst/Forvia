@@ -27,8 +27,9 @@ import { MEALS } from './lib/nutrition.js'
 import { waterGoalForDate } from './lib/nutrition-goals.js'
 import { parseNutritionCSV, mergeNutritionImport } from './lib/import-nutrition.js'
 import { StackedBar } from './components/MacroBars.jsx'
+import LocationPicker from './components/LocationPicker.jsx'
 import LiquidFillGauge from 'react-liquid-gauge'
-import { passwordLogin, passwordRegister, setPassword, deleteAccount, socialComments, socialComment, socialCommentRemove, socialUpload, pinWorkout, unpinWorkout, pinPR, reportBug, foodSearch, foodByBarcode, coachAssignRoutine } from './lib/api.js'
+import { passwordLogin, passwordRegister, setPassword, deleteAccount, socialComments, socialComment, socialCommentRemove, socialUpload, pinWorkout, unpinWorkout, pinPR, reportBug, foodSearch, foodByBarcode, coachAssignRoutine, coachRequestBox, coachUpdateBox, boxImageUrl } from './lib/api.js'
 
 const S = () => useStore.getState().S
 const update = (...a) => useStore.getState().update(...a)
@@ -301,6 +302,155 @@ function AssignRoutineForm({ box, roster, close, onDone }) {
 }
 export function assignRoutineSheet(box, roster, onDone) {
   ui().openSheet(close => <AssignRoutineForm box={box} roster={roster} close={close} onDone={onDone} />)
+}
+
+/* ============================ coach: request a box ============================ */
+// A coach no longer creates a box directly — this files a request (title, description, an
+// optional cover image) for an admin to review, same shape as the coach application itself.
+const MAX_BOX_IMAGE_MB = 6
+function BoxRequestForm({ close, onDone }) {
+  const user = useStore(s => s.user)
+  // Self-hoster's choice (BOX_LOCATION_MODE, see .env.example): 'off' is a plain manual text
+  // field (no geocoding at all — for an instance with no address geocoder set up, or one that
+  // would rather not depend on a third party for this), 'search' is the free Photon/OSM real-
+  // place picker (default), 'precise' also merges in Google's Geocoding API.
+  const boxLocMode = useStore(s => s.config)?.box_location_mode || 'search'
+  const [title, setTitle] = useState('')
+  const [description, setDescription] = useState('')
+  const [location, setLocation] = useState(null)
+  const [imageName, setImageName] = useState('')
+  const [imageDataUrl, setImageDataUrl] = useState('')
+  const [busy, setBusy] = useState(false)
+
+  const pickImage = e => {
+    const file = e.target.files?.[0]
+    e.target.value = ''
+    if (!file) return
+    if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) return toast(t('JPEG, PNG or WebP only'))
+    if (file.size > MAX_BOX_IMAGE_MB * 1024 * 1024) return toast(t('That file is too large — max {0} MB', MAX_BOX_IMAGE_MB))
+    const reader = new FileReader()
+    reader.onload = () => { setImageDataUrl(reader.result); setImageName(file.name) }
+    reader.readAsDataURL(file)
+  }
+
+  const send = async () => {
+    const v = title.trim()
+    if (!v) return toast(t('Name required'))
+    const loc = boxLocMode === 'off' ? (location?.label?.trim() ? { label: location.label.trim() } : null) : location
+    if (!loc) return toast(t('Set where this box is located'))
+    setBusy(true)
+    try {
+      await coachRequestBox(v, description.trim(), loc, imageDataUrl || null)
+      toast(t('Box request sent'))
+      close()
+      onDone && onDone()
+    } catch (e) { toast(e.message || t('Could not save')) }
+    finally { setBusy(false) }
+  }
+
+  return <>
+    <h3>{t('Request a box')}</h3>
+    <div className="muted small" style={{ margin: '10px 0 6px' }}>{t('Title')}</div>
+    <TextField value={title} onChange={e => setTitle(e.target.value)} placeholder={t('e.g. CrossFit Sevilla')} autoFocus />
+    <div className="muted small" style={{ margin: '14px 0 6px' }}>{t('Location')}</div>
+    {boxLocMode === 'off' ? (
+      <TextField value={location?.label || ''} onChange={e => setLocation({ label: e.target.value })} placeholder={t('e.g. a street address')} />
+    ) : (
+      <LocationPicker value={location} onChange={setLocation} autoDetect={false} placeholder={t('Search a street address…')} biasFrom={user?.coachLocation} precise={boxLocMode === 'precise'} />
+    )}
+    <div className="muted small" style={{ margin: '14px 0 6px' }}>{t('Description (optional)')}</div>
+    <textarea className="field area sm" rows={2} value={description} onChange={e => setDescription(e.target.value)} placeholder={t('Tell us more…')} />
+    <div className="muted small" style={{ margin: '14px 0 6px' }}>{t('Cover image (optional)')}</div>
+    <label className="doc-upload">
+      <input type="file" accept="image/jpeg,image/png,image/webp" hidden onChange={pickImage} />
+      <span className="ico"><Icon name={imageName ? 'checkCircle' : 'upload'} /></span>
+      <div>
+        <div className="t">{imageName || t('Upload an image')}</div>
+        <div className="s">{imageName ? t('Tap to change') : t('JPEG, PNG or WebP')}</div>
+      </div>
+    </label>
+    <Button variant="primary" style={{ marginTop: 16 }} onClick={send} disabled={busy}>{t('Send request')}</Button>
+  </>
+}
+export function boxRequestSheet(onDone) {
+  ui().openSheet(close => <BoxRequestForm close={close} onDone={onDone} />)
+}
+
+/* ============================ coach: edit a box ============================ */
+// Same fields as the original request (title, location, description, cover image), editable
+// afterward — owner-only, wired from CoachBox.jsx's pencil button. Distinct from BoxRequestForm
+// (that one files a NEW request for an admin to review; this one changes an EXISTING, already-
+// approved box directly, no review step).
+function EditBoxForm({ box, close, onDone }) {
+  const user = useStore(s => s.user)
+  const boxLocMode = useStore(s => s.config)?.box_location_mode || 'search'
+  const [title, setTitle] = useState(box.title || '')
+  const [description, setDescription] = useState(box.description || '')
+  const [location, setLocation] = useState(box.location || null)
+  const [imageName, setImageName] = useState('')
+  const [imageDataUrl, setImageDataUrl] = useState('')
+  const [removeImage, setRemoveImage] = useState(false)
+  const [busy, setBusy] = useState(false)
+
+  const pickImage = e => {
+    const file = e.target.files?.[0]
+    e.target.value = ''
+    if (!file) return
+    if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) return toast(t('JPEG, PNG or WebP only'))
+    if (file.size > MAX_BOX_IMAGE_MB * 1024 * 1024) return toast(t('That file is too large — max {0} MB', MAX_BOX_IMAGE_MB))
+    const reader = new FileReader()
+    reader.onload = () => { setImageDataUrl(reader.result); setImageName(file.name); setRemoveImage(false) }
+    reader.readAsDataURL(file)
+  }
+
+  const send = async () => {
+    const v = title.trim()
+    if (!v) return toast(t('Name required'))
+    const loc = boxLocMode === 'off' ? (location?.label?.trim() ? { label: location.label.trim() } : null) : location
+    if (!loc) return toast(t('Set where this box is located'))
+    setBusy(true)
+    try {
+      await coachUpdateBox(box.id, { title: v, description: description.trim(), location: loc, imageDataUrl: imageDataUrl || null, removeImage })
+      toast(t('Box updated'))
+      close()
+      onDone && onDone()
+    } catch (e) { toast(e.message || t('Could not save')) }
+    finally { setBusy(false) }
+  }
+
+  const hasCurrentImage = box.imageFile && !imageDataUrl && !removeImage
+
+  return <>
+    <h3>{t('Edit box')}</h3>
+    <div className="muted small" style={{ margin: '10px 0 6px' }}>{t('Title')}</div>
+    <TextField value={title} onChange={e => setTitle(e.target.value)} placeholder={t('e.g. CrossFit Sevilla')} autoFocus />
+    <div className="muted small" style={{ margin: '14px 0 6px' }}>{t('Location')}</div>
+    {boxLocMode === 'off' ? (
+      <TextField value={location?.label || ''} onChange={e => setLocation({ label: e.target.value })} placeholder={t('e.g. a street address')} />
+    ) : (
+      <LocationPicker value={location} onChange={setLocation} autoDetect={false} placeholder={t('Search a street address…')} biasFrom={user?.coachLocation} precise={boxLocMode === 'precise'} />
+    )}
+    <div className="muted small" style={{ margin: '14px 0 6px' }}>{t('Description (optional)')}</div>
+    <textarea className="field area sm" rows={2} value={description} onChange={e => setDescription(e.target.value)} placeholder={t('Tell us more…')} />
+    <div className="muted small" style={{ margin: '14px 0 6px' }}>{t('Cover image (optional)')}</div>
+    <label className="doc-upload">
+      <input type="file" accept="image/jpeg,image/png,image/webp" hidden onChange={pickImage} />
+      {hasCurrentImage
+        ? <img src={boxImageUrl(box.id)} alt="" className="ico" style={{ objectFit: 'cover' }} />
+        : <span className="ico"><Icon name={imageName ? 'checkCircle' : 'upload'} /></span>}
+      <div>
+        <div className="t">{imageName || (hasCurrentImage ? t('Current image') : t('Upload an image'))}</div>
+        <div className="s">{imageName || hasCurrentImage ? t('Tap to change') : t('JPEG, PNG or WebP')}</div>
+      </div>
+    </label>
+    {(box.imageFile && !removeImage) && (
+      <Button variant="ghost" size="sm" style={{ marginTop: 6 }} onClick={() => { setRemoveImage(true); setImageDataUrl(''); setImageName('') }}>{t('Remove image')}</Button>
+    )}
+    <Button variant="primary" style={{ marginTop: 16 }} onClick={send} disabled={busy}>{t('Save changes')}</Button>
+  </>
+}
+export function editBoxSheet(box, onDone) {
+  ui().openSheet(close => <EditBoxForm box={box} close={close} onDone={onDone} />)
 }
 
 /* ============================ social: comments on a workout ============================ */

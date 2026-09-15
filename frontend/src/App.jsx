@@ -4,8 +4,9 @@ import { useStore } from './store/useStore.js'
 import { useUI } from './store/useUI.js'
 import { bindUI } from './components/ui.jsx'
 import { ACCENTS } from './lib/format.js'
-import { setLang, useLang } from './lib/i18n.js'
+import { setLang, useLang, t } from './lib/i18n.js'
 import { setNav } from './lib/nav.js'
+import { wsOn } from './lib/ws.js'
 import { initBackButton } from './lib/back.js'
 import { useWakeLock } from './lib/wakelock.js'
 import Icon from './components/Icon.jsx'
@@ -58,13 +59,18 @@ import AdminAlpha from './views/admin/AdminAlpha.jsx'
 import AdminBugs from './views/admin/AdminBugs.jsx'
 import AdminAnticheat from './views/admin/AdminAnticheat.jsx'
 import AdminCoachRequests from './views/admin/AdminCoachRequests.jsx'
+import AdminBoxRequests from './views/admin/AdminBoxRequests.jsx'
 import CoachApply from './views/CoachApply.jsx'
+import CoachMarketplace from './views/CoachMarketplace.jsx'
 import CoachBoxes from './views/coach/CoachBoxes.jsx'
 import CoachBox from './views/coach/CoachBox.jsx'
 import CoachAthlete from './views/coach/CoachAthlete.jsx'
+import CoachClasses from './views/coach/CoachClasses.jsx'
 import MyBoxes from './views/MyBoxes.jsx'
 import BoxJoin from './views/BoxJoin.jsx'
 import BoxWod from './views/BoxWod.jsx'
+import BoxClasses from './views/BoxClasses.jsx'
+import LiveClass from './views/LiveClass.jsx'
 import BoxLeaderboard from './views/BoxLeaderboard.jsx'
 import { DEFAULT_ACCENT } from './lib/palette.js'
 
@@ -93,6 +99,26 @@ function Shell() {
   useEffect(() => { document.documentElement.lang = S.lang || 'en' }, [langV, S.lang])
   // every tab/route change starts at the top of the page
   useEffect(() => { window.scrollTo(0, 0) }, [loc.pathname])
+  // Same real-time path as LevelUpReveal's 'rank:changed' / CheatCaughtReveal's 'anticheat:*' —
+  // an admin approving a coach application (api/server.js POST /api/admin/coach-requests/approve)
+  // should flip Settings.jsx's card from "Become a coach" to "Coach dashboard" the instant it
+  // happens, not whenever some unrelated action next happens to call refreshUser().
+  useEffect(() => {
+    if (!user) return
+    return wsOn('coach:approved', () => {
+      useStore.getState().refreshUser()
+      useUI.getState().toast(t('You’re now a coach!'))
+    })
+  }, [user?.id])
+  // Someone else cancelling is exactly the "arrives from outside this session" case — a waitlist
+  // promotion (api/server.js POST /api/box/classes/cancel) needs a live nudge here, not just the
+  // closed-app push already sent alongside it.
+  useEffect(() => {
+    if (!user) return
+    return wsOn('class:promoted', msg => {
+      useUI.getState().toast(t('A spot opened up — reserve it: {0} · {1} {2}', msg.name, msg.date, msg.startTime))
+    })
+  }, [user?.id])
   // bound to the workout, not to the route — checking Stats mid-session keeps the screen on
   useWakeLock(!!S.active && S.keepAwake !== false)
 
@@ -155,13 +181,23 @@ function Shell() {
               <Route path="/admin/bugs" element={user?.admin ? <AdminBugs /> : <Navigate to="/home" replace />} />
               <Route path="/admin/anticheat" element={user?.admin ? <AdminAnticheat /> : <Navigate to="/home" replace />} />
               <Route path="/admin/coach-requests" element={user?.admin ? <AdminCoachRequests /> : <Navigate to="/home" replace />} />
+              <Route path="/admin/box-requests" element={user?.admin ? <AdminBoxRequests /> : <Navigate to="/home" replace />} />
               <Route path="/coach/apply" element={user ? <CoachApply /> : <Navigate to="/home" replace />} />
+              <Route path="/coaches" element={user ? <CoachMarketplace /> : <Navigate to="/home" replace />} />
               <Route path="/coach" element={user?.coach ? <CoachBoxes /> : <Navigate to="/home" replace />} />
-              <Route path="/coach/box/:boxId" element={user?.coach ? <CoachBox /> : <Navigate to="/home" replace />} />
-              <Route path="/coach/box/:boxId/athlete/:athleteId" element={user?.coach ? <CoachAthlete /> : <Navigate to="/home" replace />} />
+              {/* Any signed-in user, not just user?.coach — a box's staff (added via @username,
+                  not necessarily an approved marketplace coach themselves) needs to reach this
+                  too. The actual gate is server-side (canManageBox/canViewAthlete in
+                  api/server.js), re-checked on every request; a non-staff, non-owner visitor
+                  here just gets 404s back from the API. */}
+              <Route path="/coach/box/:boxId" element={user ? <CoachBox /> : <Navigate to="/home" replace />} />
+              <Route path="/coach/box/:boxId/athlete/:athleteId" element={user ? <CoachAthlete /> : <Navigate to="/home" replace />} />
+              <Route path="/coach/box/:boxId/classes" element={user ? <CoachClasses /> : <Navigate to="/home" replace />} />
               <Route path="/settings/boxes" element={user ? <MyBoxes /> : <Navigate to="/home" replace />} />
               <Route path="/box/join/:code" element={user ? <BoxJoin /> : <Navigate to="/home" replace />} />
               <Route path="/box/:boxId/wod" element={user ? <BoxWod /> : <Navigate to="/home" replace />} />
+              <Route path="/box/:boxId/classes" element={user ? <BoxClasses /> : <Navigate to="/home" replace />} />
+              <Route path="/box/:boxId/classes/:sessionId/live" element={user ? <LiveClass /> : <Navigate to="/home" replace />} />
               <Route path="/box/:boxId/leaderboard" element={user ? <BoxLeaderboard /> : <Navigate to="/home" replace />} />
               <Route path="*" element={<Navigate to="/home" replace />} />
             </Routes>

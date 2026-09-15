@@ -44,9 +44,11 @@ export default function TabBar() {
   // this path's own concern, not the desktop rail's (sidenavTap has no speed-dial to close).
   const goWorkout = () => { setExpanded(false); nav('/workout') }
   const logFood = () => { setExpanded(false); nav('/nutrition') }
-  // Coach: straight to the dashboard once approved, otherwise the application form — same
-  // fork Settings.jsx's own "Coach dashboard"/"Become a coach" rows use.
-  const goCoach = () => { setExpanded(false); nav(user?.coach ? '/coach' : '/coach/apply') }
+  // Coach: the personal-training marketplace — browsing/hiring a coach is the thing any
+  // user wants from this button, not just the ones already running a box. Becoming a coach
+  // or managing an existing box dashboard are reachable from inside that screen instead of
+  // being this button's own destination.
+  const goCoach = () => { setExpanded(false); nav('/coaches') }
   // Box: the athlete-side hub (joined boxes, join-by-code, pending routine assignments) —
   // this replaces the "My boxes" row that used to live in Settings.
   const goBox = () => { setExpanded(false); nav('/settings/boxes') }
@@ -69,7 +71,7 @@ export default function TabBar() {
       <Tab k="social" icon="heart" to="/social" label={t('Social')} />
       <div className={'startfab' + centerCls}>
         <div className="optrow">
-          <button className="opt coach" onClick={goCoach} aria-label={user?.coach ? t('Coach dashboard') : t('Become a coach')} tabIndex={expanded ? 0 : -1}><span>{t('Coach')}</span></button>
+          <button className="opt coach" onClick={goCoach} aria-label={t('Find a coach')} tabIndex={expanded ? 0 : -1}><span>{t('Coach')}</span></button>
           <button className="opt box" onClick={goBox} aria-label={t('My boxes')} tabIndex={expanded ? 0 : -1}><span>{t('Box')}</span></button>
           <button className="opt food" onClick={logFood} aria-label={t('Log food')} tabIndex={expanded ? 0 : -1}><span>{t('Nutrition')}</span></button>
           <button className="opt workout" onClick={goWorkout} aria-label={t('Start workout')} tabIndex={expanded ? 0 : -1}><span>{t('Workout')}</span></button>
@@ -99,7 +101,7 @@ export default function TabBar() {
       </button>
       <button className="sidestart glass" onClick={goCoach}>
         <Icon name="shield" />
-        <span>{user?.coach ? t('Coach dashboard') : t('Become a coach')}</span>
+        <span>{t('Find a coach')}</span>
       </button>
       <button className="sidestart glass" onClick={goBox}>
         <Icon name="trophy" />

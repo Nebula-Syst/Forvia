@@ -115,22 +115,44 @@ export const adminAnticheatReview = (id, decision, reviewNote) => api('/api/admi
 
 /* ---------- coach application ---------- */
 export const coachApply = (experience, certifications, message, documentDataUrl) => api('/api/coach/apply', { method: 'POST', body: JSON.stringify({ experience, certifications, message, documentDataUrl }) })
+export const coachApplyStatus = () => api('/api/coach/apply/status').then(r => r.pending)
 export const adminCoachRequests = () => api('/api/admin/coach-requests').then(r => r.requests)
 export const adminCoachApprove = id => api('/api/admin/coach-requests/approve', { method: 'POST', body: JSON.stringify({ id }) })
 export const adminCoachDismiss = id => api('/api/admin/coach-requests/dismiss', { method: 'POST', body: JSON.stringify({ id }) })
 export const coachRequestDocumentUrl = id => '/api/admin/coach-requests/document?id=' + encodeURIComponent(id)
 
 /* ---------- coach + box (WODbuster-style) ---------- */
-export const coachCreateBox = name => api('/api/coach/box', { method: 'POST', body: JSON.stringify({ name }) }).then(r => r.box)
 export const coachBoxes = () => api('/api/coach/boxes').then(r => r.boxes)
-export const coachBox = boxId => api('/api/coach/box?boxId=' + encodeURIComponent(boxId)).then(r => r.box)
+export const coachBox = boxId => api('/api/coach/box?boxId=' + encodeURIComponent(boxId))
+export const coachUpdateBox = (boxId, fields) => api('/api/coach/box/update', { method: 'POST', body: JSON.stringify({ boxId, ...fields }) }).then(r => r.box)
 export const coachBoxRoster = boxId => api('/api/coach/box/roster?boxId=' + encodeURIComponent(boxId)).then(r => r.roster)
+export const userSearch = q => api('/api/users/search?q=' + encodeURIComponent(q)).then(r => r.users)
+export const coachBoxStaff = boxId => api('/api/coach/box/staff?boxId=' + encodeURIComponent(boxId)).then(r => r.staff)
+export const coachAddStaff = (boxId, userId) => api('/api/coach/box/staff/add', { method: 'POST', body: JSON.stringify({ boxId, userId }) })
+export const coachRemoveStaff = (boxId, userId) => api('/api/coach/box/staff/remove', { method: 'POST', body: JSON.stringify({ boxId, userId }) })
 export const coachRemoveMember = (boxId, athleteId) => api('/api/coach/box/member/remove', { method: 'POST', body: JSON.stringify({ boxId, athleteId }) })
 export const coachCreateInvite = boxId => api('/api/coach/box/invite', { method: 'POST', body: JSON.stringify({ boxId }) }).then(r => r.invite)
 export const coachRevokeInvite = (boxId, code) => api('/api/coach/box/invite/revoke', { method: 'POST', body: JSON.stringify({ boxId, code }) })
 export const boxJoin = code => api('/api/box/join', { method: 'POST', body: JSON.stringify({ code }) }).then(r => r.box)
 export const athleteBoxes = () => api('/api/athlete/boxes').then(r => r.boxes)
 export const coachAthleteWorkouts = (athleteId, days) => api('/api/coach/athlete/workouts?athleteId=' + encodeURIComponent(athleteId) + (days ? '&days=' + days : '')).then(r => r.workouts)
+export const boxImageUrl = boxId => '/api/box/image?boxId=' + encodeURIComponent(boxId)
+
+/* ---------- box requests (a coach asks for a new box, an admin approves it) ---------- */
+export const coachRequestBox = (title, description, location, imageDataUrl) => api('/api/coach/box-request', { method: 'POST', body: JSON.stringify({ title, description, location, imageDataUrl }) }).then(r => r.request)
+export const coachBoxRequests = () => api('/api/coach/box-requests').then(r => r.requests)
+export const adminBoxRequests = () => api('/api/admin/box-requests').then(r => r.requests)
+export const adminBoxRequestApprove = id => api('/api/admin/box-requests/approve', { method: 'POST', body: JSON.stringify({ id }) })
+export const adminBoxRequestDismiss = id => api('/api/admin/box-requests/dismiss', { method: 'POST', body: JSON.stringify({ id }) })
+export const boxRequestImageUrl = id => '/api/admin/box-requests/image?id=' + encodeURIComponent(id)
+
+/* ---------- personal-training marketplace ---------- */
+export const coachSetVisibility = (visible, hourlyRate, location) => api('/api/coach/visibility', { method: 'POST', body: JSON.stringify({ visible, hourlyRate, location }) }).then(r => r.user)
+export const coachMarketplace = (lat, lon) => api('/api/coaches/marketplace' + (lat != null && lon != null ? '?lat=' + lat + '&lon=' + lon : ''))
+
+/* ---------- geocoding (real places only — no free text) ---------- */
+export const geoSearch = (q, near, precise) => api('/api/geo/search?q=' + encodeURIComponent(q) + (near ? '&lat=' + near.lat + '&lon=' + near.lon : '') + (precise ? '&precise=1' : '')).then(r => r.places)
+export const geoReverse = (lat, lon) => api('/api/geo/reverse?lat=' + lat + '&lon=' + lon).then(r => r.place)
 
 /* ---------- routine assignment ---------- */
 export const coachAssignRoutine = (boxId, athleteId, routine) => api('/api/coach/box/assign-routine', { method: 'POST', body: JSON.stringify({ boxId, athleteId, routine }) }).then(r => r.assignment)
@@ -142,3 +164,32 @@ export const coachSetWod = (boxId, wod) => api('/api/coach/box/wod', { method: '
 export const boxWod = (boxId, date) => api('/api/box/wod?boxId=' + encodeURIComponent(boxId) + (date ? '&date=' + date : ''))
 export const boxWodResult = (boxId, wodId, value) => api('/api/box/wod/result', { method: 'POST', body: JSON.stringify({ boxId, wodId, value }) }).then(r => r.result)
 export const boxLeaderboard = (boxId, date) => api('/api/coach/box/leaderboard?boxId=' + encodeURIComponent(boxId) + (date ? '&date=' + date : ''))
+
+/* ---------- classes & schedule ---------- */
+export const coachClassTypes = boxId => api('/api/coach/box/class-types?boxId=' + encodeURIComponent(boxId)).then(r => r.types)
+export const coachCreateClassType = (boxId, fields) => api('/api/coach/box/class-types', { method: 'POST', body: JSON.stringify({ boxId, ...fields }) }).then(r => r.type)
+export const coachUpdateClassType = (boxId, id, fields) => api('/api/coach/box/class-types/update', { method: 'POST', body: JSON.stringify({ boxId, id, ...fields }) }).then(r => r.type)
+export const coachDeleteClassType = (boxId, id) => api('/api/coach/box/class-types/delete', { method: 'POST', body: JSON.stringify({ boxId, id }) })
+export const coachCreateClass = (boxId, fields) => api('/api/coach/box/classes/create', { method: 'POST', body: JSON.stringify({ boxId, ...fields }) }).then(r => r.session)
+export const coachRemoveClass = (boxId, id) => api('/api/coach/box/classes/remove', { method: 'POST', body: JSON.stringify({ boxId, id }) })
+export const coachSetClassExercises = (boxId, sessionId, exercises) => api('/api/coach/box/classes/exercises', { method: 'POST', body: JSON.stringify({ boxId, sessionId, exercises }) }).then(r => r.exercises)
+export const coachDayTemplates = boxId => api('/api/coach/box/day-templates?boxId=' + encodeURIComponent(boxId)).then(r => r.templates)
+export const coachCreateDayTemplate = (boxId, name, date) => api('/api/coach/box/day-templates', { method: 'POST', body: JSON.stringify({ boxId, name, date }) }).then(r => r.template)
+export const coachApplyDayTemplate = (boxId, id, date) => api('/api/coach/box/day-templates/apply', { method: 'POST', body: JSON.stringify({ boxId, id, date }) }).then(r => r.count)
+export const coachDeleteDayTemplate = (boxId, id) => api('/api/coach/box/day-templates/delete', { method: 'POST', body: JSON.stringify({ boxId, id }) })
+export const coachWeekTemplates = boxId => api('/api/coach/box/week-templates?boxId=' + encodeURIComponent(boxId)).then(r => r.templates)
+export const coachCreateWeekTemplate = (boxId, name, weekStart) => api('/api/coach/box/week-templates', { method: 'POST', body: JSON.stringify({ boxId, name, weekStart }) }).then(r => r.template)
+export const coachApplyWeekTemplate = (boxId, id, weekStart) => api('/api/coach/box/week-templates/apply', { method: 'POST', body: JSON.stringify({ boxId, id, weekStart }) }).then(r => r.count)
+export const coachDeleteWeekTemplate = (boxId, id) => api('/api/coach/box/week-templates/delete', { method: 'POST', body: JSON.stringify({ boxId, id }) })
+export const coachWodTemplates = boxId => api('/api/coach/box/wod-templates?boxId=' + encodeURIComponent(boxId)).then(r => r.templates)
+export const coachCreateWodTemplate = (boxId, name, exercises) => api('/api/coach/box/wod-templates', { method: 'POST', body: JSON.stringify({ boxId, name, exercises }) }).then(r => r.template)
+export const coachApplyWodTemplate = (boxId, id, sessionId) => api('/api/coach/box/wod-templates/apply', { method: 'POST', body: JSON.stringify({ boxId, id, sessionId }) }).then(r => r.exercises)
+export const coachDeleteWodTemplate = (boxId, id) => api('/api/coach/box/wod-templates/delete', { method: 'POST', body: JSON.stringify({ boxId, id }) })
+export const boxClasses = (boxId, from, to) => api('/api/box/classes?boxId=' + encodeURIComponent(boxId) + '&from=' + from + '&to=' + to).then(r => r.sessions)
+export const classBook = sessionId => api('/api/box/classes/book', { method: 'POST', body: JSON.stringify({ sessionId }) }).then(r => r.booking)
+export const classCancel = sessionId => api('/api/box/classes/cancel', { method: 'POST', body: JSON.stringify({ sessionId }) })
+export const coachClassRoster = sessionId => api('/api/coach/box/classes/roster?sessionId=' + encodeURIComponent(sessionId))
+export const coachClassAttendance = (bookingId, status) => api('/api/coach/box/classes/attendance', { method: 'POST', body: JSON.stringify({ bookingId, status }) })
+export const coachStartLiveClass = (boxId, sessionId, timerType, params) => api('/api/coach/box/classes/live/start', { method: 'POST', body: JSON.stringify({ boxId, sessionId, timerType, ...params }) }).then(r => r.live)
+export const coachControlLiveClass = (boxId, sessionId, action) => api('/api/coach/box/classes/live/control', { method: 'POST', body: JSON.stringify({ boxId, sessionId, action }) }).then(r => r.live)
+export const boxLiveClass = sessionId => api('/api/box/classes/live?sessionId=' + encodeURIComponent(sessionId)).then(r => r.live)
