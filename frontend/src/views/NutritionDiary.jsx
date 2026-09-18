@@ -5,7 +5,7 @@ import { t } from '../lib/i18n.js'
 import { MEALS } from '../lib/nutrition.js'
 import Icon from '../components/Icon.jsx'
 import { Button } from '../components/ui.jsx'
-import { foodSearchSheet, mealFilterSheet, editFoodSheet } from '../sheets.jsx'
+import { mealFilterSheet, editFoodSheet } from '../sheets.jsx'
 
 // The full "everything logged today" list behind Nutrition.jsx's "See all" — a flat, ordered
 // view of every item for the day (or one meal of it), instead of the day view's per-meal
@@ -124,7 +124,7 @@ export default function NutritionDiary() {
         </div>
       ))}
 
-    <Button variant="primary" onClick={() => foodSearchSheet(dateIso, filter === 'all' ? 'breakfast' : filter)}>{t('Log more')}</Button>
+    <Button variant="primary" onClick={() => nav('/nutrition/log?d=' + dateIso + '&m=' + (filter === 'all' ? 'breakfast' : filter))}>{t('Log more')}</Button>
     <div style={{ height: 20 }} />
   </div>
 }

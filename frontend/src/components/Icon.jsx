@@ -67,6 +67,7 @@ const P = {
   bowl: <><path d="M3.6 11.8h16.8c0 4.1-3.8 7.4-8.4 7.4s-8.4-3.3-8.4-7.4Z" /><path d="M9.6 11.8c-.5-1.7.5-2.8.5-4.4M14.4 11.8c.5-1.7-.5-2.8-.5-4.4" /></>,
   cookie: <><circle cx="12" cy="12" r="8.2" /><circle cx="9.2" cy="9.6" r="1" fill="currentColor" stroke="none" /><circle cx="15" cy="10.4" r="1" fill="currentColor" stroke="none" /><circle cx="11.4" cy="15" r="1" fill="currentColor" stroke="none" /><circle cx="15.4" cy="14.8" r="1" fill="currentColor" stroke="none" /></>,
   barcode: <path d="M4 4.6v14.8M6.6 4.6v14.8M8.6 4.6v14.8M11.6 4.6v14.8M13.6 4.6v14.8M16.6 4.6v14.8M19.4 4.6v14.8" />,
+  camera: <><path d="M4 8.6a1.8 1.8 0 0 1 1.8-1.8h1.6l1-1.6h7.2l1 1.6h1.6A1.8 1.8 0 0 1 20 8.6v9.6A1.8 1.8 0 0 1 18.2 20H5.8A1.8 1.8 0 0 1 4 18.2Z" /><circle cx="12" cy="13" r="3.6" /></>,
   drop: <path d="M12 3.6c3 4 6 7.7 6 11a6 6 0 0 1-12 0c0-3.3 3-7 6-11Z" />,
   // Water-log preset sizes (sheets.jsx's WaterLogSheet) — same silhouette pair (tumbler,
   // bottle) drawn small and drawn large within the shared 24×24 frame, so "bigger container"

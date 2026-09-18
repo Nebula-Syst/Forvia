@@ -300,6 +300,27 @@ h4.sec{
 }
 .divider{height:var(--hair);background:var(--sep);margin:14px 0;border:0}
 .grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+
+/* NutritionLog.jsx: a few equal "pick one of these ways to add food" entry points per
+   section — 3+ narrow cards, so auto-fit rather than a fixed column count keeps them from
+   ever squeezing thinner than they can read at on a small phone. */
+.method-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(92px,1fr));gap:10px}
+.sect-b .method-grid{padding:14px}
+.method-card{
+  background:var(--glass-bg);border:1px solid var(--glass-border);box-shadow:var(--shadow-sm);
+  border-radius:var(--r-card);padding:16px 10px;text-align:center;
+  display:flex;flex-direction:column;align-items:center;gap:8px;
+  transition:background var(--fast),transform var(--fast) var(--ease);
+}
+.method-card.tappable:active{background:var(--surface-2)}
+.method-card .icn{
+  width:40px;height:40px;border-radius:12px;display:flex;align-items:center;justify-content:center;
+  font-size:18px;background:color-mix(in srgb, var(--acc) 16%, transparent);color:var(--acc);
+}
+.method-card .lbl{font-size:12.5px;font-weight:600;color:var(--label);line-height:1.25}
+.method-card .sub{font-size:10.5px;color:var(--label-3);margin-top:-4px}
+.method-card.disabled{opacity:.5}
+.method-card.disabled .icn{background:var(--surface-2);color:var(--label-3)}
 .row{display:flex;align-items:center;gap:12px}
 .row.between{justify-content:space-between}
 

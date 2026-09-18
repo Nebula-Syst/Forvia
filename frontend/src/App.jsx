@@ -25,6 +25,7 @@ import Licenses from './views/legal/Licenses.jsx'
 import Home from './views/Home.jsx'
 import Nutrition from './views/Nutrition.jsx'
 import NutritionDiary from './views/NutritionDiary.jsx'
+import NutritionLog from './views/NutritionLog.jsx'
 import Routines from './views/Routines.jsx'
 import RoutineEdit from './views/RoutineEdit.jsx'
 import Workout, { WorkoutStartActions } from './views/Workout.jsx'
@@ -146,6 +147,7 @@ function Shell() {
               <Route path="/home" element={<Home />} />
               <Route path="/nutrition" element={<Nutrition />} />
               <Route path="/nutrition/diary" element={<NutritionDiary />} />
+              <Route path="/nutrition/log" element={<NutritionLog />} />
               <Route path="/routines" element={<Routines />} />
               <Route path="/routines/r/:id" element={<RoutineEdit />} />
               <Route path="/workout" element={<Workout />} />

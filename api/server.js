@@ -61,7 +61,7 @@ const SECRET = fs.readFileSync(secretFile, 'utf8').trim();
 // why this stays one big in-memory object instead of being queried per-request. Same shape
 // db.json's arrays always had: users, subs (push), invites, follows, reactions, comments
 // (social), tasks/taskCompletions (daily-task catalog + awards), cheatPenalties (anti-cheat).
-let db = { users: [], subs: [], invites: [], follows: [], reactions: [], comments: [], tasks: [], taskCompletions: [], cheatPenalties: [], alphaRequests: [], bugReports: [], exerciseOverrides: [], muscleGroups: [], streakTiers: [], coachRequests: [], boxes: [], boxMemberships: [], boxInvites: [], routineAssignments: [], wods: [], wodResults: [], boxRequests: [], boxStaff: [], classTypes: [], dayTemplates: [], weekTemplates: [], wodTemplates: [], classSessions: [], classBookings: [], classPenalties: [], liveClasses: [] };
+let db = { users: [], subs: [], invites: [], follows: [], reactions: [], comments: [], tasks: [], taskCompletions: [], cheatPenalties: [], alphaRequests: [], bugReports: [], exerciseOverrides: [], muscleGroups: [], streakTiers: [], coachRequests: [], boxes: [], boxMemberships: [], boxInvites: [], routineAssignments: [], wods: [], wodResults: [], boxRequests: [], boxStaff: [], classTypes: [], dayTemplates: [], weekTemplates: [], wodTemplates: [], classSessions: [], classBookings: [], classPenalties: [], liveClasses: [], publicFoods: [] };
 // A user can hold several employee types at once (e.g. both founder and admin), not one
 // flat role — employeeTypes is an array, filtered to the known set on every read so a
 // stale/tampered value in db.json can never grant something that isn't in EMPLOYEE_TYPES.
@@ -1351,6 +1351,48 @@ const routes = {
     } catch (e) {
       json(res, 502, { error: 'lookup unavailable' });
     }
+  },
+
+  /* ---------- nutrition: community food database ---------- */
+  // Forvia's own crowd-sourced food catalogue, separate from Open Food Facts above — a place
+  // for foods that database doesn't have (home-cooked dishes, regional products) without
+  // every user retyping the same macros from scratch. A submission is either private (stays
+  // local to the submitter — see the frontend's own S.customFoods, this route is never
+  // called for those) or public; there is no third state. A public one is searchable by
+  // anyone, but always anonymised — ownerId/created never leave this route, by construction,
+  // not by the client choosing not to render them.
+  'POST /api/nutrition/foods': async (req, res) => {
+    const user = readSession(req);
+    if (!user) return json(res, 401, { error: 'not signed in' });
+    const body = await readBody(req);
+    const name = String(body.name || '').trim().slice(0, 80);
+    const mode = body.mode === 'unit' ? 'unit' : 'weight';
+    const num = v => { const n = Number(v); return isFinite(n) && n >= 0 ? n : 0 };
+    if (!name) return json(res, 400, { error: 'name required' });
+    const food = {
+      id: crypto.randomBytes(8).toString('base64url'),
+      ownerId: user.id, name, mode,
+      kcal: num(body.kcal), carbs: num(body.carbs), fat: num(body.fat), protein: num(body.protein),
+      created: new Date().toISOString(),
+    };
+    db.publicFoods.push(food);
+    saveDb();
+    json(res, 200, { ok: true, id: food.id });
+  },
+
+  // Case-insensitive substring match on name, newest first — same 20-result cap as the Open
+  // Food Facts proxy above so a food search never has to think about which source a result
+  // came from. ownerId/created are dropped here, not just left unrendered client-side.
+  'GET /api/nutrition/foods/search': async (req, res) => {
+    const user = readSession(req);
+    if (!user) return json(res, 401, { error: 'not signed in' });
+    const q = (new URL(req.url, 'http://x').searchParams.get('q') || '').trim().toLowerCase();
+    if (!q) return json(res, 200, { items: [] });
+    const items = db.publicFoods
+      .filter(f => f.name.toLowerCase().includes(q))
+      .slice(-20).reverse()
+      .map(({ id, name, mode, kcal, carbs, fat, protein }) => ({ id, name, mode, kcal, carbs, fat, protein }));
+    json(res, 200, { items });
   },
 
   /* ---------- geocoding (location picker — Komoot Photon proxy) ---------- */

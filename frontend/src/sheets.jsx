@@ -27,11 +27,12 @@ import { isWarmupRow } from './lib/workout-model.js'
 import { MEALS } from './lib/nutrition.js'
 import { waterGoalForDate } from './lib/nutrition-goals.js'
 import { parseNutritionCSV, mergeNutritionImport } from './lib/import-nutrition.js'
+import { parseNutritionLabelText } from './lib/ocr-nutrition.js'
 import { unzipSync, strFromU8 } from 'fflate'
 import { StackedBar } from './components/MacroBars.jsx'
 import LocationPicker from './components/LocationPicker.jsx'
 import LiquidFillGauge from 'react-liquid-gauge'
-import { passwordLogin, passwordRegister, setPassword, deleteAccount, socialComments, socialComment, socialCommentRemove, socialUpload, pinWorkout, unpinWorkout, pinPR, reportBug, foodSearch, foodByBarcode, coachAssignRoutine, coachRequestBox, coachUpdateBox, boxImageUrl } from './lib/api.js'
+import { passwordLogin, passwordRegister, setPassword, deleteAccount, socialComments, socialComment, socialCommentRemove, socialUpload, pinWorkout, unpinWorkout, pinPR, reportBug, foodSearch, foodByBarcode, publicFoodSearch, createPublicFood, coachAssignRoutine, coachRequestBox, coachUpdateBox, boxImageUrl } from './lib/api.js'
 
 const S = () => useStore.getState().S
 const update = (...a) => useStore.getState().update(...a)
@@ -1816,6 +1817,10 @@ const mealOptions = () => MEALS.map(m => ({ value: m.key, label: m.name() }))
 // per-100g macros, so "units" there also needs a weight-per-unit to convert through) and
 // CustomFoodForm (which collects the rate directly in whichever unit you pick).
 const FOOD_QTY_MODES = () => [{ value: 'weight', label: t('By weight') }, { value: 'unit', label: t('By units') }]
+const FOOD_VISIBILITY = () => [{ value: 'private', label: t('Private') }, { value: 'public', label: t('Public') }]
+// A food search now merges three sources (yours, the community's, Open Food Facts) — this
+// filters which of them actually render, same list either way, nothing re-fetched on change.
+const FOOD_SOURCES = () => [{ value: 'all', label: t('All') }, { value: 'mine', label: t('Mine') }, { value: 'community', label: t('Community') }, { value: 'off', label: t('Database') }]
 
 function logFoodItem(dateIso, meal, item) {
   update(s => {
@@ -1931,15 +1936,23 @@ export const logQuantitySheet = (dateIso, mealKey, food) => ui().openSheet(close
 // the rate is in, exactly like a searched result's kcal100/grams — not a flat total for
 // "whatever I ate right now". That's what lets EditFoodSheet later touch only the quantity
 // and never the macros directly, the same as it already does for search/barcode results.
-function CustomFoodForm({ dateIso, mealKey, close }) {
+function CustomFoodForm({ dateIso, mealKey, close, initial, title }) {
+  // A guest has no server session at all (see /api/bugs's own note on the same thing) — the
+  // public-food endpoints require one, so there's no point offering a choice that can only
+  // ever fail here.
+  const canGoPublic = !useStore(s => s.isGuest())
   const [name, setName] = useState('')
   const [mode, setMode] = useState('weight')
-  const [kcalRate, setKcalRate] = useState(0)
-  const [carbsRate, setCarbsRate] = useState(0)
-  const [fatRate, setFatRate] = useState(0)
-  const [proteinRate, setProteinRate] = useState(0)
+  const [kcalRate, setKcalRate] = useState(initial?.kcal || 0)
+  const [carbsRate, setCarbsRate] = useState(initial?.carbs || 0)
+  const [fatRate, setFatRate] = useState(initial?.fat || 0)
+  const [proteinRate, setProteinRate] = useState(initial?.protein || 0)
   const [qty, setQty] = useState(100)
   const [meal, setMeal] = useState(mealKey)
+  // Public/private is a food-database question, not a diary one — it decides whether this
+  // recipe/food becomes searchable by every other user (always anonymised, see the server
+  // route) or stays exactly like today, visible only in this account's own "Mis alimentos".
+  const [visibility, setVisibility] = useState('private')
   const switchMode = m => { setMode(m); setQty(m === 'weight' ? 100 : 1) }
   const factor = mode === 'weight' ? (qty || 0) / 100 : (qty || 0)
   const kcal = Math.round(kcalRate * factor)
@@ -1956,15 +1969,24 @@ function CustomFoodForm({ dateIso, mealKey, close }) {
     // Also remembered in "Mis alimentos" (Settings → Nutrition) so this exact food/mode can
     // be re-logged in a different quantity later without retyping its macros — skipped if
     // the same name+mode is already there (edited from Settings, or logged once before).
+    // Kept regardless of visibility: sharing it publicly doesn't stop it being useful to
+    // re-log for yourself too.
     update(s => {
       if (!s.customFoods.some(f => f.name.toLowerCase() === n.toLowerCase() && f.mode === mode)) {
         s.customFoods.push({ id: uid(), name: n, mode, kcal: kcalRate, carbs: carbsRate, fat: fatRate, protein: proteinRate })
       }
     })
+    if (visibility === 'public') {
+      createPublicFood({ name: n, mode, kcal: kcalRate, carbs: carbsRate, fat: fatRate, protein: proteinRate })
+        .catch(() => toast(t('Saved, but sharing it publicly failed — try again from “My foods”.')))
+    }
     close()
   }
   return <>
-    <h3>{t('Create custom food')}</h3>
+    <h3>{title || t('Create custom food')}</h3>
+    {/* A scanned label's numbers came from OCR reading a photo, not a database — worth a
+        beat of "double-check this before you trust it", not just quietly pre-filled. */}
+    {initial && <div className="dim small" style={{ marginBottom: 12 }}>{t('Check the values read from the label before saving.')}</div>}
     <TextField autoFocus placeholder={t('Name')} value={name} onChange={e => setName(e.target.value)} style={{ marginBottom: 12, width: '100%' }} />
     <Segmented options={FOOD_QTY_MODES()} value={mode} onChange={switchMode} />
     <div className="dim small" style={{ margin: '12px 0 6px' }}>{mode === 'weight' ? t('Per 100g') : t('Per unit')}</div>
@@ -1979,6 +2001,13 @@ function CustomFoodForm({ dateIso, mealKey, close }) {
       <span className="dim">{mode === 'weight' ? t('grams') : t('units')}</span>
     </div>
     <Segmented options={mealOptions()} value={meal} onChange={setMeal} />
+    {canGoPublic && <>
+      <div className="dim small" style={{ margin: '14px 0 6px' }}>{t('Visibility')}</div>
+      <Segmented options={FOOD_VISIBILITY()} value={visibility} onChange={setVisibility} />
+      <div className="dim small" style={{ margin: '6px 2px 0' }}>
+        {visibility === 'public' ? t('Anyone can find and use this food when searching — never with your name on it.') : t('Only you can see and use this food.')}
+      </div>
+    </>}
     <div style={{ height: 14 }} />
     <div className="card" style={{ textAlign: 'center', padding: 14 }}>
       <div style={{ fontSize: 22, fontWeight: 800 }}>{kcal} <span className="dim small" style={{ fontWeight: 500 }}>kcal</span></div>
@@ -1989,6 +2018,146 @@ function CustomFoodForm({ dateIso, mealKey, close }) {
   </>
 }
 export const customFoodSheet = (dateIso, mealKey) => ui().openSheet(close => <CustomFoodForm dateIso={dateIso} mealKey={mealKey} close={close} />)
+
+// A phone photo's pixels are almost always stored sideways or upside-down relative to how it
+// looks on screen — the camera saves an EXIF orientation tag and lets the viewer rotate it,
+// rather than rotating the actual pixel data. `createImageBitmap` with `imageOrientation:
+// 'from-image'` is what applies that tag; skip it (or hand Tesseract the raw File directly,
+// as this used to) and OCR reads perfectly real text rotated 90°, which reads as pure noise —
+// the exact "everything came back 0" failure a real label photo hit that a synthetic
+// already-upright test image never could have caught.
+//
+// Grayscale + a contrast stretch on top of that measurably helps a real, wrinkled/curved
+// plastic-bag photo read better (verified against one) — cheap operations worth doing every
+// time, not just a fallback for a bad shot. A sharpening pass was tried too, but a plain
+// unity-sum 3x3 kernel mostly amplified JPEG noise on a real phone photo and made results
+// worse, not better — dropped rather than shipped on the strength of a synthetic test alone.
+//
+// Downscaling looked like a reasonable idea to keep this fast, but verified against a real
+// photo it was the single biggest accuracy loss in the whole pipeline: a nutrition table's
+// numbers are small print to begin with, and shrinking a 4000px photo down to ~2200px pushed
+// their character height below what Tesseract needs — "619 kcal" only ever read correctly at
+// the phone's native resolution, and came back as "19" or "9" at every downscaled size tried.
+// The cap below is a memory/time safety ceiling for unusually large phone photos, not a
+// routine resize — most photos pass through it untouched.
+async function preprocessLabelPhoto(file) {
+  const bitmap = await createImageBitmap(file, { imageOrientation: 'from-image' })
+  const maxEdge = 4500
+  const scale = Math.min(1, maxEdge / Math.max(bitmap.width, bitmap.height))
+  const w = Math.max(1, Math.round(bitmap.width * scale))
+  const h = Math.max(1, Math.round(bitmap.height * scale))
+  const canvas = document.createElement('canvas')
+  canvas.width = w; canvas.height = h
+  const ctx = canvas.getContext('2d')
+  ctx.drawImage(bitmap, 0, 0, w, h)
+  bitmap.close?.()
+
+  const imgData = ctx.getImageData(0, 0, w, h)
+  const d = imgData.data
+  let min = 255, max = 0
+  const gray = new Float32Array(d.length / 4)
+  for (let i = 0, p = 0; i < d.length; i += 4, p++) {
+    const g = 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2]
+    gray[p] = g
+    if (g < min) min = g
+    if (g > max) max = g
+  }
+  const range = Math.max(1, max - min)
+  for (let i = 0, p = 0; i < d.length; i += 4, p++) {
+    const v = Math.round((gray[p] - min) / range * 255)
+    d[i] = d[i + 1] = d[i + 2] = v
+  }
+  ctx.putImageData(imgData, 0, 0)
+  return canvas
+}
+
+// A nutrition label's calories/macros, read off a photo instead of typed in — Tesseract.js
+// runs the OCR entirely client-side (no image ever leaves the device, no AI/paid API — a
+// plain text recognizer is all this actually needs), and lib/ocr-nutrition.js's regex
+// heuristic pulls the four numbers out of whatever text comes back. Reuses CustomFoodForm
+// for the actual review/save step so a bad OCR read is just a field to fix, never a dead end.
+function ScanMacrosSheet({ dateIso, mealKey, close }) {
+  const [phase, setPhase] = useState('capture') // capture -> processing -> review | error
+  const [progress, setProgress] = useState(0)
+  const [parsed, setParsed] = useState(null)
+  const inputRef = useRef(null)
+  const workerRef = useRef(null)
+
+  // Closing mid-recognition (back button, backdrop tap) must not leave a worker running in
+  // the background — it holds a wasm instance alive for nothing once nobody's waiting on it.
+  useEffect(() => () => { workerRef.current?.terminate() }, [])
+
+  const onFile = async e => {
+    const file = e.target.files?.[0]
+    e.target.value = ''
+    if (!file) return
+    setPhase('processing')
+    setProgress(0)
+    const passRef = { current: 0 } // 0 during the first recognize() call, 1 during the second
+    try {
+      const [{ createWorker }, canvas] = await Promise.all([import('tesseract.js'), preprocessLabelPhoto(file)])
+      const worker = await createWorker('eng+spa', 1, {
+        logger: m => { if (m.status === 'recognizing text') setProgress((passRef.current + m.progress) / 2) },
+      })
+      workerRef.current = worker
+      // Two passes, not one: PSM 11 ("sparse text") beats the single-block default badly on
+      // a real photo — a phone shot of a curved package is full of non-label clutter a single
+      // block forces into one false reading order — but PSM 6 occasionally catches a line 11
+      // drops entirely (verified against a real photo: 11 alone missed a value 6 alone
+      // caught). Concatenating both, PSM 11's text first, costs a second recognition pass but
+      // never does worse than running only one — findValueNear takes the first match it
+      // finds per nutrient, so 11's better reading always wins when both have one.
+      await worker.setParameters({ tessedit_pageseg_mode: '11' })
+      const { data: sparse } = await worker.recognize(canvas)
+      passRef.current = 1
+      await worker.setParameters({ tessedit_pageseg_mode: '6' })
+      const { data: block } = await worker.recognize(canvas)
+      await worker.terminate()
+      workerRef.current = null
+      setParsed(parseNutritionLabelText(sparse.text + '\n' + block.text))
+      setPhase('review')
+    } catch (e) {
+      workerRef.current = null
+      setPhase('error')
+    }
+  }
+
+  if (phase === 'review' && parsed) {
+    return <CustomFoodForm dateIso={dateIso} mealKey={mealKey} close={close} initial={parsed} title={t('Scan macros')} />
+  }
+
+  return <>
+    <div className="row" style={{ gap: 8, marginBottom: phase === 'capture' ? 4 : 14 }}>
+      <h3 style={{ margin: 0 }}>{t('Scan macros')}</h3>
+      <span className="chip-pill" style={{ '--tint': 'var(--orange)', marginTop: 0 }}>{t('Experimental')}</span>
+    </div>
+    {phase === 'capture' && <>
+      {/* Every improvement here (see lib/ocr-nutrition.js) was verified against a real,
+          hard photo — but a client-side, free OCR engine reading a phone snapshot of a
+          curved, glare-prone label still has a real, honest ceiling. Said upfront rather
+          than only discovered after a wrong number almost got logged. */}
+      <p className="dim small">{t('Take a photo of the nutrition label — calories and macros are read automatically, you just name the food. Results can be off on an angled or blurry photo, always double-check before saving.')}</p>
+      <div style={{ height: 10 }} />
+      <Button variant="primary" onClick={() => inputRef.current?.click()}>{t('Take photo')}</Button>
+      <div style={{ height: 8 }} />
+      <Button variant="ghost" className="dim" onClick={close}>{t('Cancel')}</Button>
+    </>}
+    {phase === 'processing' && <>
+      <div className="empty">{t('Reading label…')}</div>
+      <div style={{ height: 8 }} />
+      <div className="dim small" style={{ textAlign: 'center' }}>{Math.round(progress * 100)}%</div>
+    </>}
+    {phase === 'error' && <>
+      <div className="empty">{t('Could not read that photo — try again with better light, or enter it manually.')}</div>
+      <div style={{ height: 10 }} />
+      <Button variant="primary" onClick={() => setPhase('capture')}>{t('Try again')}</Button>
+      <div style={{ height: 8 }} />
+      <Button variant="ghost" className="dim" onClick={close}>{t('Cancel')}</Button>
+    </>}
+    <input ref={inputRef} type="file" accept="image/*" capture="environment" style={{ display: 'none' }} onChange={onFile} />
+  </>
+}
+export const scanMacrosSheet = (dateIso, mealKey) => ui().openSheet(close => <ScanMacrosSheet dateIso={dateIso} mealKey={mealKey} close={close} />)
 
 // Logging a quantity of an already-defined "Mis alimentos" food (FoodSearchSheet's results,
 // or re-logging from Settings) — its rate is already in the right unit (per 100g for
@@ -2031,12 +2200,17 @@ export const logCustomFoodSheet = (dateIso, mealKey, food) => ui().openSheet(clo
 // Creating or editing a "Mis alimentos" definition itself (Settings → Nutrition → My foods)
 // — just the rate, no quantity or meal, since those only make sense at logging time.
 function CustomFoodDefForm({ existing, close }) {
+  const canGoPublic = !useStore(s => s.isGuest())
   const [name, setName] = useState(existing?.name || '')
   const [mode, setMode] = useState(existing?.mode || 'weight')
   const [kcalRate, setKcalRate] = useState(existing?.kcal ?? 0)
   const [carbsRate, setCarbsRate] = useState(existing?.carbs ?? 0)
   const [fatRate, setFatRate] = useState(existing?.fat ?? 0)
   const [proteinRate, setProteinRate] = useState(existing?.protein ?? 0)
+  // Only offered when creating one fresh — the public copy this creates is its own row on
+  // the server with no link back to this local id, so there's nothing later edits here
+  // could keep in sync with it. Re-sharing a changed food means creating it again.
+  const [visibility, setVisibility] = useState('private')
   const save = () => {
     const n = name.trim()
     if (!n) { toast(t('Enter a name')); return }
@@ -2048,6 +2222,10 @@ function CustomFoodDefForm({ existing, close }) {
         s.customFoods.push({ id: uid(), name: n, mode, kcal: kcalRate, carbs: carbsRate, fat: fatRate, protein: proteinRate })
       }
     })
+    if (!existing && visibility === 'public') {
+      createPublicFood({ name: n, mode, kcal: kcalRate, carbs: carbsRate, fat: fatRate, protein: proteinRate })
+        .catch(() => toast(t('Saved, but sharing it publicly failed — try again from “My foods”.')))
+    }
     toast(existing ? t('Food updated') : t('Food saved'))
     close()
   }
@@ -2067,6 +2245,13 @@ function CustomFoodDefForm({ existing, close }) {
       <div><div className="dim small" style={{ marginBottom: 4 }}>{t('Fat')} (g)</div><NumberField value={fatRate} onChange={setFatRate} /></div>
       <div><div className="dim small" style={{ marginBottom: 4 }}>{t('Protein')} (g)</div><NumberField value={proteinRate} onChange={setProteinRate} /></div>
     </div>
+    {!existing && canGoPublic && <>
+      <div className="dim small" style={{ margin: '14px 0 6px' }}>{t('Visibility')}</div>
+      <Segmented options={FOOD_VISIBILITY()} value={visibility} onChange={setVisibility} />
+      <div className="dim small" style={{ margin: '6px 2px 0' }}>
+        {visibility === 'public' ? t('Anyone can find and use this food when searching — never with your name on it.') : t('Only you can see and use this food.')}
+      </div>
+    </>}
     <div style={{ height: 14 }} />
     <Button variant="primary" onClick={save}>{t('Save changes')}</Button>
     {existing && <><div style={{ height: 8 }} /><Button variant="danger" onClick={del}>{t('Delete')}</Button></>}
@@ -2126,6 +2311,173 @@ function SavedMealDetailSheet({ meal, close }) {
   </>
 }
 export const savedMealDetailSheet = meal => ui().openSheet(close => <SavedMealDetailSheet meal={meal} close={close} />)
+
+/* ------------------------------------------------------------ create a meal from scratch */
+// Building a reusable meal (recipe) out of the food database instead of only bundling
+// something already logged (SaveMealForm above) — "Lentejas con chorizo" as lentils +
+// chorizo + onion + carrot, searched and summed before ever touching the diary. Ends up in
+// the exact same S.savedMeals shape SaveMealForm produces, so every existing consumer
+// (FoodSearchSheet's mealMatches, "My meals") already knows what to do with the result.
+
+// A search result is either a rate (Mis alimentos / community food — per-100g or per-unit,
+// already the unit its own mode implies) or a per-100g Open Food Facts hit — the two only
+// differ in which fields their macros live under, so this normalises both to one shape the
+// quantity step can treat identically.
+function ingredientRate(pending) {
+  const { kind, food } = pending
+  return kind === 'rate'
+    ? { name: food.name, isUnit: food.mode === 'unit', kcal: food.kcal, carbs: food.carbs, fat: food.fat, protein: food.protein }
+    : { name: food.name, isUnit: false, kcal: food.kcal100, carbs: food.carbs100, fat: food.fat100, protein: food.protein100 }
+}
+
+function IngredientSearch({ onPick }) {
+  const [q, setQ] = useState('')
+  const [source, setSource] = useState('all')
+  const [items, setItems] = useState(null)
+  const [communityItems, setCommunityItems] = useState([])
+  const [busy, setBusy] = useState(false)
+  const customFoods = useStore(s => s.S.customFoods)
+  const myMatches = q.trim() ? customFoods.filter(f => f.name.toLowerCase().includes(q.trim().toLowerCase())) : []
+  useEffect(() => {
+    const query = q.trim()
+    if (!query) { setItems(null); setCommunityItems([]); setBusy(false); return }
+    setBusy(true)
+    const h = setTimeout(() => {
+      Promise.all([
+        foodSearch(query).catch(() => { toast(t('Search unavailable — try again')); return [] }),
+        publicFoodSearch(query).catch(() => []),
+      ]).then(([off, community]) => { setItems(off); setCommunityItems(community) }).finally(() => setBusy(false))
+    }, 350)
+    return () => clearTimeout(h)
+  }, [q])
+  const showMine = source === 'all' || source === 'mine'
+  const showCommunity = source === 'all' || source === 'community'
+  const showOff = source === 'all' || source === 'off'
+  const nothingFound = q.trim() && !busy && items
+    && !(showMine && myMatches.length) && !(showCommunity && communityItems.length) && !(showOff && items.length)
+  return <>
+    <div className="search"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7" /><path d="m21 21-4.3-4.3" /></svg>
+      <input className="input" autoFocus placeholder={t('Search foods…')} value={q} onChange={e => setQ(e.target.value)} /></div>
+    <div style={{ height: 10 }} />
+    <Segmented options={FOOD_SOURCES()} value={source} onChange={setSource} />
+    <div style={{ height: 10 }} />
+    <div className="list">
+      {showMine && myMatches.map(f => (
+        <div key={f.id} className="item" onClick={() => onPick({ kind: 'rate', food: f })}>
+          <div className="thumb thumb-x"><Icon name="sparkles" /></div>
+          <div className="grow"><div className="tt">{f.name}</div><div className="ss">{f.mode === 'weight' ? t('{0} kcal / 100g', f.kcal) : t('{0} kcal / unit', f.kcal)}</div></div>
+          <Icon name="chevronRight" className="chev" />
+        </div>
+      ))}
+      {showCommunity && communityItems.map(f => (
+        <div key={f.id} className="item" onClick={() => onPick({ kind: 'rate', food: f })}>
+          <div className="thumb thumb-x"><Icon name="globe" /></div>
+          <div className="grow"><div className="tt">{f.name}</div><div className="ss">{f.mode === 'weight' ? t('{0} kcal / 100g', f.kcal) : t('{0} kcal / unit', f.kcal)}</div></div>
+          <Icon name="chevronRight" className="chev" />
+        </div>
+      ))}
+      {nothingFound
+        ? <div className="empty">{t('No matches — try a different search or add it yourself.')}</div>
+        : showOff && (items || []).map((food, i) => (
+          <div key={food.code || i} className="item" onClick={() => onPick({ kind: 'per100', food })}>
+            <div className="grow"><div className="tt">{food.name}</div><div className="ss">{t('{0} kcal / 100g', food.kcal100)}</div></div>
+            <Icon name="chevronRight" className="chev" />
+          </div>
+        ))}
+    </div>
+  </>
+}
+
+function IngredientQtyForm({ pending, onAdd, onCancel }) {
+  const rate = ingredientRate(pending)
+  const [qty, setQty] = useState(rate.isUnit ? 1 : 100)
+  const factor = rate.isUnit ? (qty || 0) : (qty || 0) / 100
+  const kcal = Math.round(rate.kcal * factor)
+  const carbs = Math.round(rate.carbs * factor)
+  const fat = Math.round(rate.fat * factor)
+  const protein = Math.round(rate.protein * factor)
+  const add = () => {
+    if (!qty || qty <= 0) { toast(t('Enter a valid amount')); return }
+    const item = { name: rate.name, kcal, carbsG: carbs, fatG: fat, proteinG: protein }
+    if (rate.isUnit) item.units = qty; else item.grams = qty
+    onAdd(item)
+  }
+  return <>
+    <h3>{rate.name}</h3>
+    <div className="unit-field" style={{ width: 140, margin: '14px 0' }}>
+      <NumberField value={qty} decimal={false} onChange={setQty} />
+      <span className="dim">{rate.isUnit ? t('units') : t('grams')}</span>
+    </div>
+    <div className="card" style={{ textAlign: 'center', padding: 14 }}>
+      <div style={{ fontSize: 22, fontWeight: 800 }}>{kcal} <span className="dim small" style={{ fontWeight: 500 }}>kcal</span></div>
+      <div className="dim small" style={{ marginTop: 4 }}>{carbs}g · {fat}g · {protein}g</div>
+    </div>
+    <div style={{ height: 14 }} />
+    <Button variant="primary" onClick={add}>{t('Add ingredient')}</Button>
+    <div style={{ height: 8 }} />
+    <Button variant="ghost" className="dim" onClick={onCancel}>{t('Cancel')}</Button>
+  </>
+}
+
+function CreateMealSheet({ close }) {
+  const [step, setStep] = useState('list') // 'list' | 'search' | 'qty'
+  const [ingredients, setIngredients] = useState([])
+  const [pending, setPending] = useState(null)
+  const [name, setName] = useState('')
+
+  const totals = ingredients.reduce((a, it) => ({
+    kcal: a.kcal + (it.kcal || 0), carbs: a.carbs + (it.carbsG || 0), fat: a.fat + (it.fatG || 0), protein: a.protein + (it.proteinG || 0),
+  }), { kcal: 0, carbs: 0, fat: 0, protein: 0 })
+
+  const addIngredient = item => { setIngredients(list => [...list, item]); setPending(null); setStep('list') }
+  const removeIngredient = i => setIngredients(list => list.filter((_, idx) => idx !== i))
+
+  const save = () => {
+    const n = name.trim()
+    if (!n) { toast(t('Enter a name')); return }
+    if (!ingredients.length) { toast(t('Add at least one ingredient')); return }
+    update(s => { s.savedMeals.push({ id: uid(), name: n, items: ingredients }) })
+    toast(t('Meal saved'))
+    close()
+  }
+
+  if (step === 'search') return <>
+    <h3>{t('Add ingredient')}</h3>
+    <IngredientSearch onPick={food => { setPending(food); setStep('qty') }} />
+    <div style={{ height: 8 }} />
+    <Button variant="ghost" className="dim" onClick={() => setStep('list')}>{t('Cancel')}</Button>
+  </>
+
+  if (step === 'qty' && pending) return <IngredientQtyForm pending={pending} onAdd={addIngredient} onCancel={() => setStep('search')} />
+
+  return <>
+    <h3>{t('Create meal')}</h3>
+    <TextField autoFocus placeholder={t('Name')} value={name} onChange={e => setName(e.target.value)} style={{ width: '100%', margin: '14px 0 12px' }} />
+    {ingredients.length > 0 && <div className="list" style={{ marginBottom: 10 }}>
+      {ingredients.map((it, i) => (
+        <div key={i} className="item">
+          <div className="grow">
+            <div className="tt">{it.name}</div>
+            <div className="ss">{it.grams != null ? it.grams + ' g' : t('{0} units', it.units)}</div>
+          </div>
+          <span style={{ fontWeight: 700, marginRight: 6 }}>{it.kcal}</span>
+          <button className="iconbtn" style={{ width: 28, height: 28 }} onClick={() => removeIngredient(i)} aria-label={t('Delete')}><Icon name="xmark" /></button>
+        </div>
+      ))}
+    </div>}
+    <Button variant="ghost" onClick={() => setStep('search')}>{t('Add ingredient')}</Button>
+    {ingredients.length > 0 && <>
+      <div style={{ height: 14 }} />
+      <div className="card" style={{ textAlign: 'center', padding: 14 }}>
+        <div style={{ fontSize: 22, fontWeight: 800 }}>{totals.kcal} <span className="dim small" style={{ fontWeight: 500 }}>kcal</span></div>
+        <div className="dim small" style={{ marginTop: 4 }}>{totals.carbs}g · {totals.fat}g · {totals.protein}g</div>
+      </div>
+    </>}
+    <div style={{ height: 14 }} />
+    <Button variant="primary" onClick={save} disabled={!ingredients.length}>{t('Save meal')}</Button>
+  </>
+}
+export const createMealSheet = () => ui().openSheet(close => <CreateMealSheet close={close} />)
 
 // Editing (and deleting) an already-logged item — reached from NutritionDiary.jsx's "See
 // all" list, the one place a food item renders as its own row rather than folded into a
@@ -2238,9 +2590,10 @@ export const barcodeScanSheet = (dateIso, mealKey) => ui().openSheet(close => <B
 
 function FoodSearchSheet({ dateIso, mealKey, close }) {
   const [q, setQ] = useState('')
+  const [source, setSource] = useState('all')
   const [items, setItems] = useState(null)
+  const [communityItems, setCommunityItems] = useState([])
   const [busy, setBusy] = useState(false)
-  const canScan = typeof window !== 'undefined' && 'BarcodeDetector' in window
   // "Mis alimentos" (Settings → Nutrition) surfaces here too — reusing a food you defined
   // once (see CustomFoodForm/CustomFoodDefForm) shouldn't mean retyping its macros every time.
   const customFoods = useStore(s => s.S.customFoods)
@@ -2249,31 +2602,35 @@ function FoodSearchSheet({ dateIso, mealKey, close }) {
   const mealMatches = q.trim() ? savedMeals.filter(m => m.name.toLowerCase().includes(q.trim().toLowerCase())) : []
   useEffect(() => {
     const query = q.trim()
-    if (!query) { setItems(null); setBusy(false); return }
+    if (!query) { setItems(null); setCommunityItems([]); setBusy(false); return }
     setBusy(true)
     const h = setTimeout(() => {
-      foodSearch(query).then(setItems).catch(() => { setItems([]); toast(t('Search unavailable — try again')) }).finally(() => setBusy(false))
+      // Same shape as a "Mis alimentos" match (rate + mode, not per-100g like Open Food
+      // Facts) — LogCustomFoodSheet already handles either source identically.
+      Promise.all([
+        foodSearch(query).catch(() => { toast(t('Search unavailable — try again')); return [] }),
+        publicFoodSearch(query).catch(() => []),
+      ]).then(([off, community]) => { setItems(off); setCommunityItems(community) }).finally(() => setBusy(false))
     }, 350)
     return () => clearTimeout(h)
   }, [q])
+
+  const showMine = source === 'all' || source === 'mine'
+  const showCommunity = source === 'all' || source === 'community'
+  const showOff = source === 'all' || source === 'off'
+  const nothingShown = q.trim() && !busy && items
+    && !(showMine && myMatches.length) && !mealMatches.length
+    && !(showCommunity && communityItems.length) && !(showOff && items.length)
 
   return <>
     <h3>{t('Add food')}</h3>
     <div className="search"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7" /><path d="m21 21-4.3-4.3" /></svg>
       <input className="input" autoFocus placeholder={t('Search foods…')} value={q} onChange={e => setQ(e.target.value)} /></div>
     <div style={{ height: 10 }} />
+    <Segmented options={FOOD_SOURCES()} value={source} onChange={setSource} />
+    <div style={{ height: 10 }} />
     <div className="list">
-      <div className="item" onClick={() => { close(); customFoodSheet(dateIso, mealKey) }}>
-        <div className="thumb thumb-x"><Icon name="sparkles" /></div>
-        <div className="grow"><div className="tt">{t('Create custom food')}</div><div className="ss">{t('Enter calories and macros yourself')}</div></div>
-        <Icon name="plus" className="chev" />
-      </div>
-      {canScan && <div className="item" onClick={() => { close(); barcodeScanSheet(dateIso, mealKey) }}>
-        <div className="thumb thumb-x"><Icon name="barcode" /></div>
-        <div className="grow"><div className="tt">{t('Scan barcode')}</div></div>
-        <Icon name="chevronRight" className="chev" />
-      </div>}
-      {myMatches.map(f => (
+      {showMine && myMatches.map(f => (
         <div key={f.id} className="item" onClick={() => { close(); logCustomFoodSheet(dateIso, mealKey, f) }}>
           <div className="thumb thumb-x"><Icon name="sparkles" /></div>
           <div className="grow"><div className="tt">{f.name}</div><div className="ss">{f.mode === 'weight' ? t('{0} kcal / 100g', f.kcal) : t('{0} kcal / unit', f.kcal)}</div></div>
@@ -2287,9 +2644,18 @@ function FoodSearchSheet({ dateIso, mealKey, close }) {
           <Icon name="chevronRight" className="chev" />
         </div>
       ))}
-      {items === null || items.length === 0
-        ? (q.trim() && !busy && items && !myMatches.length && !mealMatches.length && <div className="empty">{t('No matches — try a different search or add it yourself.')}</div>)
-        : items.map((food, i) => (
+      {/* Forvia's own community food database — anonymised by the server, so this row never
+          shows or knows who submitted it, same as anyone finding a food you shared. */}
+      {showCommunity && communityItems.map(f => (
+        <div key={f.id} className="item" onClick={() => { close(); logCustomFoodSheet(dateIso, mealKey, f) }}>
+          <div className="thumb thumb-x"><Icon name="globe" /></div>
+          <div className="grow"><div className="tt">{f.name}</div><div className="ss">{f.mode === 'weight' ? t('{0} kcal / 100g', f.kcal) : t('{0} kcal / unit', f.kcal)}</div></div>
+          <Icon name="chevronRight" className="chev" />
+        </div>
+      ))}
+      {nothingShown
+        ? <div className="empty">{t('No matches — try a different search or add it yourself.')}</div>
+        : showOff && (items || []).map((food, i) => (
           <div key={food.code || i} className="item" onClick={() => { close(); logQuantitySheet(dateIso, mealKey, food) }}>
             <div className="grow"><div className="tt">{food.name}</div><div className="ss">{t('{0} kcal / 100g', food.kcal100)}</div></div>
             <Icon name="chevronRight" className="chev" />

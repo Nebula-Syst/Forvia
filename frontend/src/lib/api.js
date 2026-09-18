@@ -93,6 +93,11 @@ export const adminStreakTierRemove = id => api('/api/admin/streak-tiers/remove',
 /* ---------- nutrition: food search (Open Food Facts proxy) ---------- */
 export const foodSearch = q => api('/api/nutrition/search?q=' + encodeURIComponent(q)).then(r => r.items)
 export const foodByBarcode = code => api('/api/nutrition/barcode?code=' + encodeURIComponent(code)).then(r => r.item)
+// Forvia's own community food database — separate from the Open Food Facts proxy above.
+// Search always comes back anonymised (no ownerId ever leaves the server); creating one
+// only ever happens when the submitter picked "Public" — see CustomFoodForm.
+export const publicFoodSearch = q => api('/api/nutrition/foods/search?q=' + encodeURIComponent(q)).then(r => r.items)
+export const createPublicFood = food => api('/api/nutrition/foods', { method: 'POST', body: JSON.stringify(food) })
 
 /* ---------- bug reports ---------- */
 export const reportBug = (message, page) => api('/api/bugs', { method: 'POST', body: JSON.stringify({ message, page }) })
