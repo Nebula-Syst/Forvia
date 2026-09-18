@@ -13,11 +13,15 @@
   },
   "license": "AGPL-3.0-or-later",
   "dependencies": {
+    "@capacitor/app": "^7.1.2",
+    "@capacitor/core": "^7.6.9",
+    "fflate": "^0.8.3",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
     "react-liquid-gauge": "^1.2.4",
     "react-loading-skeleton": "^3.5.0",
     "react-router-dom": "^7.18.2",
+    "tesseract.js": "^7.0.0",
     "zustand": "^5.0.14"
   },
   "devDependencies": {

@@ -61,7 +61,7 @@ const SECRET = fs.readFileSync(secretFile, 'utf8').trim();
 // why this stays one big in-memory object instead of being queried per-request. Same shape
 // db.json's arrays always had: users, subs (push), invites, follows, reactions, comments
 // (social), tasks/taskCompletions (daily-task catalog + awards), cheatPenalties (anti-cheat).
-let db = { users: [], subs: [], invites: [], follows: [], reactions: [], comments: [], tasks: [], taskCompletions: [], cheatPenalties: [], alphaRequests: [], bugReports: [], exerciseOverrides: [], muscleGroups: [], streakTiers: [], coachRequests: [], boxes: [], boxMemberships: [], boxInvites: [], routineAssignments: [], wods: [], wodResults: [] };
+let db = { users: [], subs: [], invites: [], follows: [], reactions: [], comments: [], tasks: [], taskCompletions: [], cheatPenalties: [], alphaRequests: [], bugReports: [], exerciseOverrides: [], muscleGroups: [], streakTiers: [], coachRequests: [], boxes: [], boxMemberships: [], boxInvites: [], routineAssignments: [], wods: [], wodResults: [], boxRequests: [], boxStaff: [], classTypes: [], dayTemplates: [], weekTemplates: [], wodTemplates: [], classSessions: [], classBookings: [], classPenalties: [], liveClasses: [], publicFoods: [] };
 // A user can hold several employee types at once (e.g. both founder and admin), not one
 // flat role — employeeTypes is an array, filtered to the known set on every read so a
 // stale/tampered value in db.json can never grant something that isn't in EMPLOYEE_TYPES.
@@ -101,6 +101,15 @@ const publicUser = user => {
     // reviewing a coachRequests application (POST /api/coach/apply), never self-serve. Plain
     // boolean, not part of EMPLOYEE_TYPES: this is an athlete-facing capability, not a staff role.
     coach: !!user.coach,
+    // Personal-training marketplace opt-in (Settings → coach dashboard) — off by default even
+    // once approved as a coach, since box-coaching and taking on personal-training clients are
+    // separate decisions a coach makes independently. hourlyRate is theirs to set regardless of
+    // coachVisible so they can fill it in before flipping the switch on.
+    coachVisible: !!user.coachVisible, hourlyRate: user.hourlyRate ?? null,
+    // A real geocoded place ({label, lat, lon} — GET /api/geo/search or /reverse), never free
+    // text, so a browsing athlete can trust it. Kept even while coachVisible is off so
+    // switching visibility on/off never loses what they'd already picked.
+    coachLocation: user.coachLocation || null,
     // firstName/lastName are the real source of truth once set (see POST /api/account/name) —
     // `name` is still what the rest of the app reads to display someone, kept in sync from
     // the two parts server-side so nothing else has to change. null on accounts that have
@@ -135,6 +144,11 @@ const socialUser = user => ({
   // Not sensitive (unlike admin, which gates real backend privilege) — a box roster or
   // leaderboard can show a "Coach" badge next to the box owner's name for free.
   coach: !!user.coach,
+  // Only meaningful alongside coach:true and only when the coach opted in — the marketplace
+  // listing (GET /api/coaches/marketplace) is exactly socialUser() rows already filtered to
+  // coachVisible, so this rides along for free instead of a marketplace-specific serializer.
+  hourlyRate: user.coach && user.coachVisible ? (user.hourlyRate ?? null) : null,
+  coachLocation: user.coach && user.coachVisible ? (user.coachLocation || null) : null,
 });
 // Shared by GET /api/social/comments and the POST /api/social/comment response, so the
 // field list only lives in one place.
@@ -1040,11 +1054,19 @@ const isCoachOfBox = (coachId, boxId) => {
   const box = db.boxes.find(b => b.id === boxId);
   return !!box && box.coachId === coachId;
 };
-const isCoachOfAthlete = (coachId, athleteUid) => {
-  const myBoxIds = new Set(db.boxes.filter(b => b.coachId === coachId).map(b => b.id));
+const isMemberOfBox = (userId, boxId) => db.boxMemberships.some(m => m.userId === userId && m.boxId === boxId);
+// "Staff" — a coach's helpers for one specific box (WOD, routines, roster), added by @username
+// search (see GET /api/users/search) rather than the manual coach-application review: helping
+// run a box day-to-day doesn't need the marketplace-eligibility bar a full coach clears. Never
+// implies coach:true, and never grants the box-admin actions below that stay owner-only
+// (inviting/removing members, requesting/renaming the box, managing staff itself).
+const isStaffOfBox = (userId, boxId) => db.boxStaff.some(s => s.boxId === boxId && s.userId === userId);
+const canManageBox = (userId, boxId) => isCoachOfBox(userId, boxId) || isStaffOfBox(userId, boxId);
+const canViewAthlete = (userId, athleteUid) => {
+  const myBoxIds = new Set(db.boxes.filter(b => b.coachId === userId).map(b => b.id)
+    .concat(db.boxStaff.filter(s => s.userId === userId).map(s => s.boxId)));
   return db.boxMemberships.some(m => m.userId === athleteUid && myBoxIds.has(m.boxId));
 };
-const isMemberOfBox = (userId, boxId) => db.boxMemberships.some(m => m.userId === userId && m.boxId === boxId);
 // Guard for /api/coach/* — resolves the caller and 401/403s if they aren't an approved coach.
 function requireCoach(req, res) {
   const user = readSession(req);
@@ -1104,11 +1126,146 @@ function extraNutriments(n) {
 }
 
 /* ---------- routes ---------- */
+// Geocoding proxy helpers (see the 'GET /api/geo/*' routes below for why this exists) —
+// module scope like extraNutriments() above, since routes is a plain object literal and
+// can't hold statement-level declarations of its own.
+const GEO_UA = 'Forvia (self-hosted gym tracker) - github.com/Nebula-Syst/Forvia';
+// Builds "Street 12, City, Country" when Photon's match is street/house-level (has
+// street/housenumber), falling back to the old "City, Country" shape for a city-level match —
+// a box's real-world address needs the street, a coach's own general location doesn't need
+// more than the city, and this one function serves both without a second endpoint. `name` is
+// Photon's primary label for whatever layer matched (a street's own name, a POI's name, or —
+// for a city-level result — the city itself), so it only gets used as the locality when there
+// is no separate street to show.
+const placeLabelFrom = p => {
+  if (!p) return null;
+  const street = p.housenumber && p.street ? `${p.street} ${p.housenumber}` : p.street || null;
+  const locality = street ? (p.city || p.district) : (p.city || p.name);
+  return [street, locality, p.country].filter(Boolean).join(', ') || null;
+};
+// Haversine distance in km — used to keep the marketplace to coaches actually near the
+// browsing athlete's search location (GET /api/coaches/marketplace's lat/lon params).
+function kmBetween(lat1, lon1, lat2, lon2) {
+  const R = 6371, toRad = d => d * Math.PI / 180;
+  const dLat = toRad(lat2 - lat1), dLon = toRad(lon2 - lon1);
+  const a = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+const MARKETPLACE_RADIUS_KM = 50;
+// A cancellation inside this window before class start counts as "late" for reporting
+// purposes (Phase 5) — no automatic consequence yet, just a recorded classPenalties row.
+const LATE_CANCEL_WINDOW_MS = 2 * 60 * 60 * 1000;
+// A waitlist offer (POST /api/box/classes/cancel) only holds exclusive priority for this long —
+// after that it opens up to the whole remaining queue, first "book" tap wins. Checked by a sweep
+// (waitlistOfferTick, registered in main()) rather than a per-offer setTimeout: a sweep re-checks
+// real elapsed time against `offeredAt` on every tick, so a stale offer self-heals within one
+// tick even across a server restart, instead of silently losing its timer.
+const WAITLIST_OFFER_WINDOW_MS = 5 * 60 * 1000;
+function waitlistOfferTick() {
+  let dirty = false;
+  for (const b of db.classBookings) {
+    if (b.status !== 'offered' || Date.now() - Date.parse(b.offeredAt) < WAITLIST_OFFER_WINDOW_MS) continue;
+    b.status = 'waitlist';
+    dirty = true;
+    const session = db.classSessions.find(s => s.id === b.sessionId);
+    if (!session) continue;
+    for (const w of db.classBookings.filter(x => x.sessionId === session.id && x.status === 'waitlist')) {
+      sendPush(w.athleteId, { title: 'A spot is open', body: 'First to book gets it — ' + session.name + ' · ' + session.date + ' ' + session.startTime });
+      wsSend(w.athleteId, { type: 'class:promoted', sessionId: session.id, name: session.name, date: session.date, startTime: session.startTime });
+    }
+  }
+  if (dirty) saveDb();
+}
+// Live class clock: elapsed time is a pure function of a single anchor timestamp + the
+// accumulated time banked before the current run segment, never a server-side ticking loop —
+// every device (host and viewers alike) derives the same round/phase/remaining from this one
+// number, so pause/resume/reset only ever need to broadcast once, not on every tick.
+const liveElapsedMs = row => row.status === 'running'
+  ? row.pausedElapsedMs + (Date.now() - Date.parse(row.phaseStartedAt))
+  : row.pausedElapsedMs;
+// Reaches whoever is actually in the class right now: booked athletes plus the host (which may
+// not be the session's assigned coachId — any staff/owner can start hosting a class they're
+// covering). Same wsSend used for the waitlist-promotion nudge.
+const broadcastLive = (session, hostId, payload) => {
+  const targets = new Set(db.classBookings.filter(b => b.sessionId === session.id && b.status === 'booked').map(b => b.athleteId));
+  if (hostId) targets.add(hostId);
+  for (const uid of targets) wsSend(uid, payload);
+};
+// Class types are fully custom per box (a CrossFit box and a yoga studio want different icons
+// and colors) rather than a fixed discipline enum — icon is still a closed set (only these
+// render anything in the frontend's icon component) but color is any hex the coach picks.
+const CLASS_ICONS = new Set([
+  'barbell', 'dumbbell', 'figureRun', 'kettlebell', 'stretch', 'boxing', 'bike', 'swim',
+  'pullup', 'machine', 'plate', 'figureStrength', 'legs', 'abs', 'arm', 'flame', 'target',
+  'trophy', 'medal', 'heart', 'timer', 'sparkles',
+]);
+const HEX_COLOR_RE = /^#[0-9a-fA-F]{6}$/;
+// Photon's `lang` param only accepts exactly these four values — anything else (a Spanish
+// browser sending "es", which real testing missed since curl sends no Accept-Language at all
+// and defaults past this) gets a flat 400 from Photon, which silently became "no results" and
+// "auto-detect never works" once caught by this file's own try/catch. Omitting the param
+// entirely (Photon's own default) still returns each place's local-language name — confirmed
+// fine — so anything unsupported just skips the param rather than guessing a mapping.
+const PHOTON_LANGS = new Set(['de', 'en', 'fr']);
+const photonLang = req => { const l = (req.headers['accept-language'] || '').slice(0, 2).toLowerCase(); return PHOTON_LANGS.has(l) ? l : null; };
+
+// Google Geocoding API — opt-in, self-hosted-admin-provided key (see .env.example). Photon runs
+// on OpenStreetMap data alone, which has real, unfixable gaps for exact house numbers on
+// ordinary residential streets, especially in small towns — confirmed by hand, an address that
+// Google Maps resolves fine can come back with nothing usable from Photon because the house was
+// simply never mapped in OSM. Only worth the (paid, metered) API call for a "precise" search —
+// a box's real street address — never for a general "what city are you in" one, so this is
+// gated per-request by the `precise` flag, not turned on globally just because a key exists.
+const GOOGLE_MAPS_API_KEY = process.env.GOOGLE_MAPS_API_KEY || '';
+// How a box's location field behaves, self-hoster's choice (see .env.example):
+//   off     — plain manual text, no geocoding at all: whatever the coach types is saved as-is,
+//             no lat/lon. Right for an instance with no geocoder set up yet, or one that would
+//             rather not depend on any third-party lookup for this field.
+//   search  — the default: Photon/OSM real-place search, free, no key needed. Has real gaps for
+//             exact house numbers on smaller streets (see GOOGLE_MAPS_API_KEY above).
+//   precise — also merges in Google's Geocoding API. Silently behaves like `search` if
+//             GOOGLE_MAPS_API_KEY isn't actually set, rather than erroring — somebody can flip
+//             this on ahead of adding the key with no visible effect until they do.
+const BOX_LOCATION_MODE = /^(off|precise)$/i.test(process.env.BOX_LOCATION_MODE || '') ? process.env.BOX_LOCATION_MODE.toLowerCase() : 'search';
+async function googleGeocode(q, bias) {
+  const params = { address: q, key: GOOGLE_MAPS_API_KEY };
+  // Geocoding API's only real relevance lever is a viewport to bias toward — a generous ~1°
+  // box (roughly 100km) centered on the caller's known point, not a hard filter (Google can
+  // still return matches outside it, just ranks inside-the-box ones first).
+  if (bias) {
+    const { lat, lon } = bias;
+    params.bounds = `${lat - 0.5},${lon - 0.5}|${lat + 0.5},${lon + 0.5}`;
+  }
+  const url = 'https://maps.googleapis.com/maps/api/geocode/json?' + new URLSearchParams(params);
+  const r = await fetch(url, { signal: AbortSignal.timeout(8000) });
+  const data = await r.json();
+  if (data.status !== 'OK' && data.status !== 'ZERO_RESULTS') {
+    throw new Error('google geocode: ' + data.status + (data.error_message ? ' - ' + data.error_message : ''));
+  }
+  return (data.results || [])
+    .map(r => ({ label: r.formatted_address, lat: r.geometry?.location?.lat, lon: r.geometry?.location?.lng }))
+    .filter(p => p.label && isFinite(p.lat) && isFinite(p.lon));
+}
+
+// Shared by every "real place, never free text" field (a coach's own location, a box's
+// location): must be {label, lat, lon} shaped exactly like a GET /api/geo/search or /reverse
+// result. Returns null for an absent/falsy raw value; throws a string error message for a
+// present-but-malformed one, which callers turn into a 400.
+function parseLocation(raw) {
+  if (!raw) return null;
+  const label = String(raw.label || '').trim().slice(0, 120);
+  const lat = Number(raw.lat), lon = Number(raw.lon);
+  if (!label || !isFinite(lat) || !isFinite(lon) || lat < -90 || lat > 90 || lon < -180 || lon > 180) {
+    throw new Error('invalid location');
+  }
+  return { label, lat, lon };
+}
+
 const routes = {
   'GET /api/health': async (req, res) => json(res, 200, { ok: true, users: db.users.length }),
 
   // Public config the login screen needs before anyone is signed in.
-  'GET /api/config': async (req, res) => json(res, 200, { invite_only: INVITE_ONLY, allow_guest: ALLOW_GUEST, allow_register: ALLOW_REGISTER }),
+  'GET /api/config': async (req, res) => json(res, 200, { invite_only: INVITE_ONLY, allow_guest: ALLOW_GUEST, allow_register: ALLOW_REGISTER, box_location_mode: BOX_LOCATION_MODE }),
 
   // Public, no auth: admin-authored exercise renames (see the "exercise name overrides"
   // section below for how they're written). The catalogue itself lives only in the frontend
@@ -1196,6 +1353,118 @@ const routes = {
     }
   },
 
+  /* ---------- nutrition: community food database ---------- */
+  // Forvia's own crowd-sourced food catalogue, separate from Open Food Facts above — a place
+  // for foods that database doesn't have (home-cooked dishes, regional products) without
+  // every user retyping the same macros from scratch. A submission is either private (stays
+  // local to the submitter — see the frontend's own S.customFoods, this route is never
+  // called for those) or public; there is no third state. A public one is searchable by
+  // anyone, but always anonymised — ownerId/created never leave this route, by construction,
+  // not by the client choosing not to render them.
+  'POST /api/nutrition/foods': async (req, res) => {
+    const user = readSession(req);
+    if (!user) return json(res, 401, { error: 'not signed in' });
+    const body = await readBody(req);
+    const name = String(body.name || '').trim().slice(0, 80);
+    const mode = body.mode === 'unit' ? 'unit' : 'weight';
+    const num = v => { const n = Number(v); return isFinite(n) && n >= 0 ? n : 0 };
+    if (!name) return json(res, 400, { error: 'name required' });
+    const food = {
+      id: crypto.randomBytes(8).toString('base64url'),
+      ownerId: user.id, name, mode,
+      kcal: num(body.kcal), carbs: num(body.carbs), fat: num(body.fat), protein: num(body.protein),
+      created: new Date().toISOString(),
+    };
+    db.publicFoods.push(food);
+    saveDb();
+    json(res, 200, { ok: true, id: food.id });
+  },
+
+  // Case-insensitive substring match on name, newest first — same 20-result cap as the Open
+  // Food Facts proxy above so a food search never has to think about which source a result
+  // came from. ownerId/created are dropped here, not just left unrendered client-side.
+  'GET /api/nutrition/foods/search': async (req, res) => {
+    const user = readSession(req);
+    if (!user) return json(res, 401, { error: 'not signed in' });
+    const q = (new URL(req.url, 'http://x').searchParams.get('q') || '').trim().toLowerCase();
+    if (!q) return json(res, 200, { items: [] });
+    const items = db.publicFoods
+      .filter(f => f.name.toLowerCase().includes(q))
+      .slice(-20).reverse()
+      .map(({ id, name, mode, kcal, carbs, fat, protein }) => ({ id, name, mode, kcal, carbs, fat, protein }));
+    json(res, 200, { items });
+  },
+
+  /* ---------- geocoding (location picker — Komoot Photon proxy) ---------- */
+  // A coach's public location (Coach dashboard's marketplace section) has to be a real,
+  // geocoded place, never free text — an athlete browsing the marketplace should be able to
+  // trust it, not read whatever string someone typed. Photon (photon.komoot.io, built on
+  // OpenStreetMap/Nominatim data by Komoot, ODbL) is the one real, keyless geocoder that's
+  // actually built for search-as-you-type: plain Nominatim /search does token/word matching,
+  // not prefix matching, so a partial word like "barcel" returns unrelated places named
+  // "Barcel" instead of "Barcelona" — confirmed by hand, this is exactly why the search read
+  // as broken. Photon indexes prefixes and ranks by place importance instead, so partial
+  // queries actually surface the right city. Same proxying posture as the Open Food Facts
+  // proxy above: server-side only, so the integration stays swappable.
+  'GET /api/geo/search': async (req, res) => {
+    const user = readSession(req);
+    if (!user) return json(res, 401, { error: 'not signed in' });
+    const sp = new URL(req.url, 'http://x').searchParams;
+    const q = (sp.get('q') || '').trim();
+    if (q.length < 2) return json(res, 200, { places: [] });
+    try {
+      const params = { q, limit: '8' };
+      // Optional "search near here" bias (Photon ranks by global place importance otherwise,
+      // which buries small-town streets under unrelated same-named places worldwide — a real
+      // address search without this found nothing usable for a house on an ordinary street in
+      // a small town, confirmed by hand). The caller supplies the point — the coach's own
+      // known location for a box address, say — never the athlete's live GPS here (this route
+      // never touches navigator.geolocation itself).
+      const biasLat = Number(sp.get('lat')), biasLon = Number(sp.get('lon'));
+      const hasBias = isFinite(biasLat) && isFinite(biasLon);
+      if (hasBias) { params.lat = String(biasLat); params.lon = String(biasLon); }
+      const lang = photonLang(req); if (lang) params.lang = lang;
+      const url = 'https://photon.komoot.io/api/?' + new URLSearchParams(params);
+      const r = await fetch(url, { headers: { 'User-Agent': GEO_UA }, signal: AbortSignal.timeout(8000) });
+      const data = await r.json();
+      let places = (data.features || [])
+        .map(f => ({ label: placeLabelFrom(f.properties), lat: f.geometry?.coordinates?.[1], lon: f.geometry?.coordinates?.[0] }))
+        .filter(p => p.label && isFinite(p.lat) && isFinite(p.lon));
+      // `precise=1` (an exact street address, not a general "what city" search) also queries
+      // Google's Geocoding API when the instance has a key configured — its commercially
+      // licensed address data covers real houses OSM/Photon simply never had mapped. Google's
+      // results lead (better source for exactly this case) with Photon's filling in behind.
+      if (sp.get('precise') === '1' && GOOGLE_MAPS_API_KEY) {
+        try {
+          const googlePlaces = await googleGeocode(q, hasBias ? { lat: biasLat, lon: biasLon } : null);
+          places = [...googlePlaces, ...places];
+        } catch (e) { console.error('geo/search google failed:', e.message); }
+      }
+      const seen = new Set();
+      // Photon (and, when merged in, Google) can each return the same place more than once —
+      // de-dupe by label across both sources.
+      places = places.filter(p => { const k = p.label.toLowerCase(); if (seen.has(k)) return false; seen.add(k); return true; });
+      json(res, 200, { places: places.slice(0, 6) });
+    } catch (e) { console.error('geo/search failed:', e.message); json(res, 200, { places: [], error: 'search unavailable' }); }
+  },
+  'GET /api/geo/reverse': async (req, res) => {
+    const user = readSession(req);
+    if (!user) return json(res, 401, { error: 'not signed in' });
+    const q = new URL(req.url, 'http://x').searchParams;
+    const lat = Number(q.get('lat')), lon = Number(q.get('lon'));
+    if (!isFinite(lat) || !isFinite(lon)) return json(res, 400, { error: 'lat/lon required' });
+    try {
+      const rparams = { lat: String(lat), lon: String(lon) };
+      const rlang = photonLang(req); if (rlang) rparams.lang = rlang;
+      const url = 'https://photon.komoot.io/reverse?' + new URLSearchParams(rparams);
+      const r = await fetch(url, { headers: { 'User-Agent': GEO_UA }, signal: AbortSignal.timeout(8000) });
+      const data = await r.json();
+      const label = placeLabelFrom(data.features?.[0]?.properties);
+      if (!label) return json(res, 404, { error: 'not found' });
+      json(res, 200, { place: { label, lat, lon } });
+    } catch (e) { console.error('geo/reverse failed:', e.message); json(res, 502, { error: 'reverse geocoding unavailable' }); }
+  },
+
   /* ---------- alpha waitlist (public, cross-origin from the landing page) ---------- */
   // Preflight for the one browser-originated cross-origin POST this API answers.
   'OPTIONS /api/alpha/apply': async (req, res) => { res.writeHead(204, corsHeaders(req)); res.end(); },
@@ -1224,41 +1493,94 @@ const routes = {
   // Unlike alpha/apply this requires a session — coach status attaches to an existing account,
   // it isn't a new-signup gate. Re-submitting while pending/approved updates the existing
   // request instead of piling up duplicates, same idea as alpha/apply's email-keyed dedup.
+  // The caller's own current application, if any — lets the frontend gate the form (never
+  // even show it while a request is pending) instead of relying only on the POST rejecting
+  // a second submit after the fact.
+  'GET /api/coach/apply/status': async (req, res) => {
+    const user = readSession(req);
+    if (!user) return json(res, 401, { error: 'not signed in' });
+    const pending = db.coachRequests.some(r => r.userId === user.id && r.status === 'pending');
+    json(res, 200, { pending });
+  },
   'POST /api/coach/apply': async (req, res) => {
     const user = readSession(req);
     if (!user) return json(res, 401, { error: 'not signed in' });
     if (user.coach) return json(res, 400, { error: 'already a coach' });
+    // Once a request is pending, block a second one outright rather than silently merging —
+    // the frontend already hides the form in this state; this is the backstop for a stale
+    // tab, a second device, or a double-tapped submit landing as two in-flight requests.
+    const existing = db.coachRequests.find(r => r.userId === user.id && r.status !== 'dismissed');
+    if (existing?.status === 'pending') return json(res, 400, { error: 'you already have a pending coach application' });
     const body = await readBody(req);
     const experience = String(body.experience || '').trim().slice(0, 500);
     const certifications = String(body.certifications || '').trim().slice(0, 500);
     const message = String(body.message || '').trim().slice(0, 500);
     if (!experience) return json(res, 400, { error: 'tell us about your coaching experience' });
-    const existing = db.coachRequests.find(r => r.userId === user.id && r.status !== 'dismissed');
     // Proof document (a certification, an ID) — required; a data: URL same shape as
     // social/upload's own photo body, just with a document-specific mime set (PDFs included).
-    // Re-submitting with a new file replaces the old one on disk; re-submitting without one
-    // (editing just the text fields) keeps whatever document is already on file.
     const raw = String(body.documentDataUrl || '');
     const m = raw ? /^data:(application\/pdf|image\/jpeg|image\/png);base64,([a-zA-Z0-9+/=]+)$/.exec(raw) : null;
     if (raw && !m) return json(res, 400, { error: 'unsupported document format — PDF, JPEG or PNG only' });
-    if (!m && !existing?.documentFile) return json(res, 400, { error: 'attach a document proving you’re a trainer/coach' });
-    const row = existing || { id: crypto.randomBytes(8).toString('base64url'), userId: user.id, created: new Date().toISOString() };
-    row.experience = experience; row.certifications = certifications; row.message = message;
-    row.status = 'pending';
-    if (existing) row.updated = new Date().toISOString();
-    if (m) {
-      const buf = Buffer.from(m[2], 'base64');
-      if (buf.length > MAX_DOCUMENT_BYTES) return json(res, 413, { error: 'document too large' });
-      if (row.documentFile) fs.unlink(path.join(uploadsDir(user.id), row.documentFile), () => {});
-      const file = 'coachdoc-' + crypto.randomBytes(10).toString('base64url') + '.' + DOCUMENT_MIME[m[1]];
-      fs.mkdirSync(uploadsDir(user.id), { recursive: true });
-      fs.writeFileSync(path.join(uploadsDir(user.id), file), buf);
-      row.documentFile = file;
-    }
-    if (!existing) db.coachRequests.push(row);
+    if (!m) return json(res, 400, { error: 'attach a document proving you’re a trainer/coach' });
+    const buf = Buffer.from(m[2], 'base64');
+    if (buf.length > MAX_DOCUMENT_BYTES) return json(res, 413, { error: 'document too large' });
+    const file = 'coachdoc-' + crypto.randomBytes(10).toString('base64url') + '.' + DOCUMENT_MIME[m[1]];
+    fs.mkdirSync(uploadsDir(user.id), { recursive: true });
+    fs.writeFileSync(path.join(uploadsDir(user.id), file), buf);
+    const row = { id: crypto.randomBytes(8).toString('base64url'), userId: user.id, experience, certifications, message, status: 'pending', created: new Date().toISOString(), documentFile: file };
+    db.coachRequests.push(row);
     saveDb();
     audit(req, 'coach.apply', { user });
     json(res, 200, { ok: true });
+  },
+
+  /* ---------- personal-training marketplace (coach visibility + rate) ---------- */
+  // A coach's box (roster, WOD, leaderboard) and their personal-training listing are two
+  // independent things — someone can run a box without ever appearing here, or vice versa
+  // once boxes stop being the only reason to be a coach. Off by default even once approved:
+  // this is a second, deliberate opt-in, not implied by coach:true.
+  'POST /api/coach/visibility': async (req, res) => {
+    const coach = requireCoach(req, res); if (!coach) return;
+    const body = await readBody(req);
+    const rate = body.hourlyRate === null || body.hourlyRate === undefined || body.hourlyRate === ''
+      ? null : Math.max(0, Math.round(Number(body.hourlyRate) * 100) / 100);
+    if (rate !== null && !isFinite(rate)) return json(res, 400, { error: 'invalid rate' });
+    if (body.visible && rate === null) return json(res, 400, { error: 'set an hourly rate before listing yourself' });
+    let location;
+    try { location = parseLocation(body.location); } catch { return json(res, 400, { error: 'invalid location' }); }
+    coach.coachVisible = !!body.visible;
+    coach.hourlyRate = rate;
+    coach.coachLocation = location;
+    saveDb();
+    audit(req, 'coach.visibility.set', { user: coach, msg: (coach.coachVisible ? 'visible' : 'hidden') + ':' + rate });
+    json(res, 200, { user: publicUser(coach) });
+  },
+
+  // Any signed-in user browsing for a personal trainer — socialUser() rows, same redaction as
+  // every other cross-user listing in the app (no auth-only fields), filtered to coaches who
+  // opted in and aren't disabled.
+  // ?lat&lon: the browsing athlete's own search location (LocationPicker on the marketplace
+  // screen — never their saved profile location, this is just "search near here" for this
+  // one request). When given, coaches without a location, or farther than
+  // MARKETPLACE_RADIUS_KM away, are left out entirely rather than merely sorted last — "no te
+  // salgan demasiado lejos a no ser que cambies la loc" — and each row carries its own
+  // distanceKm so the card can show it. With no lat/lon (detection hasn't resolved yet, or
+  // was denied) the listing falls back to unfiltered, as before.
+  'GET /api/coaches/marketplace': async (req, res) => {
+    const me = readSession(req);
+    if (!me) return json(res, 401, { error: 'not signed in' });
+    const q = new URL(req.url, 'http://x').searchParams;
+    const lat = Number(q.get('lat')), lon = Number(q.get('lon'));
+    const hasOrigin = isFinite(lat) && isFinite(lon);
+    let coaches = db.users.filter(u => u.coach && u.coachVisible && !u.disabled).map(socialUser);
+    if (hasOrigin) {
+      coaches = coaches
+        .filter(c => c.coachLocation)
+        .map(c => ({ ...c, distanceKm: Math.round(kmBetween(lat, lon, c.coachLocation.lat, c.coachLocation.lon)) }))
+        .filter(c => c.distanceKm <= MARKETPLACE_RADIUS_KM)
+        .sort((a, b) => a.distanceKm - b.distanceKm);
+    }
+    json(res, 200, { coaches, radiusKm: hasOrigin ? MARKETPLACE_RADIUS_KM : null });
   },
 
   /* ---------- bug reports (alpha issue tracker) ---------- */
@@ -2099,6 +2421,10 @@ div{max-width:360px}h1{font-size:20px;margin:0 0 8px}p{color:#9db8a8;line-height
     applicant.coach = true;
     saveDb();
     audit(req, 'admin.coach.approve', { user: admin, target: applicant });
+    // Same real-time path as rank:changed/anticheat:* — an already-open session picks up the
+    // new coach flag immediately (Settings.jsx's card swap) instead of waiting for whatever
+    // unrelated action next happens to call refreshUser().
+    wsSend(applicant.id, { type: 'coach:approved' });
     json(res, 200, { ok: true });
   },
   'POST /api/admin/coach-requests/dismiss': async (req, res) => {
@@ -2109,6 +2435,66 @@ div{max-width:360px}h1{font-size:20px;margin:0 0 8px}p{color:#9db8a8;line-height
     reqRow.status = 'dismissed';
     saveDb();
     audit(req, 'admin.coach.dismiss', { user: admin, msg: reqRow.userId });
+    json(res, 200, { ok: true });
+  },
+
+  /* ---------- box requests (admin side) ---------- */
+  'GET /api/admin/box-requests': async (req, res) => {
+    if (!requireAdmin(req, res)) return;
+    const requests = [...db.boxRequests].reverse().map(r => {
+      const u = db.users.find(x => x.id === r.coachId);
+      return { ...r, coachName: u?.name || null, coachEmail: u?.email || null };
+    });
+    json(res, 200, { requests });
+  },
+  // Serves a pending request's cover image for admin preview — same narrow-scope reasoning as
+  // GET /api/admin/coach-requests/document (a dedicated route rather than widening
+  // GET /api/uploads' visibility rule to admins).
+  'GET /api/admin/box-requests/image': async (req, res) => {
+    if (!requireAdmin(req, res)) return;
+    const q = new URL(req.url, 'http://x').searchParams;
+    const reqRow = db.boxRequests.find(r => r.id === (q.get('id') || ''));
+    if (!reqRow || !reqRow.imageFile) return json(res, 404, { error: 'not found' });
+    const ext = reqRow.imageFile.slice(reqRow.imageFile.lastIndexOf('.') + 1);
+    const mime = Object.entries(UPLOAD_MIME).find(([, e]) => e === ext)?.[0] || 'application/octet-stream';
+    fs.readFile(path.join(uploadsDir(reqRow.coachId), reqRow.imageFile), (err, buf) => {
+      if (err) return json(res, 404, { error: 'not found' });
+      res.writeHead(200, { 'Content-Type': mime, 'Cache-Control': 'private, max-age=0' });
+      res.end(buf);
+    });
+  },
+  // Approval is what actually creates the box — the image file was already written to the
+  // coach's own uploads dir at request time, so this just references the same filename rather
+  // than copying it.
+  'POST /api/admin/box-requests/approve': async (req, res) => {
+    const admin = requireAdmin(req, res); if (!admin) return;
+    const body = await readBody(req);
+    const reqRow = db.boxRequests.find(r => r.id === body.id);
+    if (!reqRow) return json(res, 404, { error: 'no such request' });
+    if (reqRow.status !== 'pending') return json(res, 400, { error: 'already reviewed' });
+    reqRow.status = 'approved';
+    reqRow.reviewedBy = admin.id;
+    reqRow.reviewedAt = new Date().toISOString();
+    const box = {
+      id: crypto.randomBytes(8).toString('base64url'), coachId: reqRow.coachId,
+      title: reqRow.title, description: reqRow.description, imageFile: reqRow.imageFile || null,
+      location: reqRow.location || null, created: new Date().toISOString(),
+    };
+    db.boxes.push(box);
+    saveDb();
+    audit(req, 'admin.box.approve', { user: admin, msg: reqRow.title });
+    wsSend(reqRow.coachId, { type: 'box:reviewed' });
+    json(res, 200, { ok: true, box });
+  },
+  'POST /api/admin/box-requests/dismiss': async (req, res) => {
+    const admin = requireAdmin(req, res); if (!admin) return;
+    const body = await readBody(req);
+    const reqRow = db.boxRequests.find(r => r.id === body.id);
+    if (!reqRow) return json(res, 404, { error: 'no such request' });
+    reqRow.status = 'dismissed';
+    saveDb();
+    audit(req, 'admin.box.dismiss', { user: admin, msg: reqRow.title });
+    wsSend(reqRow.coachId, { type: 'box:reviewed' });
     json(res, 200, { ok: true });
   },
 
@@ -2732,16 +3118,53 @@ div{max-width:360px}h1{font-size:20px;margin:0 0 8px}p{color:#9db8a8;line-height
   },
 
   /* ---------- coach + box (WODbuster-style: a coach's roster of athletes) ---------- */
-  'POST /api/coach/box': async (req, res) => {
+  // A coach no longer creates a box directly — they request one (title, description, an
+  // optional cover image) and an admin reviews it, same shape as becoming a coach in the
+  // first place. A coach can hold several boxes, so this never dedupes against an existing
+  // request the way coach/apply does — each submission is its own row.
+  'POST /api/coach/box-request': async (req, res) => {
     const coach = requireCoach(req, res); if (!coach) return;
     const body = await readBody(req);
-    const name = String(body.name || '').trim().slice(0, 60);
-    if (!name) return json(res, 400, { error: 'name required' });
-    const box = { id: crypto.randomBytes(8).toString('base64url'), name, coachId: coach.id, created: new Date().toISOString() };
-    db.boxes.push(box);
+    const title = String(body.title || '').trim().slice(0, 60);
+    const description = String(body.description || '').trim().slice(0, 500);
+    if (!title) return json(res, 400, { error: 'title required' });
+    // A box is a physical place athletes show up to — unlike a coach's own marketplace
+    // location (optional, only matters if they opt into being found), this is required so
+    // there's ever an answer to "where is this box". In `off` mode (BOX_LOCATION_MODE) it's
+    // just whatever text the coach typed, no geocoding involved — no lat/lon to validate or
+    // to later show a distance/map with, but still a real answer to "where is it".
+    let location;
+    if (BOX_LOCATION_MODE === 'off') {
+      const label = String((body.location && body.location.label) || body.location || '').trim().slice(0, 200);
+      location = label ? { label, lat: null, lon: null } : null;
+    } else {
+      try { location = parseLocation(body.location); } catch { return json(res, 400, { error: 'invalid location' }); }
+    }
+    if (!location) return json(res, 400, { error: 'location required' });
+    const row = { id: crypto.randomBytes(8).toString('base64url'), coachId: coach.id, title, description, location, status: 'pending', created: new Date().toISOString() };
+    const raw = String(body.imageDataUrl || '');
+    const m = raw ? /^data:(image\/jpeg|image\/png|image\/webp);base64,([a-zA-Z0-9+/=]+)$/.exec(raw) : null;
+    if (raw && !m) return json(res, 400, { error: 'unsupported image format — JPEG, PNG or WebP only' });
+    if (m) {
+      const buf = Buffer.from(m[2], 'base64');
+      if (buf.length > MAX_IMAGE_BYTES) return json(res, 413, { error: 'image too large' });
+      const file = 'boxreq-' + crypto.randomBytes(10).toString('base64url') + '.' + UPLOAD_MIME[m[1]];
+      fs.mkdirSync(uploadsDir(coach.id), { recursive: true });
+      fs.writeFileSync(path.join(uploadsDir(coach.id), file), buf);
+      row.imageFile = file;
+    }
+    db.boxRequests.push(row);
     saveDb();
-    audit(req, 'coach.box.create', { user: coach, msg: box.name });
-    json(res, 200, { box });
+    audit(req, 'coach.box.request', { user: coach, msg: title });
+    json(res, 200, { request: row });
+  },
+
+  // The coach's own view of what they've asked for — pending/approved/dismissed, so "how many
+  // boxes do I already have, and what's still waiting on review" is answerable from one call.
+  'GET /api/coach/box-requests': async (req, res) => {
+    const coach = requireCoach(req, res); if (!coach) return;
+    const requests = db.boxRequests.filter(r => r.coachId === coach.id).sort((a, b) => new Date(b.created) - new Date(a.created));
+    json(res, 200, { requests });
   },
 
   'GET /api/coach/boxes': async (req, res) => {
@@ -2753,25 +3176,149 @@ div{max-width:360px}h1{font-size:20px;margin:0 0 8px}p{color:#9db8a8;line-height
   },
 
   'GET /api/coach/box': async (req, res) => {
-    const coach = requireCoach(req, res); if (!coach) return;
+    const me = readSession(req);
+    if (!me) return json(res, 401, { error: 'not signed in' });
     const q = new URL(req.url, 'http://x').searchParams;
     const box = db.boxes.find(b => b.id === (q.get('boxId') || ''));
+    if (!box || !canManageBox(me.id, box.id)) return json(res, 404, { error: 'not found' });
+    json(res, 200, { box, isOwner: box.coachId === me.id });
+  },
+
+  // Editing an existing box's own fields — owner-only (staff help run it day-to-day, but
+  // renaming/relocating/rebranding the box itself is a box-admin action, same split as
+  // member-removal and invite management). Same validation as filing the original box request:
+  // title/description trimmed, location required and shaped per BOX_LOCATION_MODE, image
+  // optional (data URL, JPEG/PNG/WebP, size-capped) and only touched if one is actually sent —
+  // omitting imageDataUrl keeps the current cover, sending `removeImage: true` clears it.
+  'POST /api/coach/box/update': async (req, res) => {
+    const coach = requireCoach(req, res); if (!coach) return;
+    const body = await readBody(req);
+    const boxId = String(body.boxId || '');
+    const box = db.boxes.find(b => b.id === boxId);
     if (!box || box.coachId !== coach.id) return json(res, 404, { error: 'not found' });
+    const title = String(body.title || '').trim().slice(0, 60);
+    const description = String(body.description || '').trim().slice(0, 500);
+    if (!title) return json(res, 400, { error: 'title required' });
+    let location;
+    if (BOX_LOCATION_MODE === 'off') {
+      const label = String((body.location && body.location.label) || body.location || '').trim().slice(0, 200);
+      location = label ? { label, lat: null, lon: null } : null;
+    } else {
+      try { location = parseLocation(body.location); } catch { return json(res, 400, { error: 'invalid location' }); }
+    }
+    if (!location) return json(res, 400, { error: 'location required' });
+    box.title = title;
+    box.description = description;
+    box.location = location;
+    if (body.removeImage) {
+      box.imageFile = null;
+    } else {
+      const raw = String(body.imageDataUrl || '');
+      const m = raw ? /^data:(image\/jpeg|image\/png|image\/webp);base64,([a-zA-Z0-9+/=]+)$/.exec(raw) : null;
+      if (raw && !m) return json(res, 400, { error: 'unsupported image format — JPEG, PNG or WebP only' });
+      if (m) {
+        const buf = Buffer.from(m[2], 'base64');
+        if (buf.length > MAX_IMAGE_BYTES) return json(res, 413, { error: 'image too large' });
+        const file = 'box-' + crypto.randomBytes(10).toString('base64url') + '.' + UPLOAD_MIME[m[1]];
+        fs.mkdirSync(uploadsDir(coach.id), { recursive: true });
+        fs.writeFileSync(path.join(uploadsDir(coach.id), file), buf);
+        box.imageFile = file;
+      }
+    }
+    saveDb();
+    audit(req, 'coach.box.update', { user: coach, msg: title });
     json(res, 200, { box });
+  },
+
+  // A box's cover image, visible to its own coach and current members (not the public —
+  // there's no "browse boxes" surface yet, only the personal-training marketplace above).
+  'GET /api/box/image': async (req, res) => {
+    const me = readSession(req);
+    if (!me) return json(res, 401, { error: 'not signed in' });
+    const q = new URL(req.url, 'http://x').searchParams;
+    const box = db.boxes.find(b => b.id === (q.get('boxId') || ''));
+    if (!box || !box.imageFile) return json(res, 404, { error: 'not found' });
+    if (!canManageBox(me.id, box.id) && !isMemberOfBox(me.id, box.id)) return json(res, 404, { error: 'not found' });
+    const ext = box.imageFile.slice(box.imageFile.lastIndexOf('.') + 1);
+    const mime = Object.entries(UPLOAD_MIME).find(([, e]) => e === ext)?.[0] || 'application/octet-stream';
+    fs.readFile(path.join(uploadsDir(box.coachId), box.imageFile), (err, buf) => {
+      if (err) return json(res, 404, { error: 'not found' });
+      res.writeHead(200, { 'Content-Type': mime, 'Cache-Control': 'private, max-age=31536000, immutable' });
+      res.end(buf);
+    });
   },
 
   // Athlete roster — stats reused wholesale from the existing social/leaderboard machinery
   // (statsFor, currentStreakDays) rather than a third independent implementation.
   'GET /api/coach/box/roster': async (req, res) => {
-    const coach = requireCoach(req, res); if (!coach) return;
+    const me = readSession(req);
+    if (!me) return json(res, 401, { error: 'not signed in' });
     const boxId = new URL(req.url, 'http://x').searchParams.get('boxId') || '';
-    if (!isCoachOfBox(coach.id, boxId)) return json(res, 404, { error: 'not found' });
+    if (!canManageBox(me.id, boxId)) return json(res, 404, { error: 'not found' });
     const roster = db.boxMemberships.filter(m => m.boxId === boxId).map(m => {
       const u = db.users.find(x => x.id === m.userId);
       if (!u) return null;
       return { ...socialUser(u), joined: m.joined, streakDays: currentStreakDays(u.id), ...statsFor(u.id) };
     }).filter(Boolean);
     json(res, 200, { roster });
+  },
+
+  // Search real accounts by @username, for the "add staff" picker — never by email/display
+  // name (impersonation-prone, and email is private). Staff need not be approved marketplace
+  // coaches themselves (day-to-day box help shouldn't require clearing that bar), so this is
+  // open to any signed-in user's search, not gated behind requireCoach.
+  'GET /api/users/search': async (req, res) => {
+    const me = readSession(req);
+    if (!me) return json(res, 401, { error: 'not signed in' });
+    const raw = (new URL(req.url, 'http://x').searchParams.get('q') || '').trim().replace(/^@/, '').toLowerCase();
+    if (raw.length < 2) return json(res, 200, { users: [] });
+    const users = db.users
+      .filter(u => !u.disabled && u.username && u.username.toLowerCase().includes(raw))
+      .slice(0, 8)
+      .map(socialUser);
+    json(res, 200, { users });
+  },
+
+  'GET /api/coach/box/staff': async (req, res) => {
+    const me = readSession(req);
+    if (!me) return json(res, 401, { error: 'not signed in' });
+    const boxId = new URL(req.url, 'http://x').searchParams.get('boxId') || '';
+    if (!canManageBox(me.id, boxId)) return json(res, 404, { error: 'not found' });
+    const staff = db.boxStaff.filter(s => s.boxId === boxId).map(s => {
+      const u = db.users.find(x => x.id === s.userId);
+      return u ? { ...socialUser(u), added: s.added } : null;
+    }).filter(Boolean);
+    json(res, 200, { staff });
+  },
+
+  // Owner-only — adding/removing staff is itself a box-admin action, not a staff privilege.
+  'POST /api/coach/box/staff/add': async (req, res) => {
+    const coach = requireCoach(req, res); if (!coach) return;
+    const body = await readBody(req);
+    const boxId = String(body.boxId || '');
+    if (!isCoachOfBox(coach.id, boxId)) return json(res, 404, { error: 'not found' });
+    const target = db.users.find(u => u.id === body.userId);
+    if (!target || target.disabled) return json(res, 404, { error: 'user not found' });
+    const box = db.boxes.find(b => b.id === boxId);
+    if (box.coachId === target.id) return json(res, 400, { error: 'already the box coach' });
+    if (db.boxStaff.some(s => s.boxId === boxId && s.userId === target.id)) return json(res, 400, { error: 'already staff' });
+    db.boxStaff.push({ id: crypto.randomBytes(8).toString('base64url'), boxId, userId: target.id, added: new Date().toISOString(), addedBy: coach.id });
+    saveDb();
+    audit(req, 'coach.box.staff.add', { user: coach, msg: target.id });
+    json(res, 200, { ok: true });
+  },
+
+  'POST /api/coach/box/staff/remove': async (req, res) => {
+    const coach = requireCoach(req, res); if (!coach) return;
+    const body = await readBody(req);
+    const boxId = String(body.boxId || '');
+    if (!isCoachOfBox(coach.id, boxId)) return json(res, 404, { error: 'not found' });
+    const before = db.boxStaff.length;
+    db.boxStaff = db.boxStaff.filter(s => !(s.boxId === boxId && s.userId === body.userId));
+    if (db.boxStaff.length === before) return json(res, 404, { error: 'not staff' });
+    saveDb();
+    audit(req, 'coach.box.staff.remove', { user: coach, msg: body.userId });
+    json(res, 200, { ok: true });
   },
 
   'POST /api/coach/box/member/remove': async (req, res) => {
@@ -2844,9 +3391,20 @@ div{max-width:360px}h1{font-size:20px;margin:0 0 8px}p{color:#9db8a8;line-height
       const box = db.boxes.find(b => b.id === m.boxId);
       if (!box) return null;
       const coach = db.users.find(u => u.id === box.coachId);
-      return { ...box, coachName: coach?.name || null };
+      return { ...box, coachName: coach?.name || null, role: 'member' };
     }).filter(Boolean);
-    json(res, 200, { boxes });
+    // Boxes I help staff — a distinct role tag so the client can route these to the coach-side
+    // box view (CoachBox.jsx) instead of the athlete WOD/leaderboard views.
+    const staffBoxes = db.boxStaff.filter(s => s.userId === me.id).map(s => {
+      const box = db.boxes.find(b => b.id === s.boxId);
+      if (!box) return null;
+      const coach = db.users.find(u => u.id === box.coachId);
+      return { ...box, coachName: coach?.name || null, role: 'staff' };
+    }).filter(Boolean);
+    // Boxes I own — an owner isn't automatically a "member" (no boxMemberships row) but should
+    // still see their own box's classes to book into, same as staff can.
+    const ownedBoxes = db.boxes.filter(b => b.coachId === me.id).map(box => ({ ...box, coachName: me.name || null, role: 'owner' }));
+    json(res, 200, { boxes: [...boxes, ...staffBoxes, ...ownedBoxes] });
   },
 
   // A coach's view of one athlete's actual training — deliberately richer than the social
@@ -2855,10 +3413,11 @@ div{max-width:360px}h1{font-size:20px;margin:0 0 8px}p{color:#9db8a8;line-height
   // so this returns full entries (target/plan/each set's weight+reps+done) via its own
   // serializer, kept entirely separate so the social feed's privacy contract is untouched.
   'GET /api/coach/athlete/workouts': async (req, res) => {
-    const coach = requireCoach(req, res); if (!coach) return;
+    const me = readSession(req);
+    if (!me) return json(res, 401, { error: 'not signed in' });
     const q = new URL(req.url, 'http://x').searchParams;
     const athleteId = q.get('athleteId') || '';
-    if (!isCoachOfAthlete(coach.id, athleteId)) return json(res, 404, { error: 'not found' });
+    if (!canViewAthlete(me.id, athleteId)) return json(res, 404, { error: 'not found' });
     const days = Math.min(Math.max(parseInt(q.get('days') || '90', 10) || 90, 1), 365);
     const cutoff = Date.now() - days * 86400000;
     const workouts = (readState(athleteId)?.workouts || [])
@@ -2878,23 +3437,24 @@ div{max-width:360px}h1{font-size:20px;margin:0 0 8px}p{color:#9db8a8;line-height
   // athleteId: null means "whole box," resolved against CURRENT membership at read time below —
   // never fanned out / snapshotted at assign time.
   'POST /api/coach/box/assign-routine': async (req, res) => {
-    const coach = requireCoach(req, res); if (!coach) return;
+    const me = readSession(req);
+    if (!me) return json(res, 401, { error: 'not signed in' });
     const body = await readBody(req);
     const boxId = String(body.boxId || '');
-    if (!isCoachOfBox(coach.id, boxId)) return json(res, 404, { error: 'not found' });
+    if (!canManageBox(me.id, boxId)) return json(res, 404, { error: 'not found' });
     const routine = body.routine;
     if (!routine || typeof routine !== 'object' || !routine.name) return json(res, 400, { error: 'routine required' });
     const athleteId = body.athleteId ? String(body.athleteId) : null;
     if (athleteId && !isMemberOfBox(athleteId, boxId)) return json(res, 404, { error: 'not a member of this box' });
     const assignment = {
       id: crypto.randomBytes(8).toString('base64url'),
-      boxId, coachId: coach.id, athleteId,
+      boxId, coachId: me.id, athleteId,
       routine: { ...routine, id: crypto.randomBytes(8).toString('base64url') },
       created: new Date().toISOString(), appliedBy: {},
     };
     db.routineAssignments.push(assignment);
     saveDb();
-    audit(req, 'coach.routine.assign', { user: coach, msg: (athleteId || 'whole box') + ':' + routine.name });
+    audit(req, 'coach.routine.assign', { user: me, msg: (athleteId || 'whole box') + ':' + routine.name });
     json(res, 200, { assignment });
   },
 
@@ -2934,10 +3494,11 @@ div{max-width:360px}h1{font-size:20px;margin:0 0 8px}p{color:#9db8a8;line-height
   // One WOD per box per day — re-submitting the same date edits it in place rather than
   // erroring, same low-friction "edit by re-submitting" idiom as alpha/apply's dedup.
   'POST /api/coach/box/wod': async (req, res) => {
-    const coach = requireCoach(req, res); if (!coach) return;
+    const me = readSession(req);
+    if (!me) return json(res, 401, { error: 'not signed in' });
     const body = await readBody(req);
     const boxId = String(body.boxId || '');
-    if (!isCoachOfBox(coach.id, boxId)) return json(res, 404, { error: 'not found' });
+    if (!canManageBox(me.id, boxId)) return json(res, 404, { error: 'not found' });
     const date = String(body.date || '').trim();
     const name = String(body.name || '').trim().slice(0, 80);
     const scoringType = ['time', 'reps', 'weight', 'rounds'].includes(body.scoringType) ? body.scoringType : 'reps';
@@ -2946,9 +3507,9 @@ div{max-width:360px}h1{font-size:20px;margin:0 0 8px}p{color:#9db8a8;line-height
     const description = String(body.description || '').trim().slice(0, 1000);
     let wod = db.wods.find(w => w.boxId === boxId && w.date === date);
     if (wod) { wod.name = name; wod.description = description; wod.scoringType = scoringType; }
-    else { wod = { id: crypto.randomBytes(8).toString('base64url'), boxId, date, name, description, scoringType, created: new Date().toISOString(), createdBy: coach.id }; db.wods.push(wod); }
+    else { wod = { id: crypto.randomBytes(8).toString('base64url'), boxId, date, name, description, scoringType, created: new Date().toISOString(), createdBy: me.id }; db.wods.push(wod); }
     saveDb();
-    audit(req, 'coach.wod.create', { user: coach, msg: date + ':' + name });
+    audit(req, 'coach.wod.create', { user: me, msg: date + ':' + name });
     json(res, 200, { wod });
   },
 
@@ -2958,7 +3519,7 @@ div{max-width:360px}h1{font-size:20px;margin:0 0 8px}p{color:#9db8a8;line-height
     const q = new URL(req.url, 'http://x').searchParams;
     const boxId = q.get('boxId') || '';
     const box = db.boxes.find(b => b.id === boxId);
-    if (!box || !(box.coachId === me.id || isMemberOfBox(me.id, boxId))) return json(res, 404, { error: 'not found' });
+    if (!box || !(canManageBox(me.id, boxId) || isMemberOfBox(me.id, boxId))) return json(res, 404, { error: 'not found' });
     const date = q.get('date') || isoOf(new Date());
     const wod = db.wods.find(w => w.boxId === boxId && w.date === date) || null;
     const myResult = wod ? db.wodResults.find(r => r.wodId === wod.id && r.athleteId === me.id) || null : null;
@@ -2994,7 +3555,7 @@ div{max-width:360px}h1{font-size:20px;margin:0 0 8px}p{color:#9db8a8;line-height
     const q = new URL(req.url, 'http://x').searchParams;
     const boxId = q.get('boxId') || '';
     const box = db.boxes.find(b => b.id === boxId);
-    if (!box || !(box.coachId === me.id || isMemberOfBox(me.id, boxId))) return json(res, 404, { error: 'not found' });
+    if (!box || !(canManageBox(me.id, boxId) || isMemberOfBox(me.id, boxId))) return json(res, 404, { error: 'not found' });
     const date = q.get('date') || isoOf(new Date());
     const wod = db.wods.find(w => w.boxId === boxId && w.date === date) || null;
     const memberIds = db.boxMemberships.filter(m => m.boxId === boxId).map(m => m.userId);
@@ -3011,6 +3572,579 @@ div{max-width:360px}h1{font-size:20px;margin:0 0 8px}p{color:#9db8a8;line-height
       return ascending ? a.value - b.value : b.value - a.value;
     });
     json(res, 200, { wod, leaderboard: rows });
+  },
+
+  /* ---------- classes & schedule (WODbuster-style) ---------- */
+  // A class type is a fully custom, per-box preset (name, icon, color, room, duration,
+  // capacity) with no schedule attached — "CrossFit, 60min, cap 12" in whatever icon/color the
+  // coach picks, not a fixed discipline enum (a yoga studio and a CrossFit box want different
+  // visual vocabularies). A coach picks one when adding a class straight to a real date (below)
+  // — it's just a preset that prefills the fields, never referenced by id afterwards, so
+  // deleting or editing a type never changes a class already created from it.
+  'POST /api/coach/box/class-types': async (req, res) => {
+    const me = readSession(req);
+    if (!me) return json(res, 401, { error: 'not signed in' });
+    const body = await readBody(req);
+    const boxId = String(body.boxId || '');
+    if (!canManageBox(me.id, boxId)) return json(res, 404, { error: 'not found' });
+    const name = String(body.name || '').trim().slice(0, 60);
+    const durationMin = Math.max(5, Math.min(360, Math.round(Number(body.durationMin)) || 60));
+    const capacity = Math.max(1, Math.min(500, Math.round(Number(body.capacity)) || 12));
+    const icon = CLASS_ICONS.has(body.icon) ? body.icon : 'sparkles';
+    const color = HEX_COLOR_RE.test(body.color || '') ? body.color : '#a3e635';
+    const room = String(body.room || '').trim().slice(0, 40);
+    if (!name) return json(res, 400, { error: 'name required' });
+    const type = { id: crypto.randomBytes(8).toString('base64url'), boxId, name, icon, color, durationMin, capacity, room, created: new Date().toISOString() };
+    db.classTypes.push(type);
+    saveDb();
+    audit(req, 'coach.class.type.create', { user: me, msg: name });
+    json(res, 200, { type });
+  },
+
+  'GET /api/coach/box/class-types': async (req, res) => {
+    const me = readSession(req);
+    if (!me) return json(res, 401, { error: 'not signed in' });
+    const boxId = new URL(req.url, 'http://x').searchParams.get('boxId') || '';
+    if (!canManageBox(me.id, boxId)) return json(res, 404, { error: 'not found' });
+    const types = db.classTypes.filter(t => t.boxId === boxId).sort((a, b) => a.created.localeCompare(b.created));
+    json(res, 200, { types });
+  },
+
+  // Only affects future placements — a type carries no reference back from any template or
+  // session already built from it (see the note above), so editing one is always safe.
+  'POST /api/coach/box/class-types/update': async (req, res) => {
+    const me = readSession(req);
+    if (!me) return json(res, 401, { error: 'not signed in' });
+    const body = await readBody(req);
+    const boxId = String(body.boxId || '');
+    if (!canManageBox(me.id, boxId)) return json(res, 404, { error: 'not found' });
+    const type = db.classTypes.find(t => t.id === body.id && t.boxId === boxId);
+    if (!type) return json(res, 404, { error: 'not found' });
+    const name = String(body.name || '').trim().slice(0, 60);
+    if (!name) return json(res, 400, { error: 'name required' });
+    type.name = name;
+    type.durationMin = Math.max(5, Math.min(360, Math.round(Number(body.durationMin)) || 60));
+    type.capacity = Math.max(1, Math.min(500, Math.round(Number(body.capacity)) || 12));
+    type.icon = CLASS_ICONS.has(body.icon) ? body.icon : type.icon;
+    type.color = HEX_COLOR_RE.test(body.color || '') ? body.color : type.color;
+    type.room = String(body.room || '').trim().slice(0, 40);
+    saveDb();
+    audit(req, 'coach.class.type.update', { user: me, msg: type.id });
+    json(res, 200, { type });
+  },
+
+  'POST /api/coach/box/class-types/delete': async (req, res) => {
+    const me = readSession(req);
+    if (!me) return json(res, 401, { error: 'not signed in' });
+    const body = await readBody(req);
+    const boxId = String(body.boxId || '');
+    if (!canManageBox(me.id, boxId)) return json(res, 404, { error: 'not found' });
+    const before = db.classTypes.length;
+    db.classTypes = db.classTypes.filter(t => !(t.id === body.id && t.boxId === boxId));
+    if (db.classTypes.length === before) return json(res, 404, { error: 'not found' });
+    saveDb();
+    audit(req, 'coach.class.type.delete', { user: me, msg: body.id });
+    json(res, 200, { ok: true });
+  },
+
+  // A class is added straight to a real calendar date — never an implicit "every week
+  // forever" recurrence. If a coach wants a day or a week to repeat, they save it as a
+  // template (below) and apply it to another date/week on purpose; nothing repeats on its
+  // own. Same canManageBox gate as everything else a box's day-to-day running needs.
+  'POST /api/coach/box/classes/create': async (req, res) => {
+    const me = readSession(req);
+    if (!me) return json(res, 401, { error: 'not signed in' });
+    const body = await readBody(req);
+    const boxId = String(body.boxId || '');
+    if (!canManageBox(me.id, boxId)) return json(res, 404, { error: 'not found' });
+    const date = String(body.date || '');
+    const startTime = String(body.startTime || '');
+    const name = String(body.name || '').trim().slice(0, 60);
+    const durationMin = Math.max(5, Math.min(360, Math.round(Number(body.durationMin)) || 60));
+    const capacity = Math.max(1, Math.min(500, Math.round(Number(body.capacity)) || 12));
+    const icon = CLASS_ICONS.has(body.icon) ? body.icon : 'sparkles';
+    const color = HEX_COLOR_RE.test(body.color || '') ? body.color : '#a3e635';
+    const room = String(body.room || '').trim().slice(0, 40);
+    if (!name) return json(res, 400, { error: 'name required' });
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return json(res, 400, { error: 'invalid date' });
+    if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(startTime)) return json(res, 400, { error: 'invalid start time (HH:MM)' });
+    const session = {
+      id: crypto.randomBytes(8).toString('base64url'), boxId, date, startTime, name, durationMin, capacity, icon, color, room,
+      exercises: [], coachId: db.boxes.find(b => b.id === boxId)?.coachId || null, created: new Date().toISOString(),
+    };
+    db.classSessions.push(session);
+    saveDb();
+    audit(req, 'coach.class.create', { user: me, msg: date + ' ' + startTime });
+    json(res, 200, { session });
+  },
+
+  // Removing a class also drops its bookings — the class stops existing, there is nothing
+  // left to hold a spot in.
+  'POST /api/coach/box/classes/remove': async (req, res) => {
+    const me = readSession(req);
+    if (!me) return json(res, 401, { error: 'not signed in' });
+    const body = await readBody(req);
+    const boxId = String(body.boxId || '');
+    if (!canManageBox(me.id, boxId)) return json(res, 404, { error: 'not found' });
+    const before = db.classSessions.length;
+    db.classSessions = db.classSessions.filter(s => !(s.id === body.id && s.boxId === boxId));
+    if (db.classSessions.length === before) return json(res, 404, { error: 'not found' });
+    db.classBookings = db.classBookings.filter(b => b.sessionId !== body.id);
+    saveDb();
+    audit(req, 'coach.class.remove', { user: me, msg: body.id });
+    json(res, 200, { ok: true });
+  },
+
+  // The exercises for one specific occurrence ("today's CrossFit WOD") — deliberately NOT
+  // part of a class type or a day/week template, since the schedule slot can repeat while the
+  // actual workout content is different every time. Free-form per entry (name the coach
+  // picked + whatever scheme text they typed, e.g. "21-15-9" or "5x5 @ 60kg") rather than a
+  // structured sets/reps object — a WOD's notation varies too much to force into one shape,
+  // and the exercise catalog itself lives only in the frontend (see exercises-data.js), so the
+  // backend just stores whatever the trusted coach client sends, capped and sanitized.
+  'POST /api/coach/box/classes/exercises': async (req, res) => {
+    const me = readSession(req);
+    if (!me) return json(res, 401, { error: 'not signed in' });
+    const body = await readBody(req);
+    const boxId = String(body.boxId || '');
+    if (!canManageBox(me.id, boxId)) return json(res, 404, { error: 'not found' });
+    const session = db.classSessions.find(s => s.id === body.sessionId && s.boxId === boxId);
+    if (!session) return json(res, 404, { error: 'not found' });
+    const exercises = (Array.isArray(body.exercises) ? body.exercises : []).slice(0, 40).map(e => ({
+      exerciseId: String(e.exerciseId || '').slice(0, 60),
+      name: String(e.name || '').trim().slice(0, 80),
+      scheme: String(e.scheme || '').trim().slice(0, 120),
+    })).filter(e => e.name);
+    session.exercises = exercises;
+    saveDb();
+    audit(req, 'coach.class.exercises', { user: me, msg: session.id + ':' + exercises.length });
+    json(res, 200, { exercises });
+  },
+
+  // A day template is a named snapshot of everything scheduled on one real date — "save this
+  // Monday" so it can be reapplied to any other date later without re-adding every hour by
+  // hand. A week template is the same idea for 7 consecutive dates at once (e.g. switching to
+  // a "summer" week). Both denormalize each slot's fields and never carry exercises (those
+  // stay per-occurrence, see above) — applying a template always REPLACES whatever the target
+  // date(s) already had, a deliberate "load this" action, not a merge.
+  'POST /api/coach/box/day-templates': async (req, res) => {
+    const me = readSession(req);
+    if (!me) return json(res, 401, { error: 'not signed in' });
+    const body = await readBody(req);
+    const boxId = String(body.boxId || '');
+    if (!canManageBox(me.id, boxId)) return json(res, 404, { error: 'not found' });
+    const name = String(body.name || '').trim().slice(0, 60);
+    const date = String(body.date || '');
+    if (!name) return json(res, 400, { error: 'name required' });
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return json(res, 400, { error: 'invalid date' });
+    const slots = db.classSessions.filter(s => s.boxId === boxId && s.date === date)
+      .map(s => ({ startTime: s.startTime, name: s.name, icon: s.icon, color: s.color, room: s.room, durationMin: s.durationMin, capacity: s.capacity }));
+    if (!slots.length) return json(res, 400, { error: 'nothing to save on this day' });
+    const dt = { id: crypto.randomBytes(8).toString('base64url'), boxId, name, slots, created: new Date().toISOString() };
+    db.dayTemplates.push(dt);
+    saveDb();
+    audit(req, 'coach.class.daytemplate.create', { user: me, msg: name });
+    json(res, 200, { template: dt });
+  },
+
+  'GET /api/coach/box/day-templates': async (req, res) => {
+    const me = readSession(req);
+    if (!me) return json(res, 401, { error: 'not signed in' });
+    const boxId = new URL(req.url, 'http://x').searchParams.get('boxId') || '';
+    if (!canManageBox(me.id, boxId)) return json(res, 404, { error: 'not found' });
+    const templates = db.dayTemplates.filter(t => t.boxId === boxId).sort((a, b) => a.created.localeCompare(b.created));
+    json(res, 200, { templates });
+  },
+
+  'POST /api/coach/box/day-templates/apply': async (req, res) => {
+    const me = readSession(req);
+    if (!me) return json(res, 401, { error: 'not signed in' });
+    const body = await readBody(req);
+    const boxId = String(body.boxId || '');
+    if (!canManageBox(me.id, boxId)) return json(res, 404, { error: 'not found' });
+    const dt = db.dayTemplates.find(t => t.id === body.id && t.boxId === boxId);
+    if (!dt) return json(res, 404, { error: 'not found' });
+    const date = String(body.date || '');
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return json(res, 400, { error: 'invalid date' });
+    const removedIds = db.classSessions.filter(s => s.boxId === boxId && s.date === date).map(s => s.id);
+    db.classSessions = db.classSessions.filter(s => !(s.boxId === boxId && s.date === date));
+    db.classBookings = db.classBookings.filter(b => !removedIds.includes(b.sessionId));
+    const coachId = db.boxes.find(b => b.id === boxId)?.coachId || null;
+    for (const s of dt.slots) {
+      db.classSessions.push({ id: crypto.randomBytes(8).toString('base64url'), boxId, date, startTime: s.startTime, name: s.name, icon: s.icon, color: s.color, room: s.room, durationMin: s.durationMin, capacity: s.capacity, exercises: [], coachId, created: new Date().toISOString() });
+    }
+    saveDb();
+    audit(req, 'coach.class.daytemplate.apply', { user: me, msg: dt.id + ':' + date });
+    json(res, 200, { count: dt.slots.length });
+  },
+
+  'POST /api/coach/box/day-templates/delete': async (req, res) => {
+    const me = readSession(req);
+    if (!me) return json(res, 401, { error: 'not signed in' });
+    const body = await readBody(req);
+    const boxId = String(body.boxId || '');
+    if (!canManageBox(me.id, boxId)) return json(res, 404, { error: 'not found' });
+    const before = db.dayTemplates.length;
+    db.dayTemplates = db.dayTemplates.filter(t => !(t.id === body.id && t.boxId === boxId));
+    if (db.dayTemplates.length === before) return json(res, 404, { error: 'not found' });
+    saveDb();
+    json(res, 200, { ok: true });
+  },
+
+  'POST /api/coach/box/week-templates': async (req, res) => {
+    const me = readSession(req);
+    if (!me) return json(res, 401, { error: 'not signed in' });
+    const body = await readBody(req);
+    const boxId = String(body.boxId || '');
+    if (!canManageBox(me.id, boxId)) return json(res, 404, { error: 'not found' });
+    const name = String(body.name || '').trim().slice(0, 60);
+    const weekStart = String(body.weekStart || '');
+    if (!name) return json(res, 400, { error: 'name required' });
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(weekStart)) return json(res, 400, { error: 'invalid week start' });
+    const days = [];
+    let any = false;
+    for (let i = 0; i < 7; i++) {
+      const d = new Date(weekStart + 'T00:00:00'); d.setDate(d.getDate() + i);
+      const date = isoOf(d);
+      const slots = db.classSessions.filter(s => s.boxId === boxId && s.date === date)
+        .map(s => ({ startTime: s.startTime, name: s.name, icon: s.icon, color: s.color, room: s.room, durationMin: s.durationMin, capacity: s.capacity }));
+      if (slots.length) any = true;
+      days.push(slots);
+    }
+    if (!any) return json(res, 400, { error: 'nothing to save this week' });
+    const wt = { id: crypto.randomBytes(8).toString('base64url'), boxId, name, days, created: new Date().toISOString() };
+    db.weekTemplates.push(wt);
+    saveDb();
+    audit(req, 'coach.class.weektemplate.create', { user: me, msg: name });
+    json(res, 200, { template: wt });
+  },
+
+  'GET /api/coach/box/week-templates': async (req, res) => {
+    const me = readSession(req);
+    if (!me) return json(res, 401, { error: 'not signed in' });
+    const boxId = new URL(req.url, 'http://x').searchParams.get('boxId') || '';
+    if (!canManageBox(me.id, boxId)) return json(res, 404, { error: 'not found' });
+    const templates = db.weekTemplates.filter(t => t.boxId === boxId).sort((a, b) => a.created.localeCompare(b.created));
+    json(res, 200, { templates });
+  },
+
+  // Replaces the target 7 dates (weekStart..weekStart+6) with the saved snapshot — switching
+  // to a different named week wholesale, not merging on top of whatever's there.
+  'POST /api/coach/box/week-templates/apply': async (req, res) => {
+    const me = readSession(req);
+    if (!me) return json(res, 401, { error: 'not signed in' });
+    const body = await readBody(req);
+    const boxId = String(body.boxId || '');
+    if (!canManageBox(me.id, boxId)) return json(res, 404, { error: 'not found' });
+    const wt = db.weekTemplates.find(t => t.id === body.id && t.boxId === boxId);
+    if (!wt) return json(res, 404, { error: 'not found' });
+    const weekStart = String(body.weekStart || '');
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(weekStart)) return json(res, 400, { error: 'invalid week start' });
+    const coachId = db.boxes.find(b => b.id === boxId)?.coachId || null;
+    let count = 0;
+    for (let i = 0; i < 7; i++) {
+      const d = new Date(weekStart + 'T00:00:00'); d.setDate(d.getDate() + i);
+      const date = isoOf(d);
+      const removedIds = db.classSessions.filter(s => s.boxId === boxId && s.date === date).map(s => s.id);
+      db.classSessions = db.classSessions.filter(s => !(s.boxId === boxId && s.date === date));
+      db.classBookings = db.classBookings.filter(b => !removedIds.includes(b.sessionId));
+      for (const s of (wt.days[i] || [])) {
+        db.classSessions.push({ id: crypto.randomBytes(8).toString('base64url'), boxId, date, startTime: s.startTime, name: s.name, icon: s.icon, color: s.color, room: s.room, durationMin: s.durationMin, capacity: s.capacity, exercises: [], coachId, created: new Date().toISOString() });
+        count++;
+      }
+    }
+    saveDb();
+    audit(req, 'coach.class.weektemplate.apply', { user: me, msg: wt.id + ':' + count });
+    json(res, 200, { count });
+  },
+
+  'POST /api/coach/box/week-templates/delete': async (req, res) => {
+    const me = readSession(req);
+    if (!me) return json(res, 401, { error: 'not signed in' });
+    const body = await readBody(req);
+    const boxId = String(body.boxId || '');
+    if (!canManageBox(me.id, boxId)) return json(res, 404, { error: 'not found' });
+    const before = db.weekTemplates.length;
+    db.weekTemplates = db.weekTemplates.filter(t => !(t.id === body.id && t.boxId === boxId));
+    if (db.weekTemplates.length === before) return json(res, 404, { error: 'not found' });
+    saveDb();
+    json(res, 200, { ok: true });
+  },
+
+  // A WOD template is a reusable named exercise list (a benchmark like "Fran", or just a WOD
+  // the coach expects to reuse), independent of any date — separate from day/week templates,
+  // which only ever carry the schedule shape (time/type/room), never the workout content.
+  'POST /api/coach/box/wod-templates': async (req, res) => {
+    const me = readSession(req);
+    if (!me) return json(res, 401, { error: 'not signed in' });
+    const body = await readBody(req);
+    const boxId = String(body.boxId || '');
+    if (!canManageBox(me.id, boxId)) return json(res, 404, { error: 'not found' });
+    const name = String(body.name || '').trim().slice(0, 60);
+    if (!name) return json(res, 400, { error: 'name required' });
+    const exercises = (Array.isArray(body.exercises) ? body.exercises : []).slice(0, 40).map(e => ({
+      exerciseId: String(e.exerciseId || '').slice(0, 60),
+      name: String(e.name || '').trim().slice(0, 80),
+      scheme: String(e.scheme || '').trim().slice(0, 120),
+    })).filter(e => e.name);
+    if (!exercises.length) return json(res, 400, { error: 'no exercises to save' });
+    const wod = { id: crypto.randomBytes(8).toString('base64url'), boxId, name, exercises, created: new Date().toISOString() };
+    db.wodTemplates.push(wod);
+    saveDb();
+    audit(req, 'coach.wodtemplate.create', { user: me, msg: name });
+    json(res, 200, { template: wod });
+  },
+
+  'GET /api/coach/box/wod-templates': async (req, res) => {
+    const me = readSession(req);
+    if (!me) return json(res, 401, { error: 'not signed in' });
+    const boxId = new URL(req.url, 'http://x').searchParams.get('boxId') || '';
+    if (!canManageBox(me.id, boxId)) return json(res, 404, { error: 'not found' });
+    const templates = db.wodTemplates.filter(t => t.boxId === boxId).sort((a, b) => a.created.localeCompare(b.created));
+    json(res, 200, { templates });
+  },
+
+  'POST /api/coach/box/wod-templates/apply': async (req, res) => {
+    const me = readSession(req);
+    if (!me) return json(res, 401, { error: 'not signed in' });
+    const body = await readBody(req);
+    const boxId = String(body.boxId || '');
+    if (!canManageBox(me.id, boxId)) return json(res, 404, { error: 'not found' });
+    const wod = db.wodTemplates.find(t => t.id === body.id && t.boxId === boxId);
+    if (!wod) return json(res, 404, { error: 'not found' });
+    const session = db.classSessions.find(s => s.id === body.sessionId && s.boxId === boxId);
+    if (!session) return json(res, 404, { error: 'session not found' });
+    session.exercises = wod.exercises;
+    saveDb();
+    audit(req, 'coach.wodtemplate.apply', { user: me, msg: wod.id + ':' + session.id });
+    json(res, 200, { exercises: session.exercises });
+  },
+
+  'POST /api/coach/box/wod-templates/delete': async (req, res) => {
+    const me = readSession(req);
+    if (!me) return json(res, 401, { error: 'not signed in' });
+    const body = await readBody(req);
+    const boxId = String(body.boxId || '');
+    if (!canManageBox(me.id, boxId)) return json(res, 404, { error: 'not found' });
+    const before = db.wodTemplates.length;
+    db.wodTemplates = db.wodTemplates.filter(t => !(t.id === body.id && t.boxId === boxId));
+    if (db.wodTemplates.length === before) return json(res, 404, { error: 'not found' });
+    saveDb();
+    json(res, 200, { ok: true });
+  },
+
+  // Athlete-visible schedule — member, staff or owner. Each session carries the caller's own
+  // booking status and a booked count so the UI can show "8/12" and grey out a full class
+  // without a second round trip.
+  'GET /api/box/classes': async (req, res) => {
+    const me = readSession(req);
+    if (!me) return json(res, 401, { error: 'not signed in' });
+    const q = new URL(req.url, 'http://x').searchParams;
+    const boxId = q.get('boxId') || '';
+    if (!(canManageBox(me.id, boxId) || isMemberOfBox(me.id, boxId))) return json(res, 404, { error: 'not found' });
+    const from = q.get('from') || isoOf(new Date());
+    const to = q.get('to') || from;
+    const sessions = db.classSessions
+      .filter(s => s.boxId === boxId && s.date >= from && s.date <= to)
+      .sort((a, b) => a.date.localeCompare(b.date) || a.startTime.localeCompare(b.startTime))
+      .map(s => {
+        const bookings = db.classBookings.filter(b => b.sessionId === s.id);
+        const bookedRows = bookings.filter(b => b.status === 'booked');
+        const mine = bookings.find(b => b.athleteId === me.id && (b.status === 'booked' || b.status === 'waitlist' || b.status === 'offered'));
+        // Booked athletes only (never waitlist) — this is what fills the "seat grid" in the UI,
+        // same names any box member already sees on the leaderboard/roster, nothing new exposed.
+        const attendees = bookedRows.map(b => {
+          const u = db.users.find(x => x.id === b.athleteId);
+          return u ? { id: u.id, name: u.name, avatarUrl: avatarUrlOf(u) } : null;
+        }).filter(Boolean);
+        const live = db.liveClasses.find(l => l.sessionId === s.id) || null;
+        return { ...s, booked: bookedRows.length, attendees, myStatus: mine ? mine.status : null, live };
+      });
+    json(res, 200, { sessions });
+  },
+
+  // Books into the class if there's room, otherwise onto the waitlist — never rejected outright
+  // for a full class, matching WODbuster's "waitlist, not a dead end" behavior.
+  'POST /api/box/classes/book': async (req, res) => {
+    const me = readSession(req);
+    if (!me) return json(res, 401, { error: 'not signed in' });
+    const body = await readBody(req);
+    const session = db.classSessions.find(s => s.id === body.sessionId);
+    // A coach or staff member can book into a class at their own box too — not just members.
+    if (!session || !(isMemberOfBox(me.id, session.boxId) || canManageBox(me.id, session.boxId))) return json(res, 404, { error: 'not found' });
+    if (new Date(session.date + 'T' + session.startTime + ':00') <= new Date()) return json(res, 400, { error: 'this class has already started' });
+    // A waitlisted or offered athlete has a row already — booking again claims that same row
+    // (an 'offered' row has priority for 5 minutes; once that lapses — see waitlistOfferTick
+    // below — anyone still 'waitlist' can claim the same way, first tap wins). Only an already
+    // fully 'booked' row blocks a duplicate booking.
+    const existing = db.classBookings.find(b => b.sessionId === session.id && b.athleteId === me.id && (b.status === 'booked' || b.status === 'waitlist' || b.status === 'offered'));
+    if (existing && existing.status === 'booked') return json(res, 400, { error: 'already booked' });
+    const bookedCount = db.classBookings.filter(b => b.sessionId === session.id && b.status === 'booked').length;
+    const status = bookedCount < session.capacity ? 'booked' : 'waitlist';
+    let row;
+    if (existing) { existing.status = status; row = existing; }
+    else { row = { id: crypto.randomBytes(8).toString('base64url'), sessionId: session.id, athleteId: me.id, status, bookedAt: new Date().toISOString() }; db.classBookings.push(row); }
+    saveDb();
+    audit(req, 'box.class.book', { user: me, msg: session.id + ':' + status });
+    json(res, 200, { booking: row });
+  },
+
+  // Cancelling offers the freed spot to the earliest-queued waitlist row rather than booking
+  // them in automatically — someone who's been waiting may no longer be able to make it by the
+  // time a spot opens, so this only notifies (push + wsSend) and waits for them to tap "book"
+  // themselves; POST /api/box/classes/book claims an 'offered' row instead of erroring on it.
+  'POST /api/box/classes/cancel': async (req, res) => {
+    const me = readSession(req);
+    if (!me) return json(res, 401, { error: 'not signed in' });
+    const body = await readBody(req);
+    const session = db.classSessions.find(s => s.id === body.sessionId);
+    if (!session) return json(res, 404, { error: 'not found' });
+    const mine = db.classBookings.find(b => b.sessionId === session.id && b.athleteId === me.id && (b.status === 'booked' || b.status === 'waitlist' || b.status === 'offered'));
+    if (!mine) return json(res, 404, { error: 'not booked' });
+    const wasBooked = mine.status === 'booked';
+    mine.status = 'cancelled';
+    // A cancellation inside the window before class start counts as "late" — recorded for the
+    // coach to see (Phase 5's reporting), no automatic consequence yet.
+    const startsAt = new Date(session.date + 'T' + session.startTime + ':00');
+    if (wasBooked && (startsAt - Date.now()) < LATE_CANCEL_WINDOW_MS) {
+      db.classPenalties.push({ id: crypto.randomBytes(8).toString('base64url'), boxId: session.boxId, athleteId: me.id, kind: 'late-cancel', sessionId: session.id, created: new Date().toISOString() });
+    }
+    let promoted = null;
+    if (wasBooked) {
+      promoted = db.classBookings.filter(b => b.sessionId === session.id && b.status === 'waitlist').sort((a, b) => a.bookedAt.localeCompare(b.bookedAt))[0] || null;
+      if (promoted) {
+        promoted.status = 'offered';
+        promoted.offeredAt = new Date().toISOString();
+        // wsSend reaches the app if it's open right now (App.jsx listens for 'class:promoted');
+        // sendPush covers the same event for a closed app. Same pair used for coach:approved etc.
+        sendPush(promoted.athleteId, { title: 'A spot opened up', body: 'Open the app to reserve it — ' + session.name + ' · ' + session.date + ' ' + session.startTime });
+        wsSend(promoted.athleteId, { type: 'class:promoted', sessionId: session.id, name: session.name, date: session.date, startTime: session.startTime });
+      }
+    }
+    saveDb();
+    audit(req, 'box.class.cancel', { user: me, msg: session.id });
+    json(res, 200, { ok: true });
+  },
+
+  // Owner/staff view of one session's roster (booked + waitlist) — the base for attendance.
+  'GET /api/coach/box/classes/roster': async (req, res) => {
+    const me = readSession(req);
+    if (!me) return json(res, 401, { error: 'not signed in' });
+    const session = db.classSessions.find(s => s.id === (new URL(req.url, 'http://x').searchParams.get('sessionId') || ''));
+    if (!session || !canManageBox(me.id, session.boxId)) return json(res, 404, { error: 'not found' });
+    const rows = db.classBookings
+      .filter(b => b.sessionId === session.id && (b.status === 'booked' || b.status === 'waitlist' || b.status === 'offered' || b.status === 'attended' || b.status === 'no-show'))
+      .sort((a, b) => (a.status === 'waitlist' || a.status === 'offered') - (b.status === 'waitlist' || b.status === 'offered') || a.bookedAt.localeCompare(b.bookedAt))
+      .map(b => {
+        const u = db.users.find(x => x.id === b.athleteId);
+        return u ? { ...socialUser(u), status: b.status, bookingId: b.id } : null;
+      }).filter(Boolean);
+    json(res, 200, { session, roster: rows });
+  },
+
+  // Marking a no-show logs a class penalty (same reporting-only reasoning as a late cancel).
+  'POST /api/coach/box/classes/attendance': async (req, res) => {
+    const me = readSession(req);
+    if (!me) return json(res, 401, { error: 'not signed in' });
+    const body = await readBody(req);
+    const booking = db.classBookings.find(b => b.id === body.bookingId);
+    if (!booking) return json(res, 404, { error: 'not found' });
+    const session = db.classSessions.find(s => s.id === booking.sessionId);
+    if (!session || !canManageBox(me.id, session.boxId)) return json(res, 404, { error: 'not found' });
+    const status = ['attended', 'no-show'].includes(body.status) ? body.status : null;
+    if (!status) return json(res, 400, { error: 'invalid status' });
+    booking.status = status;
+    if (status === 'no-show') {
+      db.classPenalties.push({ id: crypto.randomBytes(8).toString('base64url'), boxId: session.boxId, athleteId: booking.athleteId, kind: 'no-show', sessionId: session.id, created: new Date().toISOString() });
+    }
+    saveDb();
+    audit(req, 'coach.class.attendance', { user: me, msg: booking.id + ':' + status });
+    json(res, 200, { ok: true });
+  },
+
+  // Starts a host-run live session for a class: one shared clock (For Time / AMRAP / EMOM /
+  // Tabata) plus a manually-advanced "current exercise" pointer, both broadcast to whoever's
+  // booked — see liveElapsedMs/broadcastLive above for why there's no ticking loop involved.
+  'POST /api/coach/box/classes/live/start': async (req, res) => {
+    const me = readSession(req);
+    if (!me) return json(res, 401, { error: 'not signed in' });
+    const body = await readBody(req);
+    const session = db.classSessions.find(s => s.id === body.sessionId);
+    if (!session || !canManageBox(me.id, session.boxId)) return json(res, 404, { error: 'not found' });
+    const timerType = ['fortime', 'amrap', 'emom', 'tabata'].includes(body.timerType) ? body.timerType : null;
+    if (!timerType) return json(res, 400, { error: 'invalid timer type' });
+    const num = (v, def, max) => { const n = Math.round(Number(v)); return Number.isFinite(n) && n > 0 ? Math.min(n, max) : def; };
+    const params =
+      timerType === 'amrap' ? { durationSec: num(body.durationSec, 600, 7200) } :
+      timerType === 'emom' ? { roundSec: num(body.roundSec, 60, 900), rounds: body.rounds ? num(body.rounds, 10, 200) : null } :
+      timerType === 'tabata' ? { workSec: num(body.workSec, 20, 900), restSec: num(body.restSec, 10, 900), rounds: num(body.rounds, 8, 100) } :
+      {};
+    db.liveClasses = db.liveClasses.filter(l => l.sessionId !== session.id);
+    const row = {
+      id: crypto.randomBytes(8).toString('base64url'), boxId: session.boxId, sessionId: session.id, hostId: me.id,
+      timerType, params, status: 'running', phaseStartedAt: new Date().toISOString(), pausedElapsedMs: 0,
+      currentExerciseIndex: 0, created: new Date().toISOString(), updated: new Date().toISOString(),
+    };
+    db.liveClasses.push(row);
+    saveDb();
+    audit(req, 'coach.class.live.start', { user: me, msg: session.id });
+    broadcastLive(session, me.id, { type: 'live:update', sessionId: session.id, live: row });
+    json(res, 200, { live: row });
+  },
+
+  // Pause/resume/reset the shared clock, step the current-exercise pointer, or end the class —
+  // any staff/owner of the box can drive it, not just whoever tapped "Start" (so a class doesn't
+  // get stuck live if the original host's phone dies).
+  'POST /api/coach/box/classes/live/control': async (req, res) => {
+    const me = readSession(req);
+    if (!me) return json(res, 401, { error: 'not signed in' });
+    const body = await readBody(req);
+    const session = db.classSessions.find(s => s.id === body.sessionId);
+    if (!session || !canManageBox(me.id, session.boxId)) return json(res, 404, { error: 'not found' });
+    const row = db.liveClasses.find(l => l.sessionId === session.id);
+    if (!row) return json(res, 404, { error: 'not live' });
+    const maxEx = (session.exercises || []).length;
+    switch (body.action) {
+      case 'pause':
+        if (row.status === 'running') { row.pausedElapsedMs = liveElapsedMs(row); row.status = 'paused'; row.phaseStartedAt = null; }
+        break;
+      case 'resume':
+        if (row.status === 'paused') { row.status = 'running'; row.phaseStartedAt = new Date().toISOString(); }
+        break;
+      case 'reset':
+        row.pausedElapsedMs = 0; row.status = 'running'; row.phaseStartedAt = new Date().toISOString(); row.currentExerciseIndex = 0;
+        break;
+      case 'next-exercise':
+        row.currentExerciseIndex = Math.min(row.currentExerciseIndex + 1, Math.max(maxEx - 1, 0));
+        break;
+      case 'prev-exercise':
+        row.currentExerciseIndex = Math.max(row.currentExerciseIndex - 1, 0);
+        break;
+      case 'end':
+        db.liveClasses = db.liveClasses.filter(l => l.id !== row.id);
+        saveDb();
+        audit(req, 'coach.class.live.end', { user: me, msg: session.id });
+        broadcastLive(session, row.hostId, { type: 'live:update', sessionId: session.id, live: null });
+        return json(res, 200, { live: null });
+      default:
+        return json(res, 400, { error: 'invalid action' });
+    }
+    row.updated = new Date().toISOString();
+    saveDb();
+    broadcastLive(session, row.hostId, { type: 'live:update', sessionId: session.id, live: row });
+    json(res, 200, { live: row });
+  },
+
+  // Snapshot for a fresh page load / reconnect — the WS push only carries deltas from the
+  // moment it's sent, so anyone opening the live view mid-class needs this to catch up.
+  'GET /api/box/classes/live': async (req, res) => {
+    const me = readSession(req);
+    if (!me) return json(res, 401, { error: 'not signed in' });
+    const sessionId = new URL(req.url, 'http://x').searchParams.get('sessionId') || '';
+    const session = db.classSessions.find(s => s.id === sessionId);
+    if (!session || !(isMemberOfBox(me.id, session.boxId) || canManageBox(me.id, session.boxId))) return json(res, 404, { error: 'not found' });
+    const row = db.liveClasses.find(l => l.sessionId === sessionId) || null;
+    json(res, 200, { live: row });
   },
 };
 
@@ -3031,6 +4165,7 @@ async function main() {
   }
   backfillCheatPenaltySnapshots();
   setInterval(reminderTick, 10000).unref();
+  setInterval(waitlistOfferTick, 30000).unref();
 
   const server = http.createServer(async (req, res) => {
     const url = new URL(req.url, 'http://x');

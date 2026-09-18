@@ -21,6 +21,7 @@
 import { EXDB, EXIDX } from './exercises.js'
 import { uid } from './format.js'
 import { isWarmupRow } from './workout-model.js'
+import { MEASURE_ZONES } from './measurements.js'
 // Translated catalogue names (see src/names/*.js — src/lib/i18n-core.js's NAME_LANGS lists
 // which exist) go into the match index too, not just the English catalogue name (e.n) —
 // otherwise a French/Spanish/etc. export can never match at all, no matter how exact the
@@ -51,13 +52,19 @@ export function parseCSV(text) {
   const rows = []
   let row = [], field = '', quoted = false
   const s = String(text).replace(/^﻿/, '')
+  // Opening a comma-delimited export in Excel under a comma-decimal locale (Spanish included)
+  // and saving it back silently swaps the delimiter to semicolons — a very common way for a
+  // file that parsed fine once to stop being recognised later with no visible change to it.
+  // Detect the delimiter from the header line instead of hardcoding the comma.
+  const headerLine = s.slice(0, s.search(/\r?\n/) + 1 || s.length)
+  const delim = (headerLine.split(';').length > headerLine.split(',').length) ? ';' : ','
   for (let i = 0; i < s.length; i++) {
     const c = s[i]
     if (quoted) {
       if (c === '"') { if (s[i + 1] === '"') { field += '"'; i++ } else quoted = false }
       else field += c
     } else if (c === '"') quoted = true
-    else if (c === ',') { row.push(field); field = '' }
+    else if (c === delim) { row.push(field); field = '' }
     else if (c === '\n' || c === '\r') {
       if (c === '\r' && s[i + 1] === '\n') i++
       row.push(field); field = ''
@@ -380,9 +387,10 @@ export function parseWorkoutCSV(text, { unit = 'kg' } = {}) {
   const dateCol = map.date !== undefined ? 'date' : map.startTime !== undefined ? 'startTime' : null
   if (!dateCol || map.exercise === undefined) return { error: 'unrecognised' }
 
-  const resolved = new Map()          // exercise name -> dataset id | null, resolved once
+  const resolved = new Map()          // name key -> dataset id | null, resolved once
   const byDate = new Map()
-  const created = new Map()
+  const created = new Map()           // name key -> invented custom-exercise definition
+  const namesByKey = new Map()        // name key -> the first raw name seen for it (review UI)
   const unmatched = new Set()
   let sets = 0, skipped = 0, matched = 0, warmups = 0, rpeSets = 0, rirSets = 0
   let sawLb = false, sawKg = false
@@ -418,6 +426,7 @@ export function parseWorkoutCSV(text, { unit = 'kg' } = {}) {
     if (warmup) warmups++
 
     const key = keyOf(name)
+    if (!namesByKey.has(key)) namesByKey.set(key, name)
     let id = resolved.get(key)
     if (id === undefined) { id = matchExercise(name); resolved.set(key, id) }
     if (id) matched++
@@ -458,8 +467,12 @@ export function parseWorkoutCSV(text, { unit = 'kg' } = {}) {
     if (!day.name) day.name = cell(r, 'workoutName') || ''
     if (map.endTime !== undefined) { const e = parseWhen(cell(r, 'endTime')); if (e && e.t != null) day.end = e.t }
     else if (map.time !== undefined && !map.seconds && reps) { /* FitNotes' Time is per-set */ }
-    if (!day.ex.has(id)) day.ex.set(id, [])
-    day.ex.get(id).push(set)
+    // Grouped by name key, not by resolved id — two different names that happen to resolve to
+    // the same id (or a name whose id gets corrected later, see applyMatchOverride) must never
+    // get merged into one bucket at this stage, or fixing one name's link in the review view
+    // would silently drag along another name's sets too.
+    if (!day.ex.has(key)) day.ex.set(key, [])
+    day.ex.get(key).push(set)
     sets++
   }
 
@@ -470,21 +483,61 @@ export function parseWorkoutCSV(text, { unit = 'kg' } = {}) {
   // "185 lb" into 185 kg.
   const fileUnit = sawLb && !sawKg ? 'lb' : sawKg && !sawLb ? 'kg' : ''
   const mixedUnits = sawLb && sawKg
-  const toKg = x => Math.round(x * LB_TO_KG * 10) / 10
-  const toLb = x => Math.round(x / LB_TO_KG * 10) / 10
-  // A row without its own unit follows the file's, and a file that says nothing is taken
-  // to already be in the profile's unit.
-  const convRow = s => {
-    const u = s.u || fileUnit
-    if (!u || u === unit) return s.w
-    return u === 'lb' ? toKg(s.w) : toLb(s.w)
-  }
+  const convRow = convRowFor(unit, fileUnit)
   const converted = (!!fileUnit && fileUnit !== unit) || mixedUnits
 
+  // resolveId(key) below is the ONE place a name key turns into an exercise id — parsing
+  // builds it from resolved/created, and applyMatchOverride (a review-view correction) rebuilds
+  // workouts from the same byDate with just that one function swapped, no re-parsing needed.
+  const resolveId = key => resolved.get(key) || created.get(key)?.id
+  const workouts = buildWorkoutsFromByDate(byDate, resolveId, convRow)
+
+  // One row per exercise NAME the file used (not per id — two names can share one id), for the
+  // "link your exercises" review view: `confident` names needed no decision, others got an
+  // invented custom exercise as a placeholder that applyMatchOverride can redirect.
+  const nameMatches = [...namesByKey.entries()].map(([key, name]) => ({
+    key, name, id: resolveId(key), confident: !!resolved.get(key), invented: created.get(key) || null,
+  })).sort((a, b) => Number(a.confident) - Number(b.confident) || a.name.localeCompare(b.name))
+
   const dates = [...byDate.keys()].sort()
-  const workouts = dates.map(d => {
+  return {
+    kind: 'workouts', source, workouts, customEx: [...created.values()],
+    // distinct library exercises behind the matched rows — the summary calls this
+    // "exercises matched", and counting rows there made three exercises read as five
+    matched: new Set([...resolved.values()].filter(Boolean)).size,
+    matchedSets: matched,
+    created: created.size, unmatchedNames: [...unmatched].sort(), nameMatches,
+    sets, skipped, warmups, fileUnit, mixedUnits, converted, rpeSets, rirSets,
+    from: dates[0] || null, to: dates[dates.length - 1] || null,
+    // Kept only so applyMatchOverride can rebuild workouts/nameMatches without re-parsing the
+    // file — not meant to be read anywhere else. Named distinctly from the `created`/`fileUnit`
+    // fields above (a duplicate key here would silently overwrite the display-facing count with
+    // the raw Map, which is exactly what happened before this comment existed).
+    byDate, resolvedByKey: resolved, createdByKey: created, unit,
+  }
+}
+
+// A row without its own unit follows the file's, and a file that says nothing is taken to
+// already be in the profile's unit.
+function convRowFor(unit, fileUnit) {
+  return s => {
+    const u = s.u || fileUnit
+    if (!u || u === unit) return s.w
+    return u === 'lb' ? Math.round(s.w * LB_TO_KG * 10) / 10 : Math.round(s.w / LB_TO_KG * 10) / 10
+  }
+}
+
+function buildWorkoutsFromByDate(byDate, resolveId, convRow) {
+  const dates = [...byDate.keys()].sort()
+  return dates.map(d => {
     const day = byDate.get(d)
-    const entries = [...day.ex.entries()].map(([id, ss]) => {
+    const byId = new Map()
+    for (const [key, ss] of day.ex) {
+      const id = resolveId(key)
+      if (!byId.has(id)) byId.set(id, [])
+      byId.get(id).push(...ss)
+    }
+    const entries = [...byId.entries()].map(([id, ss]) => {
       const conv2 = ss.map(({ u, ...s }) => (s.w !== undefined ? { ...s, w: convRow({ ...s, u }) } : s))
       const mx = Math.max(0, ...conv2.filter(s => !isWarmupRow(s)).map(s => s.w || 0))
       return { id, sets: conv2, topW: mx || null }
@@ -499,17 +552,193 @@ export function parseWorkoutCSV(text, { unit = 'kg' } = {}) {
     w.vol = entries.reduce((a, e) => a + e.sets.reduce((b, s) => b + (s.w || 0) * (s.r || 0), 0), 0)
     return w
   })
+}
 
-  return {
-    kind: 'workouts', source, workouts, customEx: [...created.values()],
-    // distinct library exercises behind the matched rows — the summary calls this
-    // "exercises matched", and counting rows there made three exercises read as five
-    matched: new Set([...resolved.values()].filter(Boolean)).size,
-    matchedSets: matched,
-    created: created.size, unmatchedNames: [...unmatched].sort(),
-    sets, skipped, warmups, fileUnit, mixedUnits, converted, rpeSets, rirSets,
-    from: dates[0] || null, to: dates[dates.length - 1] || null,
+// A correction from the "link your exercises" review view: `key` (from a nameMatches row) now
+// points at `newId`, a real catalogue exercise picked by hand. Rebuilds workouts from the
+// original per-name sets — mergeImport's own `used.has(id)` filter already drops any invented
+// custom-exercise definition this leaves behind unreferenced, so nothing extra to clean up here.
+export function applyMatchOverride(parsed, key, newId) {
+  if (parsed.kind !== 'workouts' || !EXIDX[newId]) return parsed
+  const resolveId = k => (k === key ? newId : (parsed.resolvedByKey.get(k) || parsed.createdByKey.get(k)?.id))
+  const workouts = buildWorkoutsFromByDate(parsed.byDate, resolveId, convRowFor(parsed.unit, parsed.fileUnit))
+  const nameMatches = parsed.nameMatches.map(m => (m.key !== key ? m : { ...m, id: newId, confident: true, invented: null }))
+  const matched = new Set(nameMatches.map(m => m.id).filter(id => EXIDX[id])).size
+  const unmatchedNames = nameMatches.filter(m => !m.confident).map(m => m.name).sort()
+  return { ...parsed, workouts, nameMatches, matched, created: unmatchedNames.length, unmatchedNames }
+}
+
+/* ------------------------------------------------ MyFitnessPal exercises -- */
+
+// MyFitnessPal's own "Exercise Summary" export is a different animal from Hevy/Strong/
+// FitNotes above: ONE ROW PER EXERCISE PER DAY, already aggregated (N sets × M reps × W kg
+// for strength, or just calories+minutes(+steps) for cardio) — never one row per set. That
+// breaks parseWorkoutCSV's core assumption, so this is its own parser rather than another
+// entry in its shared COLUMNS table. Verified against a real export (2025-01 to 2026-09,
+// Spanish account): header is exactly Fecha,Ejercicio,Tipo,Calorías por ejercicio,Minutos de
+// ejercicio,Series,Repeticiones por serie,Kilogramos,Pasos,export_headers.note — "Tipo" is
+// "Musculación" or "Aeróbico". It still returns the same `kind: 'workouts'` shape
+// parseWorkoutCSV does (workouts/customEx/nameMatches/byDate/…), so the review view,
+// mergeImport and applyMatchOverride all work on it unchanged.
+const MFP_DIACRITICS = new RegExp(String.fromCharCode(91, 0x0300, 45, 0x036f, 93), 'g')
+const mfpNorm = h => String(h).toLowerCase().normalize('NFD').replace(MFP_DIACRITICS, '').replace(/[^a-z0-9]+/g, ' ').trim()
+function mfpMapHeader(header, aliases) {
+  const map = {}
+  header.forEach((h, i) => {
+    const n = mfpNorm(h)
+    for (const [field, names] of aliases) if (map[field] === undefined && names.includes(n)) { map[field] = i; return }
+  })
+  return map
+}
+const MFP_EX_COLUMNS = [
+  ['date', ['fecha', 'date']],
+  ['exercise', ['ejercicio', 'exercise']],
+  ['type', ['tipo', 'type']],
+  ['kcal', ['calorias por ejercicio', 'calorias', 'calories']],
+  ['minutes', ['minutos de ejercicio', 'minutos', 'minutes']],
+  ['sets', ['series', 'sets']],
+  ['repsPerSet', ['repeticiones por serie', 'repeticiones', 'reps']],
+  ['kg', ['kilogramos', 'kg', 'weight']],
+]
+
+export function parseMfpExerciseCSV(text) {
+  const rows = parseCSV(text);
+  if (rows.length < 2) return { error: 'empty' };
+  const map = mfpMapHeader(rows[0], MFP_EX_COLUMNS);
+  if (map.date === undefined || map.exercise === undefined) return { error: 'unrecognised' };
+
+  const resolved = new Map(), created = new Map(), namesByKey = new Map(), unmatched = new Set();
+  const byDate = new Map();
+  let sets = 0, skipped = 0;
+
+  for (let i = 1; i < rows.length; i++) {
+    const r = rows[i];
+    const name = String(r[map.exercise] || '').trim();
+    const when = parseWhen(String(r[map.date] || ''));
+    if (!name || !when) { skipped++; continue; }
+    const type = mfpNorm(map.type !== undefined ? r[map.type] : '');
+    const setCount = map.sets !== undefined ? Math.max(0, Math.round(num(r[map.sets]))) : 0;
+    const reps = map.repsPerSet !== undefined ? Math.max(0, Math.round(num(r[map.repsPerSet]))) : 0;
+    const kg = map.kg !== undefined ? num(r[map.kg]) : 0;
+    const minutes = map.minutes !== undefined ? num(r[map.minutes]) : 0;
+    const kcal = map.kcal !== undefined ? num(r[map.kcal]) : 0;
+    // Trust the row's own kind first (setCount alone can't tell "1 set" from "empty" for a
+    // cardio row that happens to leave Series blank rather than 0).
+    const isStrength = type.includes('muscul') || (!type && setCount > 0);
+    if (!isStrength && !minutes && !kcal) { skipped++; continue; }
+    if (isStrength && !setCount && !reps && !kg) { skipped++; continue; }
+
+    const key = keyOf(name);
+    if (!namesByKey.has(key)) namesByKey.set(key, name);
+    let id = resolved.get(key);
+    if (id === undefined) { id = matchExercise(name); resolved.set(key, id); }
+    if (!id) {
+      let c = created.get(key);
+      if (!c) {
+        c = { id: 'im' + uid(), n: name.toLowerCase(), custom: true, eq: 'custom', tg: '', desc: '', bp: isStrength ? 'upper legs' : 'cardio' };
+        created.set(key, c); unmatched.add(name);
+      }
+      id = c.id;
+    }
+
+    const newSets = isStrength
+      ? Array.from({ length: Math.max(1, setCount) }, () => ({ w: kg || 0, r: reps || 0, done: true }))
+      : [{ min: minutes || 0, speed: 0, done: true }];
+    sets += newSets.length;
+
+    let day = byDate.get(when.d);
+    if (!day) { day = { ex: new Map(), name: '', start: when.t, end: null, cardioMs: 0 }; byDate.set(when.d, day); }
+    if (!day.ex.has(key)) day.ex.set(key, []);
+    day.ex.get(key).push(...newSets);
+    if (!isStrength && minutes > 0) day.cardioMs += minutes * 60000;
   }
+  if (!byDate.size) return { error: 'unrecognised' };
+
+  // MFP's exercise summary carries only a date, never a time-of-day, so `when.t` is always null
+  // here — buildWorkoutsFromByDate would otherwise default both start AND end to the same 18:00
+  // fallback, producing a zero-duration workout that trips the server's anti-cheat "missing or
+  // nonsensical start/end time" check. Give every day a real, non-zero span instead: the day's
+  // own logged cardio minutes when there are any, else a plain 45-minute placeholder.
+  const DEFAULT_SESSION_MS = 45 * 60000;
+  for (const day of byDate.values()) {
+    day.start = day.start ?? 18 * 3600000;
+    day.end = day.start + Math.max(day.cardioMs, DEFAULT_SESSION_MS);
+  }
+
+  const resolveId = key => resolved.get(key) || created.get(key)?.id;
+  const workouts = buildWorkoutsFromByDate(byDate, resolveId, s => s.w);
+  const nameMatches = [...namesByKey.entries()].map(([key, name]) => ({
+    key, name, id: resolveId(key), confident: !!resolved.get(key), invented: created.get(key) || null,
+  })).sort((a, b) => Number(a.confident) - Number(b.confident) || a.name.localeCompare(b.name));
+
+  const dates = [...byDate.keys()].sort();
+  return {
+    kind: 'workouts', source: 'MyFitnessPal', workouts, customEx: [...created.values()],
+    matched: new Set([...resolved.values()].filter(Boolean)).size,
+    matchedSets: sets - [...created.values()].length,
+    created: created.size, unmatchedNames: [...unmatched].sort(), nameMatches,
+    sets, skipped, warmups: 0, fileUnit: '', mixedUnits: false, converted: false, rpeSets: 0, rirSets: 0,
+    from: dates[0] || null, to: dates[dates.length - 1] || null,
+    byDate, resolvedByKey: resolved, createdByKey: created, unit: 'kg',
+  };
+}
+
+/* -------------------------------------------- MyFitnessPal measurements -- */
+
+// MyFitnessPal's "Measurement Summary" export — one row per DAY something was logged, weight
+// and/or tape-measure zones together in whatever columns the account actually tracked. Verified
+// against a real export: header Fecha,Caderas,Cuello,Cintura,Peso. Other MEASURE_ZONES gets a
+// same-language alias defensively (pecho/hombros/etc.) since MyFitnessPal supports tracking
+// them too, even though only hips/neck/waist/weight showed up in the one real file seen here.
+const MFP_MEASURE_COLUMNS = [
+  ['date', ['fecha', 'date']],
+  ['weight', ['peso', 'weight']],
+  ['neck', ['cuello', 'neck']],
+  ['shoulders', ['hombros', 'shoulders']],
+  ['chest', ['pecho', 'chest']],
+  ['waist', ['cintura', 'waist']],
+  ['hips', ['caderas', 'cadera', 'hips']],
+  ['bicep', ['biceps', 'bíceps', 'brazo', 'brazos', 'bicep']],
+  ['forearm', ['antebrazo', 'antebrazos', 'forearm', 'forearms']],
+  ['thigh', ['muslo', 'muslos', 'thigh', 'thighs']],
+  ['calf', ['pantorrilla', 'pantorrillas', 'calf', 'calves']],
+];
+
+export function parseMfpMeasurementsCSV(text) {
+  const rows = parseCSV(text);
+  if (rows.length < 2) return { error: 'empty' };
+  const map = mfpMapHeader(rows[0], MFP_MEASURE_COLUMNS);
+  const zoneFields = MEASURE_ZONES.filter(z => map[z] !== undefined);
+  if (map.date === undefined || (map.weight === undefined && !zoneFields.length)) return { error: 'unrecognised' };
+
+  const weightOut = new Map();   // iso -> kg
+  const measureOut = new Map();  // iso -> { zone: cm }
+  for (let i = 1; i < rows.length; i++) {
+    const r = rows[i];
+    const when = parseWhen(String(r[map.date] || ''));
+    if (!when) continue;
+    if (map.weight !== undefined) {
+      const w = num(r[map.weight]);
+      if (w > 0) weightOut.set(when.d, w);
+    }
+    let vals = null;
+    for (const z of zoneFields) {
+      const v = num(r[map[z]]);
+      if (v > 0) { if (!vals) vals = {}; vals[z] = v; }
+    }
+    if (vals) measureOut.set(when.d, vals);
+  }
+  if (!weightOut.size && !measureOut.size) return { error: 'unrecognised' };
+
+  const wDates = [...weightOut.keys()].sort();
+  const mDates = [...measureOut.keys()].sort();
+  const allDates = [...new Set([...wDates, ...mDates])].sort();
+  return {
+    kind: 'measurements', source: 'MyFitnessPal',
+    bodyweight: wDates.map(d => ({ d, w: Math.round(weightOut.get(d) * 10) / 10, t: new Date(d).getTime() })),
+    measurements: mDates.map(d => ({ d, t: new Date(d).getTime(), values: measureOut.get(d) })),
+    from: allDates[0] || null, to: allDates[allDates.length - 1] || null,
+  };
 }
 
 /* ------------------------------------------------------- body weight ------ */
@@ -578,6 +807,10 @@ export function parseImport(text, opts) {
   if (s.includes('HKQuantityTypeIdentifier') || /^\s*</.test(s)) return parseBodyweight(s, opts)
   const asWorkouts = parseWorkoutCSV(s, opts)
   if (!asWorkouts.error) return asWorkouts
+  const asMfpEx = parseMfpExerciseCSV(s)
+  if (!asMfpEx.error) return asMfpEx
+  const asMfpMeasure = parseMfpMeasurementsCSV(s)
+  if (!asMfpMeasure.error) return asMfpMeasure
   const asWeights = parseBodyweight(s, opts)
   return asWeights.error ? asWorkouts : asWeights
 }
@@ -586,6 +819,18 @@ export function parseImport(text, opts) {
 
 /** Merge into state. Existing days win — importing twice never duplicates a workout. */
 export function mergeImport(S, parsed) {
+  if (parsed.kind === 'measurements') {
+    const haveW = new Set(S.bodyweight.map(b => b.d))
+    const freshW = parsed.bodyweight.filter(b => !haveW.has(b.d))
+    S.bodyweight = [...S.bodyweight, ...freshW].sort((a, b) => (a.d < b.d ? -1 : 1))
+    const haveM = new Set((S.measurements || []).map(m => m.d))
+    const freshM = parsed.measurements.filter(m => !haveM.has(m.d))
+    S.measurements = [...(S.measurements || []), ...freshM].sort((a, b) => (a.d < b.d ? -1 : 1))
+    return {
+      added: freshW.length + freshM.length,
+      skipped: (parsed.bodyweight.length - freshW.length) + (parsed.measurements.length - freshM.length),
+    }
+  }
   if (parsed.kind === 'bodyweight') {
     const have = new Set(S.bodyweight.map(b => b.d))
     const fresh = parsed.bodyweight.filter(b => !have.has(b.d))

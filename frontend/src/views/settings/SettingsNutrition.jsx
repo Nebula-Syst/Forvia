@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useStore } from '../../store/useStore.js'
 import { useUI } from '../../store/useUI.js'
@@ -8,7 +8,7 @@ import { LB_TO_KG } from '../../lib/recovery.js'
 import { todayISO, fmtDate } from '../../lib/format.js'
 import { MOBILE, shareExport } from '../../lib/mobile.js'
 import { exportNutritionCSV } from '../../lib/import-nutrition.js'
-import { bwSheet, calendarSheet, importNutritionFromApp } from '../../sheets.jsx'
+import { bwSheet, calendarSheet } from '../../sheets.jsx'
 import { ACTIVITY_LEVELS, WEIGHT_GOALS, BMR_FORMULAS, DEFAULT_BMR_FORMULA, formulaNeedsBodyFat, DEFAULT_MACRO_SPLIT, RATE_STEPS_KG, DEFAULT_RATE_KG, missingNutritionInputs, computeNutritionGoals, setMacroSplitPct, computeWaterGoal, waterGoalForDate, waterPhaseForDate, daysUntil, DEFAULT_LOAD_DAYS, DEFAULT_CUT_DAYS } from '../../lib/nutrition-goals.js'
 import Icon from '../../components/Icon.jsx'
 import Ring from '../../components/Ring.jsx'
@@ -128,7 +128,6 @@ export default function SettingsNutrition() {
   // not persisted: it's a scroll-safety guard for this visit, not a real setting.
   const [macrosLocked, setMacrosLocked] = useState(true)
   const toast = useUI(s => s.toast)
-  const importNutriInput = useRef(null)
 
   const doExportNutrition = async () => {
     const csv = exportNutritionCSV(S)
@@ -145,11 +144,6 @@ export default function SettingsNutrition() {
     a.click()
     URL.revokeObjectURL(a.href)
     toast(t('Food diary exported'))
-  }
-  const onImportNutrition = e => {
-    const file = e.target.files?.[0]
-    e.target.value = ''
-    if (file) importNutritionFromApp(file)
   }
 
   const bw = lastBW(S)
@@ -366,18 +360,8 @@ export default function SettingsNutrition() {
     </Section>
 
     <Section title={t('Food diary data')}>
-      <Row icon="upload" iconTint="var(--blue)" title={t('Import from another app')}
-        subtitle={t('MyFitnessPal, Cronometer, or a CSV export')} accessory="chevron"
-        onClick={() => importNutriInput.current?.click()} />
       <Row icon="download" iconTint="var(--teal)" title={t('Export food diary (CSV)')}
         accessory="chevron" onClick={doExportNutrition} />
     </Section>
-    {/* A bare extension with no real MIME type alongside it makes Capacitor's Android file
-        chooser (BridgeWebChromeClient.getValidTypes, which looks "csv" up in Android's own
-        MimeTypeMap and finds nothing on many OEM builds) hand the system picker an empty
-        allowed-types list — the picker then opens with everything filtered out, which reads
-        to a user as the import being silently blocked. Real MIME types alongside the
-        extension guarantee at least one match. */}
-    <input ref={importNutriInput} type="file" accept=".csv,text/csv,text/comma-separated-values,application/csv,application/vnd.ms-excel" style={{ display: 'none' }} onChange={onImportNutrition} />
   </div>
 }

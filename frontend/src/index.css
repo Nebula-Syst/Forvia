@@ -300,6 +300,27 @@ h4.sec{
 }
 .divider{height:var(--hair);background:var(--sep);margin:14px 0;border:0}
 .grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+
+/* NutritionLog.jsx: a few equal "pick one of these ways to add food" entry points per
+   section — 3+ narrow cards, so auto-fit rather than a fixed column count keeps them from
+   ever squeezing thinner than they can read at on a small phone. */
+.method-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(92px,1fr));gap:10px}
+.sect-b .method-grid{padding:14px}
+.method-card{
+  background:var(--glass-bg);border:1px solid var(--glass-border);box-shadow:var(--shadow-sm);
+  border-radius:var(--r-card);padding:16px 10px;text-align:center;
+  display:flex;flex-direction:column;align-items:center;gap:8px;
+  transition:background var(--fast),transform var(--fast) var(--ease);
+}
+.method-card.tappable:active{background:var(--surface-2)}
+.method-card .icn{
+  width:40px;height:40px;border-radius:12px;display:flex;align-items:center;justify-content:center;
+  font-size:18px;background:color-mix(in srgb, var(--acc) 16%, transparent);color:var(--acc);
+}
+.method-card .lbl{font-size:12.5px;font-weight:600;color:var(--label);line-height:1.25}
+.method-card .sub{font-size:10.5px;color:var(--label-3);margin-top:-4px}
+.method-card.disabled{opacity:.5}
+.method-card.disabled .icn{background:var(--surface-2);color:var(--label-3)}
 .row{display:flex;align-items:center;gap:12px}
 .row.between{justify-content:space-between}
 
@@ -381,9 +402,9 @@ h4.sec{
 }
 .sect-f{font-size:13px;color:var(--label-2);padding:7px 4px 0;line-height:1.38}
 
-/* A file-picker row styled like an upload dropzone (dashed border) rather than a plain
-   button — CoachApply.jsx's proof-of-coaching document. Wraps a hidden <input type="file">
-   so the whole row is the tap target, same idiom as the workout-photo "+" tile. */
+/* A compact file-picker row (dashed border) for sheets, where a full-page hero card (below)
+   would be oversized — sheets.jsx's box-request form. Wraps a hidden <input type="file"> so
+   the whole row is the tap target, same idiom as the workout-photo "+" tile. */
 .doc-upload{
   display:flex;align-items:center;gap:12px;padding:14px;border-radius:var(--r);
   border:1.5px dashed var(--glass-border);cursor:pointer;
@@ -391,13 +412,105 @@ h4.sec{
 }
 .doc-upload:active{background:var(--glass-bg-2);border-color:var(--acc-line)}
 .doc-upload .ico{
-  width:40px;height:40px;border-radius:12px;flex:none;
+  width:40px;height:40px;border-radius:12px;flex:none;overflow:hidden;
   display:flex;align-items:center;justify-content:center;
   background:var(--acc-soft);color:var(--acc);
 }
+.doc-upload img.ico{width:40px;height:40px;object-fit:cover}
 .doc-upload .ico .icn{font-size:19px}
 .doc-upload .t{font-weight:600;font-size:15px;line-height:1.3}
 .doc-upload .s{font-size:13px;color:var(--label-2);margin-top:2px;line-height:1.32}
+
+/* CoachApply.jsx's "document-first" layout (picked from 3 sketched directions) — the
+   proof-of-coaching upload leads as its own prominent card rather than a plain dropzone row,
+   since it's the one field that actually gates the request. Wraps a hidden
+   <input type="file"> so the whole card is the tap target, same idiom as the workout-photo
+   "+" tile. */
+.doc-hero{
+  display:block;text-align:center;cursor:pointer;padding:30px 24px 26px;
+  border-radius:var(--r-card);border:1px solid var(--acc-line);
+  background:var(--glass-bg);background-image:var(--glass-sheen);
+  backdrop-filter:saturate(var(--glass-sat)) blur(var(--glass-blur));
+  -webkit-backdrop-filter:saturate(var(--glass-sat)) blur(var(--glass-blur));
+  box-shadow:var(--shadow-md);margin-bottom:18px;
+  transition:border-color var(--fast),background var(--fast);
+}
+.doc-hero:active{background:var(--glass-bg-2)}
+.doc-hero .ring{
+  width:76px;height:76px;border-radius:50%;margin:0 auto 18px;
+  border:1.5px dashed var(--acc-line);display:flex;align-items:center;justify-content:center;
+}
+.doc-hero .dot{
+  width:54px;height:54px;border-radius:50%;background:var(--acc-soft);color:var(--acc);
+  display:flex;align-items:center;justify-content:center;
+}
+.doc-hero .dot .icn{font-size:24px}
+.doc-hero h2{margin:0 0 6px;font-size:19px;font-weight:700;letter-spacing:-.015em}
+.doc-hero p{margin:0 0 20px;color:var(--label-3);font-size:14px;line-height:1.4;max-width:270px;margin-inline:auto}
+.doc-hero .pick-btn{
+  display:inline-flex;align-items:center;gap:8px;padding:12px 22px;border-radius:99px;
+  background:var(--acc);color:var(--on-acc);font-weight:700;font-size:14.5px;
+}
+.doc-hero .pick-btn .icn{font-size:15px}
+.doc-hero .fmt{margin-top:12px;font-size:12px;color:var(--label-3)}
+
+/* The compact field list under the document hero — icon-led rows (.lrow-i, shared with
+   Settings/roster rows elsewhere) instead of three equally-weighted boxed sections, since
+   these fields are secondary to the document above. */
+.compact-fields{padding:2px 16px}
+.cf-item{padding:15px 0}
+.cf-item + .cf-item{border-top:1px solid var(--sep)}
+.cf-head{display:flex;align-items:center;gap:10px;margin-bottom:9px}
+.cf-t{font-size:14.5px;font-weight:600}
+.cf-opt{font-size:11.5px;color:var(--label-3);font-weight:500;margin-left:4px}
+.field.area.sm{min-height:52px}
+
+/* CoachApply.jsx's "request sent" confirmation — a real moment, not a boxed one-liner: a
+   big soft-circle icon (same recipe as .doc-hero's ring, so submitting reads as landing on
+   the other side of the same visual idea) plus a genuine 3-step sequence (sent → review →
+   approval), which is what justifies numbered markers here. */
+.sent-hero{text-align:center;padding:36px 8px 8px}
+.sent-hero .ring{
+  width:84px;height:84px;border-radius:50%;margin:0 auto 20px;
+  background:var(--acc-soft);color:var(--acc);display:flex;align-items:center;justify-content:center;
+}
+.sent-hero .ring .icn{font-size:38px}
+.sent-hero h2{margin:0 0 8px;font-size:24px;font-weight:800;letter-spacing:-.02em}
+.sent-hero > p{margin:0 auto;max-width:300px;color:var(--label-2);font-size:15px;line-height:1.45}
+
+.sent-steps{margin:30px auto;max-width:320px;text-align:left}
+.sent-step{display:flex;gap:14px;position:relative;padding-bottom:24px}
+.sent-step:last-child{padding-bottom:0}
+.sent-step:not(:last-child)::before{content:"";position:absolute;left:15px;top:32px;bottom:0;width:1.5px;background:var(--sep)}
+.sent-step .n{
+  width:32px;height:32px;border-radius:50%;flex:none;z-index:1;
+  display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;
+  background:var(--glass-bg-2);color:var(--label-2);border:1px solid var(--glass-border);
+}
+.sent-step .n .icn{font-size:15px}
+.sent-step.done .n{background:var(--acc);color:var(--on-acc);border-color:transparent}
+.sent-step h4{margin:0 0 2px;font-size:15px;font-weight:600}
+.sent-step p{margin:0;font-size:13.5px;color:var(--label-3);line-height:1.4}
+
+/* CoachMarketplace.jsx — one wide card per coach ("B" of the two sketched card directions:
+   the other packed coaches 2-up in a tighter grid with the price as a small pill; this one
+   gives the bio room to breathe and calls the price out as the one number that matters). */
+.coach-list{display:flex;flex-direction:column;gap:12px}
+.coach-card{
+  display:flex;gap:14px;align-items:flex-start;
+  border-radius:var(--r-card);border:1px solid var(--glass-border);background:var(--glass-bg);
+  background-image:var(--glass-sheen);backdrop-filter:saturate(var(--glass-sat)) blur(var(--glass-blur));
+  box-shadow:var(--shadow-sm);padding:16px;
+}
+.coach-card .body{flex:1;min-width:0}
+.coach-card .top-row{display:flex;align-items:flex-start;justify-content:space-between;gap:8px}
+.coach-card .name{font-size:16px;font-weight:700;letter-spacing:-.014em}
+.coach-card .bio{font-size:13.5px;color:var(--label-2);line-height:1.42;margin-top:6px}
+.coach-card .loc{display:flex;align-items:center;gap:5px;font-size:12px;color:var(--label-3);margin-top:8px}
+.coach-card .loc .icn{font-size:13px}
+.coach-card .rate{flex:none;text-align:right}
+.coach-card .rate .n{font-size:17px;font-weight:800;color:var(--acc);letter-spacing:-.01em}
+.coach-card .rate .u{display:block;font-size:11px;color:var(--label-3);margin-top:-2px}
 
 .lrow{
   display:flex;align-items:center;gap:12px;width:100%;text-align:left;
@@ -467,6 +580,14 @@ h4.sec{
 .btn.primary:active{background:var(--acc-2)}
 .btn.tinted{background:color-mix(in srgb, var(--acc-soft) 80%, var(--glass-bg-2));background-image:var(--glass-sheen);color:var(--acc);border-color:var(--acc-line)}
 .btn.danger{background:color-mix(in srgb,var(--red) 15%,transparent);color:var(--red);border-color:color-mix(in srgb,var(--red) 30%,transparent)}
+/* "Join live class" on a booking card — a solid fill in the class's own --tint looked muddy
+   sitting on a card whose background is already washed in that same color (and unreadable on
+   the paler discipline colors). Same soft/outlined shape as .btn.tinted instead, just keyed to
+   --tint rather than --acc, so it stays legible over every discipline color and never reads as
+   the same red as the .danger cancel button next to it. */
+.btn.live{background:color-mix(in srgb, var(--tint,var(--acc)) 20%, var(--glass-bg-2));background-image:var(--glass-sheen);color:var(--tint,var(--acc));border-color:color-mix(in srgb, var(--tint,var(--acc)) 35%, transparent)}
+.btn.live .dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:currentColor;margin-right:1px;animation:live-pulse 1.4s ease-in-out infinite}
+@keyframes live-pulse{0%,100%{opacity:1}50%{opacity:.35}}
 .btn.ghost,.btn.plain{background:none;background-image:none;color:var(--acc);font-weight:400;border-color:transparent}
 .btn.ghost:active,.btn.plain:active{background:var(--glass-bg-2)}
 .btn.sm{padding:8px 14px;width:auto;font-size:15px;border-radius:var(--r-sm);gap:5px}
@@ -983,6 +1104,361 @@ h4.sec{
 .field::placeholder,.input::placeholder{color:var(--label-3)}
 .field:focus,.input:focus{box-shadow:inset 0 0 0 2px var(--acc);border-color:transparent}
 .field.area,textarea.input{min-height:92px;resize:vertical;line-height:1.42}
+
+/* --- location picker (components/LocationPicker.jsx) --- */
+/* A coach's marketplace location — real places only, picked from geocoded search results or
+   a reverse-geocoded GPS fix, never typed free text straight into the saved value. */
+.loc-picker{position:relative}
+.loc-field{
+  display:flex;align-items:center;gap:10px;width:100%;background:var(--glass-bg-2);
+  border:1px solid var(--glass-border);border-radius:var(--r);box-shadow:var(--shadow-sm);
+  padding:11px 12px;transition:box-shadow var(--fast),border-color var(--fast);
+}
+.loc-field:focus-within{box-shadow:inset 0 0 0 2px var(--acc);border-color:transparent}
+.loc-field > .icn{color:var(--label-3);flex:none;font-size:18px}
+.loc-input{flex:1;min-width:0;background:none;border:none;outline:none;color:var(--label);
+  font-size:16px;letter-spacing:-.012em;padding:2px 0}
+.loc-input::placeholder{color:var(--label-3)}
+.loc-detect{
+  flex:none;width:30px;height:30px;border-radius:50%;display:flex;align-items:center;justify-content:center;
+  background:var(--acc-soft);color:var(--acc);transition:background var(--fast);
+}
+.loc-detect:active{background:var(--acc-line)}
+.loc-detect:disabled{opacity:.6}
+.loc-detect .spin{animation:beam-spin 1s linear infinite}
+.loc-drop{
+  position:absolute;left:0;right:0;top:calc(100% + 6px);z-index:5;max-height:220px;overflow-y:auto;
+  background:var(--sheet-bg);background-image:var(--glass-sheen);
+  backdrop-filter:saturate(var(--glass-sat)) blur(var(--glass-blur));
+  border:1px solid var(--glass-border);border-radius:var(--r);box-shadow:var(--shadow-md);padding:6px;
+}
+.loc-opt{
+  display:flex;align-items:center;gap:10px;width:100%;padding:10px 8px;border-radius:var(--r-sm);
+  font-size:14.5px;text-align:left;color:var(--label);
+}
+.loc-opt:active{background:var(--glass-bg-2)}
+.loc-opt .icn{color:var(--label-3);flex:none;font-size:15px}
+.loc-empty{padding:12px 8px;color:var(--label-3);font-size:13.5px;text-align:center}
+
+/* UserSearch.jsx — the @-username picker for adding box staff. Same dropdown recipe as
+   .loc-picker above (real results only, never a typed string), styled as an "@handle" field
+   instead of a location search. */
+.usr-picker{position:relative}
+.usr-field{
+  display:flex;align-items:center;gap:8px;width:100%;background:var(--glass-bg-2);
+  border:1px solid var(--glass-border);border-radius:var(--r);box-shadow:var(--shadow-sm);
+  padding:11px 12px;transition:box-shadow var(--fast),border-color var(--fast);
+}
+.usr-field:focus-within{box-shadow:inset 0 0 0 2px var(--acc);border-color:transparent}
+.usr-at{color:var(--label-3);font-weight:700;font-size:15px}
+.usr-input{flex:1;min-width:0;background:none;border:none;outline:none;color:var(--label);
+  font-size:15px;letter-spacing:-.01em;padding:2px 0}
+.usr-input::placeholder{color:var(--label-3)}
+.usr-drop{
+  position:absolute;left:0;right:0;top:calc(100% + 6px);z-index:5;max-height:240px;overflow-y:auto;
+  background:var(--sheet-bg);background-image:var(--glass-sheen);
+  backdrop-filter:saturate(var(--glass-sat)) blur(var(--glass-blur));
+  border:1px solid var(--glass-border);border-radius:var(--r-card);box-shadow:var(--shadow-md);padding:6px;
+}
+.usr-opt{display:flex;align-items:center;gap:10px;width:100%;padding:8px;border-radius:var(--r-sm);text-align:left}
+.usr-opt:active{background:var(--glass-bg-2)}
+.usr-opt-t{display:flex;flex-direction:column;font-size:13.5px}
+.usr-opt-t b{font-weight:600;line-height:1.3}
+.usr-opt-t span{color:var(--label-3);font-size:12px}
+.usr-empty{padding:12px 8px;color:var(--label-3);font-size:13.5px;text-align:center}
+
+/* CoachBoxes.jsx redesign, "resumen de coach" direction (picked from 2 sketched on the
+   design canvas): one hero card leads with real numbers (boxes run, athletes across them)
+   before the marketplace toggle and rate/location, instead of the marketplace switch being
+   the first and only thing on the page — this is meant to read like Home's stat-led cards,
+   not a settings form. */
+.coach-hero{
+  padding:20px;border-radius:var(--r-card);
+  border:1px solid var(--glass-border);background:var(--glass-bg);background-image:var(--glass-sheen);
+  backdrop-filter:saturate(var(--glass-sat)) blur(var(--glass-blur));box-shadow:var(--shadow-md);
+  margin-bottom:16px;
+}
+.coach-hero-eyebrow{display:flex;align-items:center;gap:10px;margin-bottom:16px}
+.coach-hero-eyebrow .t{font-size:11.5px;font-weight:700;color:var(--label-3);letter-spacing:.07em;text-transform:uppercase}
+.coach-stats{display:flex}
+.coach-stat{flex:1;text-align:center}
+.coach-stat .n{font-size:30px;font-weight:600;letter-spacing:-.026em;line-height:1.1}
+.coach-stat .l{font-size:12.5px;color:var(--label-3);margin-top:4px}
+.coach-vsep{width:var(--hair);background:var(--sep)}
+.coach-toggle-row{display:flex;align-items:center;gap:12px}
+.coach-toggle-row .t{flex:1;min-width:0}
+.coach-toggle-row .t .n{font-weight:700;font-size:15.5px;letter-spacing:-.012em}
+.coach-toggle-row .t .s{font-size:12.5px;color:var(--label-3);margin-top:2px;line-height:1.35}
+.coach-cells{display:flex;gap:12px}
+.coach-cell{flex:1;min-width:0;background:var(--glass-bg-2);border:1px solid var(--glass-border);border-radius:var(--r);padding:11px 13px;transition:border-color var(--fast)}
+.coach-cell:focus-within{border-color:var(--acc-line)}
+.coach-cell.tap{appearance:none;color:inherit;font:inherit;text-align:left;transition:background var(--fast)}
+.coach-cell.tap:active{background:var(--glass-bg)}
+.coach-cell .lbl{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--label-3);margin-bottom:5px;font-weight:600;letter-spacing:.03em;text-transform:uppercase}
+.coach-cell .lbl .icn{font-size:12px}
+.coach-cell .val{font-size:16px;font-weight:700;letter-spacing:-.014em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.coach-cell .val.num{
+  appearance:none;-webkit-appearance:none;background:none;border:none;box-shadow:none;outline:none;
+  padding:0;color:inherit;font:inherit;width:4ch;flex:none;text-align:left;
+}
+.coach-cell .val.num:focus{box-shadow:none}
+.coach-cell .rate-row{display:flex;align-items:baseline;gap:4px}
+.coach-cell .unit{font-size:13px;color:var(--label-3);font-weight:600}
+
+/* Flat tinted badge — a soft color fill, no gradient/glow, for icon badges on this screen
+   (the hero eyebrow, box thumbnails). Deliberately flatter than .lrow-i's glossy gradient
+   recipe used elsewhere in the app, which read as an overworked "neomorphic" 3D button once
+   the app had it at 56px on every box row instead of a small 32px accent elsewhere. */
+.flat-badge{
+  display:flex;align-items:center;justify-content:center;flex:none;
+  background:color-mix(in srgb, var(--tint,var(--acc)) 16%, transparent);
+  color:var(--tint,var(--acc));
+}
+
+/* CoachBox.jsx's "single card" direction — an icon+label eyebrow leading a .card, matching the
+   coach dashboard hero's own eyebrow row. */
+.card-eyebrow{display:flex;align-items:center;gap:10px;margin-bottom:12px}
+.card-eyebrow .t{font-size:11.5px;font-weight:700;color:var(--label-3);letter-spacing:.07em;text-transform:uppercase}
+.invite-copy{flex:1;min-width:0;text-align:left;padding:2px 0;transition:opacity var(--fast)}
+.invite-copy:active{opacity:.6}
+
+/* "Your boxes" as real cards (flat tinted icon tile + a member-count pill), matching the
+   marketplace's card language. */
+.box-list{display:flex;flex-direction:column;gap:10px}
+.box-card{
+  display:flex;align-items:center;gap:14px;width:100%;text-align:left;padding:13px;
+  border-radius:var(--r-card);border:1px solid var(--glass-border);background:var(--glass-bg);
+  background-image:var(--glass-sheen);backdrop-filter:saturate(var(--glass-sat)) blur(var(--glass-blur));
+  box-shadow:var(--shadow-sm);transition:background var(--fast);
+}
+.box-card:active{background:var(--glass-bg-2)}
+.box-card .thumb{
+  width:56px;height:56px;border-radius:16px;object-fit:cover;
+}
+.box-card .thumb .icn{font-size:22px}
+.box-card .body{flex:1;min-width:0}
+.box-card .t{display:block;font-size:16px;font-weight:700;letter-spacing:-.014em}
+.box-loc{display:flex;align-items:center;gap:5px;font-size:12.5px;color:var(--label-3)}
+.box-loc .icn{font-size:12px}
+.box-card .box-loc{margin-top:3px}
+.chip-pill{
+  display:inline-flex;align-items:center;gap:5px;font-size:12px;font-weight:600;
+  padding:4px 9px 4px 7px;border-radius:99px;margin-top:6px;
+  background:color-mix(in srgb, var(--tint,var(--indigo)) 18%, transparent);
+  color:color-mix(in srgb, var(--tint,var(--indigo)) 55%, #fff);
+}
+.chip-pill .icn{font-size:11px}
+.role-tag{
+  display:inline-flex;align-items:center;font-size:10.5px;font-weight:700;text-transform:uppercase;
+  letter-spacing:.02em;padding:2px 7px;border-radius:99px;background:var(--purple-soft,var(--acc-soft));color:var(--purple,var(--acc));
+}
+
+/* A class card — colored left bar + bold name identify the discipline at a glance (CrossFit/
+   Gym/Hyrox/...), the seat grid below shows real capacity instead of a plain count. Replaces
+   the generic .lrow row for anything class-related, which can't hold a multi-row grid anyway. */
+.class-card{
+  position:relative; padding:14px 14px 14px 20px; border-radius:var(--r-card);
+  border:1px solid var(--glass-border); background:var(--glass-bg); background-image:var(--glass-sheen);
+  backdrop-filter:saturate(var(--glass-sat)) blur(var(--glass-blur)); box-shadow:var(--shadow-sm);
+  transition:transform .15s ease, box-shadow .15s ease; width:100%;
+}
+.class-card::before{content:'';position:absolute;left:0;top:12px;bottom:12px;width:4px;border-radius:4px;background:var(--tint,var(--acc))}
+.class-card-top{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}
+.class-card .name{font-size:17px;font-weight:800;letter-spacing:-.014em}
+.class-card .disc{display:flex;align-items:center;gap:5px;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.04em;color:var(--tint,var(--acc));margin-top:3px}
+.class-card .disc .icn{font-size:12px}
+.class-card .meta{font-size:12.5px;color:var(--label-3);text-align:right;flex:none;white-space:nowrap}
+.class-card .actions{margin-top:12px;display:flex;justify-content:flex-end}
+button.class-card{font:inherit;color:inherit;cursor:pointer;display:block}
+button.class-card:hover{box-shadow:var(--shadow-md);transform:translateY(-1px)}
+button.class-card:active{background:var(--glass-bg-2);transform:translateY(0)}
+
+/* A time slot with 2+ simultaneous classes (different rooms/disciplines) — cards shrink to
+   share the row instead of stacking as if sequential, which is what made concurrent classes
+   read as one-after-another instead of at-once. */
+.class-card.in-row{flex:1 1 210px;min-width:180px;margin-bottom:0}
+.class-card.in-row .name{font-size:15px}
+.class-card.in-row .disc{font-size:10px}
+
+/* MyBoxes.jsx booking card, "Direction A" (big cards) picked from 2 sketched on the design
+   canvas — deliberately richer than the admin screen's compact left-bar card (CoachClasses.jsx
+   picked "Direction A: compact" for itself; same class name, a `.booking` modifier is the only
+   thing that differs): the whole card washes in the discipline's color, the time reads large,
+   and Book/Cancel is a full-width button at the bottom, like a real ticket. */
+.class-card.booking{
+  padding:18px;border-radius:22px;border-color:var(--glass-border);
+  background:linear-gradient(155deg, color-mix(in srgb, var(--tint) 22%, var(--glass-bg)), var(--glass-bg) 70%);
+  background-image:var(--glass-sheen), linear-gradient(155deg, color-mix(in srgb, var(--tint) 26%, var(--glass-bg)), var(--glass-bg) 70%);
+  box-shadow:var(--shadow-md);
+}
+.class-card.booking::before{display:none}
+.class-card.booking .name{font-size:19px}
+.class-card.booking .meta{font-size:21px;font-weight:800;letter-spacing:-.02em;color:var(--tint)}
+.class-card.booking .fill-note{margin:14px 0 6px;font-size:13px;color:var(--label-2)}
+.day-title{font-size:15px;font-weight:700;color:var(--label-2);margin:2px 4px 14px}
+
+/* Live class clock — one big number, same on the host's phone and every athlete's, all three
+   driven by liveClass.js's pure time-math off a single shared anchor timestamp. */
+.live-card{text-align:center}
+.live-clock{font-size:56px;font-weight:800;letter-spacing:-.02em;font-variant-numeric:tabular-nums;color:var(--acc)}
+.live-phase{font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--label-3);margin-top:4px}
+
+/* CoachClasses.jsx's Horario tab — the week's 7 days sit directly on the page, always
+   visible, no extra tap to reveal them (picked over an earlier collapsed summary card that
+   needed a tap just to see the day picker). A small dot marks a day that already has a class,
+   at a glance, before tapping into it. */
+.period-panel{padding:14px;border-radius:16px;background:var(--glass-bg-2);border:1px solid var(--glass-border);margin-bottom:16px}
+.period-link{display:flex;align-items:center;gap:8px;font-size:13.5px;font-weight:700;color:var(--acc)}
+.day-dot{width:4px;height:4px;border-radius:50%;background:var(--acc);margin-top:1px}
+.day-pill.on .day-dot{background:var(--on-acc)}
+
+/* The dashed "add" affordance — deliberately lighter-weight than a filled button, since this
+   is the everyday action on this screen (add a class to the day you're looking at). */
+.add-dashed{
+  display:flex;align-items:center;justify-content:center;gap:7px;width:100%;
+  padding:13px 0;border-radius:14px;font-size:14px;font-weight:700;
+  color:var(--acc);background:var(--acc-soft);border:1.5px dashed var(--acc-line);
+}
+
+/* A real month grid (6 Monday-first weeks) for jumping to any date — a dot marks a day that
+   already has generated classes; days outside the current month are dimmed, not clickable-off. */
+.month-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:4px}
+.month-cell{
+  position:relative;aspect-ratio:1;border-radius:10px;display:flex;align-items:center;justify-content:center;
+  font-size:12.5px;font-weight:700;color:var(--label);background:var(--glass-bg);
+}
+.month-cell.out{color:var(--label-4)}
+.month-cell.on{background:var(--acc);color:var(--on-acc)}
+.month-dot{position:absolute;bottom:4px;width:4px;height:4px;border-radius:50%;background:var(--acc)}
+.month-cell.on .month-dot{background:var(--on-acc)}
+
+/* CoachClasses.jsx's own segmented control — Upcoming/Calendar/Class types. A class type is a
+   reusable preset with no schedule attached; the Calendar tab is where it actually gets
+   placed onto a weekday+time. */
+.seg{display:flex;background:var(--glass-bg-2);background-image:var(--glass-sheen);border:1px solid var(--glass-border);border-radius:14px;padding:3px;margin-bottom:22px;box-shadow:var(--shadow-sm)}
+.seg-tab{flex:1;text-align:center;padding:10px 0;border-radius:11px;font-size:13px;font-weight:600;color:var(--label-2)}
+.seg-tab.on{background:var(--acc);color:var(--on-acc);font-weight:700}
+
+/* Calendar tab — one weekday viewed at a time (day-strip above, same language as the Upcoming
+   tab's date strip), its slots as a plain row list — replaced an earlier 7-column hour grid
+   that read as a wall of tiny buttons. Adding always goes through one shared panel (type +
+   time; the day is whichever one is currently selected). */
+.cal-add-panel{margin-top:12px;padding:12px;border-radius:14px;background:var(--glass-bg-2);border:1px solid var(--glass-border)}
+.cal-type-picker{display:flex;flex-wrap:wrap;gap:8px}
+.type-chip{
+  display:inline-flex;align-items:center;gap:6px;font-size:12.5px;font-weight:700;
+  padding:8px 12px;border-radius:99px;background:var(--glass-bg);border:1.5px solid transparent;color:var(--label-2);
+}
+.type-chip.on{background:color-mix(in srgb, var(--tint) 20%, var(--glass-bg));border-color:var(--tint);color:var(--tint)}
+.type-chip .icn{font-size:12px}
+
+/* Schedule grouping — one row per time slot. A slot with 2+ classes lays its cards out side
+   by side (wrapping on narrow screens) so simultaneous classes in different rooms read as
+   "at once", not as a sequential list. */
+.sched-slot{margin-bottom:14px}
+.sched-slot:last-child{margin-bottom:0}
+.sched-time{display:flex;align-items:center;gap:8px;font-size:12px;font-weight:800;color:var(--label-3);margin:0 4px 8px;letter-spacing:.01em}
+.sched-count{font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;color:var(--acc);background:var(--acc-soft);padding:2px 7px;border-radius:99px}
+.sched-row{display:flex;gap:10px;flex-wrap:wrap}
+.sched-row>*{flex:1 1 100%}
+
+/* CoachClasses.jsx's roster/attendance panel — matches the class-card language (tinted by
+   discipline) instead of the plain generic-orange card it used to be. Status shows as a colored
+   pill instead of gray subtitle text, and marking attendance is two labeled buttons instead of
+   two bare icon squares. */
+.status-pill{
+  display:inline-flex;align-items:center;font-size:11px;font-weight:700;padding:3px 9px;border-radius:99px;margin-top:3px;
+}
+.status-pill.booked{background:color-mix(in srgb, var(--acc) 18%, transparent);color:var(--acc)}
+.status-pill.waitlist{background:color-mix(in srgb, var(--yellow) 20%, transparent);color:var(--yellow)}
+.status-pill.offered{background:var(--acc-soft);color:var(--acc)}
+.status-pill.attended{background:color-mix(in srgb, var(--teal) 20%, transparent);color:var(--teal)}
+.status-pill.no-show{background:color-mix(in srgb, var(--red) 18%, transparent);color:var(--red)}
+.att-btn{
+  display:flex;align-items:center;gap:5px;font-size:12.5px;font-weight:700;padding:8px 12px;border-radius:11px;flex:none;
+}
+.att-btn.yes{background:color-mix(in srgb, var(--acc) 16%, transparent);color:var(--acc)}
+.att-btn.no{background:color-mix(in srgb, var(--red) 14%, transparent);color:var(--red)}
+.att-btn .icn{font-size:13px}
+
+/* CoachClasses.jsx class-type picker — icon and color are chosen independently (a type is
+   fully custom per box, not a fixed discipline), so this is two small pickers instead of one
+   combined grid: a scrolling row of icon-only circles (colored by whichever color is
+   currently picked, so the preview stays live) and a row of solid color swatches below it. */
+.icon-picker{display:flex;gap:8px;overflow-x:auto;padding-bottom:2px;margin-bottom:14px}
+.icon-opt{
+  flex:none;width:44px;height:44px;border-radius:50%;display:flex;align-items:center;justify-content:center;
+  background:var(--glass-bg-2);border:2px solid transparent;color:var(--label-3);
+}
+.icon-opt .icn{font-size:19px}
+.icon-opt.on{background:color-mix(in srgb, var(--tint) 22%, var(--glass-bg-2));border-color:var(--tint);color:var(--tint)}
+
+.color-picker{display:flex;flex-wrap:wrap;gap:10px;margin-bottom:16px}
+.color-opt{width:32px;height:32px;border-radius:50%;flex:none;border:2px solid transparent;box-shadow:var(--shadow-sm)}
+.color-opt.on{border-color:var(--label);box-shadow:0 0 0 2px var(--bg), var(--shadow-sm)}
+
+/* Duration/capacity fields with their unit baked in ("60 min") instead of a bare number —
+   wraps a NumberField (reset to plain text via .num-plain) in a field-styled box. */
+.stat-box{
+  display:flex;align-items:baseline;gap:4px;width:100%;background:var(--glass-bg-2);border:1px solid var(--glass-border);
+  border-radius:var(--r);box-shadow:var(--shadow-sm);padding:13px 15px;
+}
+.num-plain{background:none;border:none;box-shadow:none;padding:0;width:auto;flex:1;font-weight:800;color:var(--label)}
+.stat-unit{font-size:12px;color:var(--label-3);flex:none}
+
+/* Class-types list, "Direction B" — a horizontal carousel of tinted cards instead of a flat
+   row list, matching the same tinted-card language as a scheduled class. */
+.type-cards{display:flex;gap:12px;overflow-x:auto;padding-bottom:4px}
+.type-card{
+  position:relative;flex:none;width:150px;padding:16px;border-radius:var(--r-lg);border:1px solid var(--glass-border);
+  background:linear-gradient(155deg, color-mix(in srgb, var(--tint) 20%, var(--glass-bg)), var(--glass-bg) 70%);
+  background-image:var(--glass-sheen), linear-gradient(155deg, color-mix(in srgb, var(--tint) 20%, var(--glass-bg)), var(--glass-bg) 70%);
+  box-shadow:var(--shadow-sm);
+}
+.type-card .ic{width:30px;height:30px;border-radius:9px;background:color-mix(in srgb, var(--tint) 20%, transparent);color:var(--tint);display:flex;align-items:center;justify-content:center;margin-bottom:12px;font-size:14px}
+.type-card .nm{font-size:14px;font-weight:800}
+.type-card .sub{font-size:10.5px;color:var(--label-3);margin-top:3px}
+.type-card-del{position:absolute;top:10px;right:10px;color:var(--label-3);font-size:11px;opacity:.7}
+.type-card-edit{position:absolute;top:10px;right:34px;color:var(--label-3);font-size:11px;opacity:.7}
+
+/* MyBoxes.jsx's day strip, above the class list — picked from a real reference (WODbuster's
+   own day-of-week pills), lets a growing 2-week class window stay scannable instead of one
+   long merged list. */
+/* 7 columns divide the available width evenly instead of a fixed pill width that forced
+   horizontal scrolling (the 7th day used to sit half off-screen on a narrow phone). */
+.day-strip{display:grid;grid-template-columns:repeat(7,1fr);gap:6px;margin-bottom:16px}
+.day-pill{display:flex;flex-direction:column;align-items:center;gap:2px;padding:9px 2px;min-width:0;
+  border-radius:14px;background:var(--glass-bg-2);border:1px solid var(--glass-border)}
+.day-pill.on{background:var(--acc);border-color:transparent}
+.day-pill .dow{font-size:10px;font-weight:700;color:var(--label-3);text-transform:uppercase}
+.day-pill.on .dow{color:var(--on-acc);opacity:.7}
+.day-pill .dom{font-size:16px;font-weight:800;color:var(--label)}
+.day-pill.on .dom{color:var(--on-acc)}
+
+/* SeatGrid.jsx — a literal seat map for a class's capacity (picked over a plain "8/12" count
+   after the user shared a real reference screenshot): filled squares show who's booked, the
+   rest sit visibly empty. Root cause of the "empty seats render as tall rectangles" bug,
+   finally found: the modifier was plain ".empty", colliding with an unrelated, pre-existing
+   global ".empty" class (an empty-state block, padding:44px 20px; font-size:15px) — both
+   rules matched the same span, and that padding leaked in underneath whatever sizing
+   technique was tried. Renamed to ".seat-empty", which can't collide with anything. Height
+   is still a real pixel value set by the component (measured from the column's own rendered
+   width via ResizeObserver), not aspect-ratio or a padding trick — neither reliably drives a
+   CSS grid's row-track sizing for a content-less cell. */
+.seat-grid{display:grid;margin-top:6px}
+.seat{
+  border-radius:7px;display:flex;align-items:center;justify-content:center;
+  font-size:10px;font-weight:800;overflow:hidden;
+}
+/* inset ring, not a border — keeps the empty cell's box identical in size to a filled one. */
+.seat.seat-empty{background:var(--glass-bg-2);box-shadow:inset 0 0 0 1px var(--glass-border)}
+.seat.filled{color:#fff;background:var(--tint,var(--acc))}
+.seat.filled img{width:100%;height:100%;object-fit:cover}
+.fill-note{font-size:12px;color:var(--label-3);margin-top:2px}
+
+/* CoachBox.jsx staff list — a compact row list reusing .lrow-i's icon-badge recipe, distinct
+   from the roster's lrow-list only in that removal is the sole action (no drill-in). */
+.staff-list{display:flex;flex-direction:column;gap:2px}
 /* NumberField's own base look — a plain `<NumberField>` dropped somewhere with no `.stp` or
    `.unit-field` wrapper around it (CustomFoodForm's/EditFoodSheet's grid2 macro fields, e.g.)
    used to fall through to the browser's native input chrome (a stark white box in dark

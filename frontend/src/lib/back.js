@@ -9,6 +9,7 @@
 // Once a `backButton` listener exists, the plugin stops falling through to finish() —
 // back can then ONLY leave the app through App.exitApp(), which is why the last step is
 // an explicit press-again-to-exit rather than a silent no-op.
+import { useUI } from '../store/useUI.js'
 import { t } from './i18n.js'
 
 // How long a first back press stays armed as "press again to exit" (the toast shows 2.2s).
@@ -39,9 +40,25 @@ export function makeBackHandler({ getSheets, closeSheet, toast, goBack, exit, no
   }
 }
 
-// Registers the listener for the native shell. No-op here — this repo builds the web app
-// only for now (MOBILE is permanently false, see mobile.js); the native shell is being
-// rebuilt separately and will wire this back up against @capacitor/app again once it lands.
+// Registers the listener for the native shell. forvia-mobile is a thin WebView pointed at
+// this same live site (no bundled build, no build-time flag — see its README), so whether
+// we're inside it is a runtime check, not the old MOBILE build flag from before the shell
+// was rebuilt. A plain browser tab or PWA never has window.Capacitor, so this stays a no-op
+// there and the browser keeps walking its own history as usual.
 export async function initBackButton() {
-  return () => {}
+  if (!window.Capacitor?.isNativePlatform?.()) return () => {}
+  try {
+    const { App } = await import('@capacitor/app')
+    const handler = makeBackHandler({
+      getSheets: () => useUI.getState().sheets,
+      closeSheet: id => useUI.getState().closeSheet(id),
+      toast: msg => useUI.getState().toast(msg),
+      goBack: () => window.history.back(),
+      exit: () => App.exitApp(),
+    })
+    const sub = await App.addListener('backButton', handler)
+    return () => sub.remove()
+  } catch (e) {
+    return () => {}   // plugin not registered on the native side (cap sync pending) — leave back alone
+  }
 }

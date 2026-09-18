@@ -7,6 +7,14 @@ export const todayISO = () => {
 export const isoOf = d =>
   d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0')
 
+// A class's duration is fully customizable per template (1 hour to several) — this is what
+// turns a bare "18:00" into "18:00–19:30" wherever a class's time shows up.
+export const addMinToTime = (hhmm, minutes) => {
+  const [h, m] = hhmm.split(':').map(Number)
+  const total = (h * 60 + m + minutes + 1440) % 1440
+  return String(Math.floor(total / 60)).padStart(2, '0') + ':' + String(total % 60).padStart(2, '0')
+}
+
 export const DAYN = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
 export const DAYS = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa']
 export const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']

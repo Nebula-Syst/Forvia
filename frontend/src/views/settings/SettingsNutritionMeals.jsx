@@ -2,12 +2,12 @@ import { useNavigate } from 'react-router-dom'
 import { useStore } from '../../store/useStore.js'
 import { t } from '../../lib/i18n.js'
 import Icon from '../../components/Icon.jsx'
-import { savedMealDetailSheet } from '../../sheets.jsx'
+import { Button } from '../../components/ui.jsx'
+import { savedMealDetailSheet, createMealSheet } from '../../sheets.jsx'
 
-// "Mis comidas" — bundles of food items saved from a meal card's clipboard button
-// (Nutrition.jsx), reusable from the search sheet without re-adding each food. No creation
-// flow here: a bundle only ever comes from something you already logged, so this page is
-// purely for reviewing and deleting one.
+// "Mis comidas" — bundles of food items, either saved from a meal card's clipboard button
+// (Nutrition.jsx, from something already logged) or built here from scratch by searching
+// and combining several foods (createMealSheet) before ever logging anything.
 export default function SettingsNutritionMeals() {
   const nav = useNavigate()
   const meals = useStore(s => s.S.savedMeals)
@@ -32,5 +32,7 @@ export default function SettingsNutritionMeals() {
           </div>
         ))}
       </div>}
+
+    <Button variant="primary" onClick={() => createMealSheet()}>{t('New meal')}</Button>
   </div>
 }

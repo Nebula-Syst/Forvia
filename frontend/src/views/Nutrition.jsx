@@ -9,7 +9,7 @@ import { waterGoalForDate } from '../lib/nutrition-goals.js'
 import Icon from '../components/Icon.jsx'
 import { StackedBar } from '../components/MacroBars.jsx'
 import FastingCard from '../components/FastingCard.jsx'
-import { foodSearchSheet, calendarSheet, waterLogSheet, saveMealSheet } from '../sheets.jsx'
+import { calendarSheet, waterLogSheet, saveMealSheet } from '../sheets.jsx'
 
 // One day before the given ISO date — used both for "yesterday" (the repeat-meal shortcut)
 // and to keep it relative to whatever day is currently open, not literally today, once the
@@ -181,7 +181,7 @@ export default function Nutrition() {
                     <Icon name="clipboard" style={{ fontSize: 13 }} />
                   </button>
                 )}
-                <button className="btn xs tinted" onClick={e => { e.stopPropagation(); foodSearchSheet(selectedDate, meal.key) }}>{t('Log it')}</button>
+                <button className="btn xs tinted" onClick={e => { e.stopPropagation(); nav('/nutrition/log?d=' + selectedDate + '&m=' + meal.key) }}>{t('Log it')}</button>
               </div>
             </div>
             {/* Always separated from the header, not just when there's a repeat-yesterday row
