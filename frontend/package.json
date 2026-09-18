@@ -1,7 +1,7 @@
 {
   "name": "forvia-frontend",
   "private": true,
-  "version": "1.6.3",
+  "version": "1.6.4",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -15,7 +15,9 @@
   "dependencies": {
     "@capacitor/app": "^7.1.2",
     "@capacitor/core": "^7.6.9",
+    "@lexical/react": "^0.51.0",
     "fflate": "^0.8.3",
+    "lexical": "^0.51.0",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
     "react-liquid-gauge": "^1.2.4",
