@@ -4,6 +4,7 @@ import { useUI } from './store/useUI.js'
 import { EXDB, EXIDX, BODYPARTS, isCardio, isBodyweightEq, allExercises, equipmentOf, smOf } from './lib/exercises.js'
 import { fmtDate, fmtNum, fmtVol, fmtDur, durPart, todayISO, uid, exCount, MONTHS_LONG, ACCENTS, normalizeSearch } from './lib/format.js'
 import { lastEntryFor, bestWeightFor, buildSets, workoutVolume, workoutXp, PR_XP, setsDone, setsDoneActive, lastBW, supersetUnits, unitOf, setLabel, defaultConfig, cleanupSg, modeOf, effortOf, isBw, isPerSide, sideReps, workSetsDone } from './lib/history.js'
+import { MEASURE_ZONES, lastValueFor, zoneLabel } from './lib/measurements.js'
 import { beep, vibrate } from './lib/sound.js'
 import { t, instrFor, nameFor, getLang, INSTR_LANGS } from './lib/i18n.js'
 import { nav } from './lib/nav.js'
@@ -16,7 +17,7 @@ import { Button, Slider, Switch, Segmented, SelectRow, Row, NumberField, TextFie
 import { glyphOf, GLYPH_GROUPS, DEFAULT_GLYPH } from './lib/glyphs.js'
 import BodyMap from './components/BodyMap.jsx'
 import { exerciseMuscleSnapshot, loadOfWorkouts } from './lib/muscles.js'
-import { parseImport, mergeImport, preloadTranslatedNames } from './lib/import-csv.js'
+import { parseImport, mergeImport, preloadTranslatedNames, applyMatchOverride } from './lib/import-csv.js'
 import { buildPlanBundle, parsePlan, mergePlan, printPlan } from './lib/plan-share.js'
 import { estimate1RM, best1RM, is1RMRecord, REP_CAP } from './lib/onerm.js'
 import { nextPrescription, applyPrescription, policyFor, defaultIncrement, POLICIES_FOR, POLICY_NAME, POLICY_DESC, MAX_BW_SETS } from './lib/progression.js'
@@ -26,6 +27,7 @@ import { isWarmupRow } from './lib/workout-model.js'
 import { MEALS } from './lib/nutrition.js'
 import { waterGoalForDate } from './lib/nutrition-goals.js'
 import { parseNutritionCSV, mergeNutritionImport } from './lib/import-nutrition.js'
+import { unzipSync, strFromU8 } from 'fflate'
 import { StackedBar } from './components/MacroBars.jsx'
 import LocationPicker from './components/LocationPicker.jsx'
 import LiquidFillGauge from 'react-liquid-gauge'
@@ -625,25 +627,85 @@ export function bwSheet(opts = {}) {
   return h
 }
 
+/* ============================ body measurements ============================ */
+function MeasurementSheet({ close }) {
+  const st = useStore(s => s.S)
+  const iso = todayISO()
+  const today = st.measurements.find(m => m.d === iso)
+  // A blank field means "leave this zone alone", not "clear it" — most sessions only touch a
+  // couple of zones, so save() only writes the ones actually filled in, same as this draft.
+  const [draft, setDraft] = useState(() => Object.fromEntries(MEASURE_ZONES.map(z => [z, today?.values?.[z] ?? null])))
+  const setZone = (z, v) => setDraft(d => ({ ...d, [z]: v }))
+  const save = () => {
+    const values = Object.fromEntries(Object.entries(draft).filter(([, v]) => v != null && v > 0))
+    if (!Object.keys(values).length) { toast(t('Enter at least one measurement')); return }
+    update(s => {
+      let row = s.measurements.find(m => m.d === iso)
+      if (!row) { row = { d: iso, t: Date.now(), values: {} }; s.measurements.push(row); s.measurements.sort((a, b) => (a.d < b.d ? -1 : 1)) }
+      else row.t = Date.now()
+      Object.assign(row.values, values)
+    })
+    close()
+    toast(t('Measurements saved'))
+  }
+  return <>
+    <h3>{t('Log body measurements')}</h3>
+    <div className="muted small" style={{ marginBottom: 12 }}>{t('Today')}, {fmtDate(iso, true)} — {t('cm, leave a field blank to keep it as it is')}</div>
+    <div className="list" style={{ gap: 0 }}>
+      {MEASURE_ZONES.map(z => (
+        <div key={z} className="row between" style={{ padding: '9px 2px', borderBottom: '1px solid var(--sep)' }}>
+          <span className="small">{zoneLabel(z)}</span>
+          <span className="row" style={{ gap: 6, alignItems: 'center' }}>
+            <NumberField value={draft[z]} onChange={v => setZone(z, v)} nullable style={{ width: 76, textAlign: 'right', padding: '7px 10px' }}
+              placeholder={lastValueFor(st, z) != null ? String(lastValueFor(st, z)) : '—'} />
+            <span className="small muted">cm</span>
+          </span>
+        </div>
+      ))}
+    </div>
+    <div style={{ height: 14 }} />
+    <Button variant="primary" onClick={save}>{t('Save')}</Button>
+  </>
+}
+export function measurementSheet() {
+  ui().openSheet(close => <MeasurementSheet close={close} />)
+}
+
 /* ============================ import from another app ============================ */
 // Shows what a parsed export would actually do before anything is written. An import is
 // the one action where "just try it" is expensive — it's someone's entire training
 // history — so the numbers, the unit conversion and the exercises we couldn't recognise
 // are all on screen before the confirm button.
-function ImportSummary({ parsed, close }) {
+function ImportSummary({ parsed: initial, close }) {
   const st = useStore(s => s.S)
+  // Local, editable copy — applyMatchOverride hands back a full replacement parsed object
+  // (rebuilt workouts + recomputed counts) each time a row's link is changed here.
+  const [parsed, setParsed] = useState(initial)
   const isBW = parsed.kind === 'bodyweight'
+  const isMeasure = parsed.kind === 'measurements'
+  const isWorkouts = !isBW && !isMeasure
   const have = isBW
     ? parsed.bodyweight.filter(b => st.bodyweight.some(x => x.d === b.d)).length
+    : isMeasure
+    ? parsed.bodyweight.filter(b => st.bodyweight.some(x => x.d === b.d)).length
+      + parsed.measurements.filter(m => (st.measurements || []).some(x => x.d === m.d)).length
     : parsed.workouts.filter(w => st.workouts.some(x => x.d === w.d)).length
-  const fresh = (isBW ? parsed.bodyweight.length : parsed.workouts.length) - have
+  const totalItems = isBW ? parsed.bodyweight.length : isMeasure ? parsed.bodyweight.length + parsed.measurements.length : parsed.workouts.length
+  const fresh = totalItems - have
+
+  // Single-select exercisePicker taps call onPick and leave the sheet open, on the assumption
+  // onPick opens something else on top (see its own comment) — nothing here does, so a pick
+  // would otherwise just sit there looking like it did nothing. Close it ourselves instead.
+  const changeMatch = m => {
+    const picker = exercisePicker(ex => { setParsed(p => applyMatchOverride(p, m.key, ex.id)); picker.close() })
+  }
 
   const doImport = () => {
     let res
     update(s => { res = mergeImport(s, parsed) })
     close()
-    toast(isBW
-      ? t('{0} weigh-ins imported', res.added)
+    toast(isBW ? t('{0} weigh-ins imported', res.added)
+      : isMeasure ? t('{0} entries imported', res.added)
       : t('{0} workouts imported', res.added))
   }
 
@@ -656,6 +718,10 @@ function ImportSummary({ parsed, close }) {
     <div className="tiles" style={{ textAlign: 'left' }}>
       {isBW ? <>
         <div className="tile"><div className="l">{t('Weigh-ins')}</div><div className="v" style={{ fontSize: '1.1rem' }}>{parsed.bodyweight.length}</div></div>
+        <div className="tile"><div className="l">{t('New')}</div><div className="v" style={{ fontSize: '1.1rem' }}>{fresh}</div></div>
+      </> : isMeasure ? <>
+        <div className="tile"><div className="l">{t('Weigh-ins')}</div><div className="v" style={{ fontSize: '1.1rem' }}>{parsed.bodyweight.length}</div></div>
+        <div className="tile"><div className="l">{t('Body measurements')}</div><div className="v" style={{ fontSize: '1.1rem' }}>{parsed.measurements.length}</div></div>
         <div className="tile"><div className="l">{t('New')}</div><div className="v" style={{ fontSize: '1.1rem' }}>{fresh}</div></div>
       </> : <>
         <div className="tile"><div className="l">{t('Workouts')}</div><div className="v" style={{ fontSize: '1.1rem' }}>{parsed.workouts.length}</div></div>
@@ -670,7 +736,7 @@ function ImportSummary({ parsed, close }) {
     </div> : parsed.converted ? <div className="small" style={{ color: 'var(--yellow)', marginBottom: 10 }}>
       {t('The file is in {0} and your profile is in {1} — weights will be converted.', parsed.fileUnit, st.unit)}
     </div> : null}
-    {!isBW && !parsed.fileUnit && !parsed.mixedUnits && <div className="small dim" style={{ marginBottom: 10 }}>
+    {isWorkouts && !parsed.fileUnit && !parsed.mixedUnits && <div className="small dim" style={{ marginBottom: 10 }}>
       {t('The file does not say which unit it uses — numbers are imported as they are.')}
     </div>}
     {have > 0 && <div className="small dim" style={{ marginBottom: 10 }}>
@@ -678,17 +744,29 @@ function ImportSummary({ parsed, close }) {
     </div>}
     {/* The file rated its sets. Say so: the column is off by default, so the ratings would
         otherwise arrive invisibly and look like they had been dropped. */}
-    {!isBW && (parsed.rirSets + parsed.rpeSets) > 0 && <div className="small dim" style={{ marginBottom: 10 }}>
+    {isWorkouts && (parsed.rirSets + parsed.rpeSets) > 0 && <div className="small dim" style={{ marginBottom: 10 }}>
       {t(effortOf(st) === 'none'
         ? '{0} sets bring an {1} with them — switch on Effort per set in Settings to see it.'
         : '{0} sets bring an {1} with them.',
       parsed.rirSets || parsed.rpeSets, parsed.rirSets ? 'RIR' : 'RPE')}
     </div>}
-    {!isBW && parsed.unmatchedNames.length > 0 && <>
-      <h4 className="sec">{t('Not in the library — added as your own exercises')}</h4>
-      <div className="mchips" style={{ marginBottom: 12 }}>
-        {parsed.unmatchedNames.slice(0, 12).map(n => <span key={n} className="mchip capitalize">{n}</span>)}
-        {parsed.unmatchedNames.length > 12 && <span className="mchip">+{parsed.unmatchedNames.length - 12}</span>}
+    {/* Every exercise name the file used, matched or not — a confident match needs nothing
+        from you, but is still shown and still changeable, since "confident" just means the
+        name looked unambiguous, not that it's necessarily the right lift. */}
+    {isWorkouts && !!parsed.nameMatches?.length && <>
+      <h4 className="sec">{t('Link your exercises')}</h4>
+      <div className="list" style={{ gap: 0, marginBottom: 12 }}>
+        {parsed.nameMatches.map(m => (
+          <div key={m.key} className="row between" style={{ padding: '8px 2px', borderBottom: '1px solid var(--sep)', gap: 10 }}>
+            <span className="small" style={{ minWidth: 0, flex: 1 }}>
+              <span className="capitalize">{m.name}</span>
+              <span className="dim" style={{ display: 'block', fontSize: 12, marginTop: 1 }}>
+                {m.confident ? '→ ' + nameFor(EXIDX[m.id]) : t('New custom exercise')}
+              </span>
+            </span>
+            <Button size="sm" variant={m.confident ? 'ghost' : 'tinted'} onClick={() => changeMatch(m)}>{t('Change')}</Button>
+          </div>
+        ))}
       </div>
     </>}
 
@@ -700,8 +778,14 @@ function ImportSummary({ parsed, close }) {
   </>
 }
 
+const importAppKindEmpty = parsed => parsed.kind === 'bodyweight' ? !parsed.bodyweight.length
+  : parsed.kind === 'measurements' ? !parsed.bodyweight.length && !parsed.measurements.length
+  : !parsed.workouts.length
+
 /** Read a CSV/XML export, then show what it would do. */
 export function importFromApp(file, onDone) {
+  const isZip = /\.zip$/i.test(file.name) || /zip/i.test(file.type)
+  if (isZip) { importZipFromApp(file, onDone); return }
   const rd = new FileReader()
   // Kicked off in parallel with the file read, not awaited up front — by the time the (much
   // slower, user-picked) file finishes reading, the ~60KB name pack has almost always already
@@ -712,16 +796,65 @@ export function importFromApp(file, onDone) {
     let parsed
     try { parsed = parseImport(String(rd.result), { unit: S().unit }) }
     catch (e) { toast(t('Could not read that file')); return }
+    // This button and the food-diary one in Settings ▸ Nutrition are easy to mix up — MyFitnessPal
+    // alone hands out three CSVs at once (workouts, measurements, and a food diary with its own
+    // schema). Rather than reject a diary file dropped here, fall back to the other parser too.
+    if (parsed.error) {
+      let asNutrition
+      try { asNutrition = parseNutritionCSV(String(rd.result), { fallbackName: t('Imported item') }) } catch { asNutrition = { error: true } }
+      if (!asNutrition.error) { ui().openSheet(close => <NutritionImportSummary parsed={asNutrition} close={close} />); onDone && onDone(); return }
+    }
     if (parsed.error === 'empty') { toast(t('That file is empty')); return }
     if (parsed.error) { toast(t("That file's columns aren't recognised — see the docs for supported apps.")); return }
-    if (parsed.kind === 'bodyweight' ? !parsed.bodyweight.length : !parsed.workouts.length) {
-      toast(t('Nothing to import from that file')); return
-    }
+    if (importAppKindEmpty(parsed)) { toast(t('Nothing to import from that file')); return }
     ui().openSheet(close => <ImportSummary parsed={parsed} close={close} />)
     onDone && onDone()
   }
   rd.onerror = () => toast(t('Could not read that file'))
   rd.readAsText(file)
+}
+
+// Apps that export several files at once (MyFitnessPal: a workout/exercise summary, a body
+// measurements summary, and a separate nutrition-diary summary with its own column schema and
+// its own summary screen) hand the user one zip, not one CSV — so a plain "unrecognised columns"
+// error on the zip's raw bytes was the actual bug being hit here. Unzip it, run every .csv entry
+// through whichever parser recognises it, and walk the user through one summary sheet per
+// recognised file (chained via each sheet's own close) so nothing inside gets silently skipped.
+function importZipFromApp(file, onDone) {
+  const rd = new FileReader()
+  const names = preloadTranslatedNames().catch(() => {})
+  rd.onload = async () => {
+    await names
+    let entries
+    try { entries = unzipSync(new Uint8Array(rd.result)) }
+    catch (e) { toast(t('Could not read that file')); return }
+
+    const jobs = []
+    for (const [name, data] of Object.entries(entries)) {
+      if (!/\.csv$/i.test(name) || !data.length) continue
+      let text
+      try { text = strFromU8(data) } catch { continue }
+      let asImport
+      try { asImport = parseImport(text, { unit: S().unit }) } catch { asImport = { error: true } }
+      if (!asImport.error && !importAppKindEmpty(asImport)) { jobs.push({ kind: 'app', parsed: asImport }); continue }
+      let asNutrition
+      try { asNutrition = parseNutritionCSV(text, { fallbackName: t('Imported item') }) } catch { asNutrition = { error: true } }
+      if (!asNutrition.error) jobs.push({ kind: 'nutrition', parsed: asNutrition })
+    }
+
+    if (!jobs.length) { toast(t("That file's columns aren't recognised — see the docs for supported apps.")); return }
+
+    const showNext = i => {
+      if (i >= jobs.length) { onDone && onDone(); return }
+      const advance = () => showNext(i + 1)
+      const job = jobs[i]
+      if (job.kind === 'nutrition') ui().openSheet(close => <NutritionImportSummary parsed={job.parsed} close={() => { close(); advance() }} />)
+      else ui().openSheet(close => <ImportSummary parsed={job.parsed} close={() => { close(); advance() }} />)
+    }
+    showNext(0)
+  }
+  rd.onerror = () => toast(t('Could not read that file'))
+  rd.readAsArrayBuffer(file)
 }
 
 // Same "existing days win" summary-then-confirm flow as ImportSummary above, for a food
@@ -760,20 +893,6 @@ function NutritionImportSummary({ parsed, close }) {
   </>
 }
 
-/** Read a food-diary CSV export, then show what it would do. */
-export function importNutritionFromApp(file) {
-  const rd = new FileReader()
-  rd.onload = () => {
-    let parsed
-    try { parsed = parseNutritionCSV(String(rd.result), { fallbackName: t('Imported item') }) }
-    catch (e) { toast(t('Could not read that file')); return }
-    if (parsed.error === 'empty') { toast(t('That file is empty')); return }
-    if (parsed.error) { toast(t("That file's columns aren't recognised — see the docs for supported apps.")); return }
-    ui().openSheet(close => <NutritionImportSummary parsed={parsed} close={close} />)
-  }
-  rd.onerror = () => toast(t('Could not read that file'))
-  rd.readAsText(file)
-}
 
 /* ============================ target weight ============================ */
 export function bwDeltaColor(delta, currentW) {

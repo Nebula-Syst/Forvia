@@ -13,6 +13,9 @@
   },
   "license": "AGPL-3.0-or-later",
   "dependencies": {
+    "@capacitor/app": "^7.1.2",
+    "@capacitor/core": "^7.6.9",
+    "fflate": "^0.8.3",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
     "react-liquid-gauge": "^1.2.4",

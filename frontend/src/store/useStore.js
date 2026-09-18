@@ -17,7 +17,7 @@ const KEY = 'gym_state_v1'
 export const DEF = {
   unit: 'kg', restSec: 90, sound: true, vibration: true, keepAwake: true, lang: 'en',
   theme: DEFAULT_THEME, accent: DEFAULT_ACCENT, reduceMotion: false, body: 'male', targetW: null,
-  bodyweight: [], routines: [],
+  bodyweight: [], measurements: [], routines: [],
   // BMR/TDEE inputs for the nutrition-goals calculator (SettingsNutrition.jsx). Sex reuses
   // `body` above rather than duplicating it. All null until the person fills them in — the
   // calculator treats a missing one as "can't calculate yet", not a silent default.
@@ -88,7 +88,7 @@ function loadState() {
   return clone(DEF)
 }
 
-const hasData = st => !!((st.workouts || []).length || (st.routines || []).length || (st.bodyweight || []).length)
+const hasData = st => !!((st.workouts || []).length || (st.routines || []).length || (st.bodyweight || []).length || (st.measurements || []).length)
 
 export const useStore = create((set, get) => {
   let pushTm = null

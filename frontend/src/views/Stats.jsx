@@ -6,7 +6,8 @@ import { lastBW, streakWeeks, setLabel, modeOf, effortOf, metricModeForEntry, me
 import { fmtNum, fmtDate, fmtVol, todayISO, weekKey, isoOf } from '../lib/format.js'
 import { waterGoalForDate } from '../lib/nutrition-goals.js'
 import { t, nameFor } from '../lib/i18n.js'
-import { bwSheet, goalSheet, calendarSheet, workoutDetailSheet, WorkoutRow, bwDeltaColor } from '../sheets.jsx'
+import { bwSheet, goalSheet, calendarSheet, workoutDetailSheet, WorkoutRow, bwDeltaColor, measurementSheet } from '../sheets.jsx'
+import { MEASURE_ZONES, pointsFor, zoneLabel, bestZonesLoad, BEST_ZONE_THRESHOLDS } from '../lib/measurements.js'
 import LineChart from '../components/LineChart.jsx'
 import NutritionTrendChart from '../components/NutritionTrendChart.jsx'
 import Heatmap from '../components/Heatmap.jsx'
@@ -110,6 +111,24 @@ function fatigueHelpSheet() {
     <div className="dim small" style={{ lineHeight: 1.5, display: 'grid', gap: 8, marginTop: 10 }}>
       <div>{t('A heavy session for that muscle starts higher, so it can take 3–4 days to fall from Fatigued to Recovering, then Ready.')}</div>
       <div>{t('Exercises that also work it as a secondary mover — triceps in a bench press, for example — add stimulus too and reset that clock, so a muscle you keep hitting as a secondary rarely gets a clean window to fully clear.')}</div>
+    </div>
+    <div style={{ height: 8 }} />
+  </>)
+}
+
+// Same (i)-sheet idiom as fatigueHelpSheet above — the body map here needs its own explanation
+// since "marked" means something different from the training-load map right above it on this
+// same page: here it's "bigger than a general adult", not "worked hardest this week".
+function measurementsHelpSheet() {
+  useUI.getState().openSheet(() => <>
+    <h3>{t('Body measurements')}</h3>
+    <div className="muted small" style={{ lineHeight: 1.5 }}>
+      {t('Track circumference (tape measure, in cm) for whichever zones you care about — neck, chest, waist, hips, biceps, forearms, thighs, calves. Log as many or as few at once as you like.')}
+    </div>
+    <div className="dim small" style={{ lineHeight: 1.5, display: 'grid', gap: 8, marginTop: 10 }}>
+      <div>{t('The body map marks zones bigger than a general adult’s average for that area — the brighter it shades, the further above that average your latest measurement is. Below average stays unmarked.')}</div>
+      <div>{t('That average is a rough population figure for motivation, not a medical or athletic benchmark — it doesn’t know your height, training age or goals.')}</div>
+      <div>{t('The neck is tracked and charted like any other zone, but has no shape of its own on the body map to shade.')}</div>
     </div>
     <div style={{ height: 8 }} />
   </>)
@@ -295,6 +314,7 @@ function EffortCard({ S }) {
 export default function Stats() {
   const S = useStore(s => s.S)
   const [range, setRange] = useState(90)
+  const [measureZone, setMeasureZone] = useState(MEASURE_ZONES[0])
   const [exId, setExId] = useState(null)
   const [exMetric, setExMetric] = useState('top')
   const [nutriRange, setNutriRange] = useState(30)
@@ -306,6 +326,13 @@ export default function Stats() {
     .map(b => ({ t: b.t || new Date(b.d).getTime(), y: b.w, d: b.d }))
   const bw30 = S.bodyweight.filter(b => (b.t || new Date(b.d).getTime()) > now - 30 * 86400000)
   const bwDelta30 = bw30.length > 1 ? bw30[bw30.length - 1].w - bw30[0].w : null
+
+  // Defaults to whichever zone actually has data, same reasoning as exercise progress
+  // defaulting to the most-trained exercise rather than an arbitrary first entry.
+  const measuredZones = MEASURE_ZONES.filter(z => (S.measurements || []).some(m => m.values?.[z] != null))
+  const curZone = measuredZones.includes(measureZone) ? measureZone : (measuredZones[0] || measureZone)
+  const measurePts = pointsFor(S, curZone, range === 0 ? 0 : now - range * 86400000)
+  const measureLoad = bestZonesLoad(S)
   const workouts = S.workouts
   const monthW = workouts.filter(w => String(w.d || '').slice(0, 7) === todayISO().slice(0, 7)).length
 
@@ -440,6 +467,26 @@ export default function Stats() {
         <Segmented className="seg-range" value={range} onChange={setRange}
           options={[{ value: 30, label: '1M' }, { value: 90, label: '3M' }, { value: 365, label: '1Y' }, { value: 0, label: t('All') }]} />
         <div className="chart"><LineChart points={bwPts} h={160} unit={S.unit} goal={S.targetW} /></div>
+      </div>
+
+      <div className="card">
+        <div className="row between" style={{ marginBottom: 8 }}>
+          <h2 style={{ margin: 0 }}>{t('Body measurements')} <button className="helpbtn" aria-label={t('How do body measurements work?')} onClick={measurementsHelpSheet}><Icon name="info" /></button></h2>
+          <Button size="sm" icon="plus" onClick={() => measurementSheet()}>{t('Log')}</Button>
+        </div>
+        <div className="sect-b" style={{ marginBottom: 10 }}>
+          <SelectRow title={zoneLabel(curZone)} sheetTitle={t('Body measurements')} value={curZone} onChange={setMeasureZone} hideValue
+            options={MEASURE_ZONES.map(z => ({ value: z, label: zoneLabel(z) }))} />
+        </div>
+        <Segmented className="seg-range" value={range} onChange={setRange}
+          options={[{ value: 30, label: '1M' }, { value: 90, label: '3M' }, { value: 365, label: '1Y' }, { value: 0, label: t('All') }]} />
+        <div className="chart"><LineChart points={measurePts} h={160} unit="cm" /></div>
+
+        {measuredZones.length > 0 && <>
+          <h4 className="sec">{t('Your biggest zones')}</h4>
+          <BodyMap load={measureLoad} thresholds={BEST_ZONE_THRESHOLDS} body={S.body} />
+          <BodyMapLegend />
+        </>}
       </div>
 
       <div className="card">
