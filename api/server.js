@@ -203,21 +203,48 @@ function removeState(uid) {
 // (union, newest `at` wins) and age out after TOMBSTONE_MAX_AGE_MS — long enough that no
 // realistic offline gap outruns it, short enough the list never grows unbounded.
 const TOMBSTONE_MAX_AGE_MS = 180 * 86400000;
+// Shared by mergeWorkoutsInto and mergeFoodDiaryInto below: union two {id, at} tombstone lists,
+// newest `at` wins per id, and anything older than TOMBSTONE_MAX_AGE_MS is dropped so the list
+// never grows unbounded.
+function mergeTombstones(a, b) {
+  const cutoff = Date.now() - TOMBSTONE_MAX_AGE_MS;
+  const byId = new Map();
+  for (const t of [...(a || []), ...(b || [])]) {
+    if (!t?.id || !((t.at || 0) >= cutoff)) continue;
+    const cur = byId.get(t.id);
+    if (!cur || (t.at || 0) > (cur.at || 0)) byId.set(t.id, t);
+  }
+  return byId;
+}
 function mergeWorkoutsInto(uid, incoming) {
   const prev = readState(uid);
-  const cutoff = Date.now() - TOMBSTONE_MAX_AGE_MS;
-  const tombById = new Map();
-  for (const t of [...(prev?.deletedWorkoutIds || []), ...(incoming.deletedWorkoutIds || [])]) {
-    if (!t?.id || !((t.at || 0) >= cutoff)) continue;
-    const cur = tombById.get(t.id);
-    if (!cur || (t.at || 0) > (cur.at || 0)) tombById.set(t.id, t);
-  }
+  const tombById = mergeTombstones(prev?.deletedWorkoutIds, incoming.deletedWorkoutIds);
   const workoutById = new Map();
   for (const w of (prev?.workouts || [])) if (w?.id) workoutById.set(w.id, w);
   for (const w of (incoming.workouts || [])) if (w?.id) workoutById.set(w.id, w);
   for (const id of tombById.keys()) workoutById.delete(id);
   incoming.workouts = [...workoutById.values()];
   incoming.deletedWorkoutIds = [...tombById.values()];
+}
+
+// Same fix, same reasoning, for the nutrition diary (issue: a full week of logged food vanished
+// this way in production — foodDiary had never gotten the merge-by-id treatment workouts got).
+// foodDiary is date-keyed rather than one flat array, so the union-by-id merge runs once per day
+// (the union of every day either side knows about) instead of once overall.
+function mergeFoodDiaryInto(uid, incoming) {
+  const prev = readState(uid);
+  const tombById = mergeTombstones(prev?.deletedFoodEntryIds, incoming.deletedFoodEntryIds);
+  const days = new Set([...Object.keys(prev?.foodDiary || {}), ...Object.keys(incoming.foodDiary || {})]);
+  const merged = {};
+  for (const day of days) {
+    const byId = new Map();
+    for (const it of (prev?.foodDiary?.[day] || [])) if (it?.id) byId.set(it.id, it);
+    for (const it of (incoming.foodDiary?.[day] || [])) if (it?.id) byId.set(it.id, it);
+    for (const id of tombById.keys()) byId.delete(id);
+    merged[day] = [...byId.values()];
+  }
+  incoming.foodDiary = merged;
+  incoming.deletedFoodEntryIds = [...tombById.values()];
 }
 
 /* ---------- workout photos ---------- */
@@ -2020,13 +2047,19 @@ div{max-width:360px}h1{font-size:20px;margin:0 0 8px}p{color:#9db8a8;line-height
     if (!body.state || typeof body.state !== 'object') return json(res, 400, { error: 'state required' });
     delete body.state.active;              // in-progress workouts stay device-local
     mergeWorkoutsInto(user.id, body.state);
+    mergeFoodDiaryInto(user.id, body.state);
     scanForCheating(req, user, body.state);
     writeState(user.id, body.state);
     scanForTasks(req, user, body.state);
-    // workouts/deletedWorkoutIds go back in the response too — the merge above can add a
-    // workout this exact push didn't know about (logged from another device meanwhile), and
-    // without handing that back, this device wouldn't see it until its next full reload.
-    json(res, 200, { ok: true, ts: body.state._ts || null, workouts: body.state.workouts, deletedWorkoutIds: body.state.deletedWorkoutIds });
+    // workouts/deletedWorkoutIds and foodDiary/deletedFoodEntryIds go back in the response too —
+    // the merges above can add something this exact push didn't know about (logged from another
+    // device meanwhile), and without handing that back, this device wouldn't see it until its
+    // next full reload.
+    json(res, 200, {
+      ok: true, ts: body.state._ts || null,
+      workouts: body.state.workouts, deletedWorkoutIds: body.state.deletedWorkoutIds,
+      foodDiary: body.state.foodDiary, deletedFoodEntryIds: body.state.deletedFoodEntryIds,
+    });
   },
 
   // Algorithmic calls are wrong sometimes — a heavy-but-real PR, a session that ran past

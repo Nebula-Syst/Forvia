@@ -2508,7 +2508,13 @@ function EditFoodSheet({ dateIso, item, close }) {
     close()
   }
   const del = () => {
-    update(s => { s.foodDiary[dateIso] = (s.foodDiary[dateIso] || []).filter(x => x.id !== item.id) })
+    update(s => {
+      s.foodDiary[dateIso] = (s.foodDiary[dateIso] || []).filter(x => x.id !== item.id)
+      // Without this, a stale device merging this day back in (mergeFoodDiaryInto) can't tell
+      // "deleted on purpose" apart from "never synced yet" and would resurrect it — see
+      // deletedWorkoutIds in useStore.js for the same fix, first done for workouts.
+      s.deletedFoodEntryIds = [...(s.deletedFoodEntryIds || []), { id: item.id, at: Date.now() }]
+    })
     toast(t('Food removed'))
     close()
   }

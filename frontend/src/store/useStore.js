@@ -49,6 +49,12 @@ export const DEF = {
   reminder: { on: false, time: '08:00', tz: null }, effort: null,
   // Nutrition. Date-keyed: { [iso]: [{id, meal, name, grams, kcal, carbsG, fatG, proteinG}] }.
   foodDiary: {},
+  // Tombstones for explicitly-deleted food entries — same reasoning and shape as
+  // deletedWorkoutIds above, and for the same reason: api/server.js mergeFoodDiaryInto merges
+  // foodDiary by entry id per day instead of trusting a push as the whole truth (a stale device
+  // syncing for any reason used to silently wipe every day it didn't know about yet — a whole
+  // week of logged food vanished this way in production before this existed).
+  deletedFoodEntryIds: [],
   // waterAuto: true means SettingsNutrition.jsx keeps recomputing waterMl from bodyweight +
   // activity level (lib/nutrition-goals.js computeWaterGoal) whenever either changes — same
   // "always live-applied" idea as calories/macros above it. Editing it by hand sets this
@@ -211,12 +217,14 @@ export const useStore = create((set, get) => {
       try {
         const res = await api('/api/data', { method: 'PUT', body: JSON.stringify({ state: get().S }) })
         localStorage.removeItem('gym_dirty')
-        // The server merges `workouts` by id across devices rather than trusting this push as
-        // the whole truth (api/server.js mergeWorkoutsInto) — if this device was stale and the
-        // merge folded in a workout logged elsewhere meanwhile, adopt that here too, push:false
-        // so it doesn't loop back into another push. Safe against anything typed during the
-        // round-trip since update() clones whatever `S` is *now*, not what was sent.
+        // The server merges `workouts` and `foodDiary` by id across devices rather than trusting
+        // this push as the whole truth (api/server.js mergeWorkoutsInto / mergeFoodDiaryInto) —
+        // if this device was stale and the merge folded in something logged elsewhere meanwhile,
+        // adopt that here too, push:false so it doesn't loop back into another push. Safe against
+        // anything typed during the round-trip since update() clones whatever `S` is *now*, not
+        // what was sent.
         if (res?.workouts) get().update(s => { s.workouts = res.workouts; s.deletedWorkoutIds = res.deletedWorkoutIds || [] }, false)
+        if (res?.foodDiary) get().update(s => { s.foodDiary = res.foodDiary; s.deletedFoodEntryIds = res.deletedFoodEntryIds || [] }, false)
         // Catches every XP source that only ever goes through the debounced auto-save (the
         // bodyweight goal bonus, mainly) — the workout-finish path already checks explicitly
         // right after its own pushState (see sheets.jsx), but this covers the rest so a level-up
