@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { parseWorkoutCSV, mergeImport } from './import-csv.js'
+import { parseWorkoutCSV, mergeImport, applyMatchOverride } from './import-csv.js'
 
 const CSV = [
   'Date,Exercise,Weight,Reps,Set Type',
@@ -18,6 +18,32 @@ describe('CSV warm-up provenance', () => {
       { w: 80, r: 5, done: true },
     ])
     expect(entry.topW).toBe(80)
+  })
+})
+
+// Issue: correcting a second exercise in the "link your exercises" review view silently undid
+// the first correction — resolveId only special-cased whichever key THIS call was fixing and
+// fell back to the ORIGINAL match for every other key, never a previous override, so only the
+// most recent correction ever made it into the rebuilt workouts (the review list itself still
+// looked right, since nameMatches display is independent of what workouts actually got built).
+describe('applyMatchOverride accumulates corrections', () => {
+  it('keeps an earlier override after a second, different exercise is corrected', () => {
+    const csv = [
+      'Date,Exercise,Weight,Reps',
+      '2026-09-01,Totally Unknown Move One,50,10',
+      '2026-09-01,Totally Unknown Move Two,60,8',
+    ].join('\n')
+    let parsed = parseWorkoutCSV(csv, { unit: 'kg' })
+    const keyOne = parsed.nameMatches.find(m => m.name === 'Totally Unknown Move One').key
+    const keyTwo = parsed.nameMatches.find(m => m.name === 'Totally Unknown Move Two').key
+
+    parsed = applyMatchOverride(parsed, keyOne, '0025')   // bench press
+    parsed = applyMatchOverride(parsed, keyTwo, '0043')   // squat
+
+    const ids = parsed.workouts[0].entries.map(e => e.id).sort()
+    expect(ids).toEqual(['0025', '0043'])
+    expect(parsed.nameMatches.find(m => m.key === keyOne).id).toBe('0025')
+    expect(parsed.nameMatches.find(m => m.key === keyTwo).id).toBe('0043')
   })
 })
 

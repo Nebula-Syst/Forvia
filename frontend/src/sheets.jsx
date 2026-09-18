@@ -690,7 +690,10 @@ function ImportSummary({ parsed: initial, close }) {
     : isMeasure
     ? parsed.bodyweight.filter(b => st.bodyweight.some(x => x.d === b.d)).length
       + parsed.measurements.filter(m => (st.measurements || []).some(x => x.d === m.d)).length
-    : parsed.workouts.filter(w => st.workouts.some(x => x.d === w.d)).length
+    // Must match mergeImport's own dedup key exactly (lib/import-csv.js) — date alone used to
+    // count a day as "already have it" even when the imported workout was completely different
+    // content, which both hid it here (this button disables at fresh:0) and dropped it there.
+    : parsed.workouts.filter(w => st.workouts.some(x => x.d === w.d && x.start === w.start)).length
   const totalItems = isBW ? parsed.bodyweight.length : isMeasure ? parsed.bodyweight.length + parsed.measurements.length : parsed.workouts.length
   const fresh = totalItems - have
 

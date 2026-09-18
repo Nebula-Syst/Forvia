@@ -558,14 +558,23 @@ function buildWorkoutsFromByDate(byDate, resolveId, convRow) {
 // points at `newId`, a real catalogue exercise picked by hand. Rebuilds workouts from the
 // original per-name sets — mergeImport's own `used.has(id)` filter already drops any invented
 // custom-exercise definition this leaves behind unreferenced, so nothing extra to clean up here.
+//
+// Overrides accumulate on `parsed.overrides` (key -> id) rather than living only in this one
+// call's resolveId closure — issue: correcting a second exercise used to silently undo the
+// first, since resolveId only special-cased whichever key THIS call was fixing and fell back to
+// the ORIGINAL match (never a previous override) for every other key, so only the most recent
+// correction ever made it into the rebuilt workouts even though the review list kept showing
+// every earlier one as fixed.
 export function applyMatchOverride(parsed, key, newId) {
   if (parsed.kind !== 'workouts' || !EXIDX[newId]) return parsed
-  const resolveId = k => (k === key ? newId : (parsed.resolvedByKey.get(k) || parsed.createdByKey.get(k)?.id))
+  const overrides = new Map(parsed.overrides || [])
+  overrides.set(key, newId)
+  const resolveId = k => overrides.get(k) || parsed.resolvedByKey.get(k) || parsed.createdByKey.get(k)?.id
   const workouts = buildWorkoutsFromByDate(parsed.byDate, resolveId, convRowFor(parsed.unit, parsed.fileUnit))
-  const nameMatches = parsed.nameMatches.map(m => (m.key !== key ? m : { ...m, id: newId, confident: true, invented: null }))
+  const nameMatches = parsed.nameMatches.map(m => (!overrides.has(m.key) ? m : { ...m, id: overrides.get(m.key), confident: true, invented: null }))
   const matched = new Set(nameMatches.map(m => m.id).filter(id => EXIDX[id])).size
   const unmatchedNames = nameMatches.filter(m => !m.confident).map(m => m.name).sort()
-  return { ...parsed, workouts, nameMatches, matched, created: unmatchedNames.length, unmatchedNames }
+  return { ...parsed, workouts, nameMatches, matched, created: unmatchedNames.length, unmatchedNames, overrides }
 }
 
 /* ------------------------------------------------ MyFitnessPal exercises -- */
