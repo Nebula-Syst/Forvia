@@ -1,11 +1,34 @@
 import { describe, expect, it } from 'vitest'
-import { parseWorkoutCSV, mergeImport, applyMatchOverride } from './import-csv.js'
+import { parseWorkoutCSV, mergeImport, applyMatchOverride, parseWhen } from './import-csv.js'
 
 const CSV = [
   'Date,Exercise,Weight,Reps,Set Type',
   '2026-08-08,Bench Press,100,5,Warm-up',
   '2026-08-08,Bench Press,80,5,Working',
 ].join('\n')
+
+// Issue: Hevy exports dates in the device's locale ("7 sept 2026"). MON only had English
+// abbreviations, so Spanish months whose 3-letter form differs (ene/abr/ago/dic vs jan/apr/
+// aug/dec) failed to parse and every row for that month was silently skipped — a whole-month
+// data loss that looked like a successful import.
+describe('parseWhen recognizes Spanish month abbreviations', () => {
+  it('parses ene/abr/ago/dic dates', () => {
+    expect(parseWhen('20 ene 2026, 07:30')).toEqual({ d: '2026-01-20', t: 27000000 })
+    expect(parseWhen('3 abr 2026, 09:15')).toEqual({ d: '2026-04-03', t: 33300000 })
+    expect(parseWhen('15 ago 2026, 18:00')).toEqual({ d: '2026-08-15', t: 64800000 })
+    expect(parseWhen('10 dic 2025, 20:00')).toEqual({ d: '2025-12-10', t: 72000000 })
+  })
+
+  it('does not skip a month using a Spanish-only abbreviation during CSV import', () => {
+    const csv = [
+      'title,start_time,end_time,exercise_title,set_index,set_type,weight_kg,reps',
+      'Push,"15 ago 2026, 18:00","15 ago 2026, 19:00",Bench Press,0,normal,80,5',
+    ].join('\n')
+    const parsed = parseWorkoutCSV(csv, { unit: 'kg' })
+    expect(parsed.skipped).toBe(0)
+    expect(parsed.workouts[0].d).toBe('2026-08-15')
+  })
+})
 
 describe('CSV warm-up provenance', () => {
   it('retains the imported warm-up phase and excludes it from topW', () => {

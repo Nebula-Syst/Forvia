@@ -331,7 +331,13 @@ const effortNum = (raw, zeroMeansRated) => {
 }
 const LB_TO_KG = 0.45359237
 const p2 = n => String(n).padStart(2, '0')
-const MON = { jan: 1, feb: 2, mar: 3, apr: 4, may: 5, jun: 6, jul: 7, aug: 8, sep: 9, oct: 10, nov: 11, dec: 12 }
+// English + Spanish 3-letter abbreviations (Hevy/apps export dates in the device's locale).
+// Only the ones that actually differ from English need adding — most Spanish abbreviations
+// (feb, mar, may, jun, jul, sep→sept, oct, nov) already coincide with their English keys.
+const MON = {
+  jan: 1, feb: 2, mar: 3, apr: 4, may: 5, jun: 6, jul: 7, aug: 8, sep: 9, oct: 10, nov: 11, dec: 12,
+  ene: 1, abr: 4, ago: 8, dic: 12,
+}
 
 /** "2020-12-30 18:51:52" · "2024-03-07" · "22 Dec 2025, 08:00" · "07/03/2024" -> { d, t } */
 export function parseWhen(s) {
