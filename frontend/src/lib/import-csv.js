@@ -837,8 +837,14 @@ export function mergeImport(S, parsed) {
     S.bodyweight = [...S.bodyweight, ...fresh].sort((a, b) => (a.d < b.d ? -1 : 1))
     return { added: fresh.length, skipped: parsed.bodyweight.length - fresh.length }
   }
-  const have = new Set(S.workouts.map(w => w.d))
-  const fresh = parsed.workouts.filter(w => !have.has(w.d))
+  // Deduped by date+start, not date alone (issue: re-importing skipped every day that already
+  // had ANY workout logged on it — a native Forvia session that same day, or an earlier partial
+  // import — even when the imported workout was completely different content). Two distinct
+  // workouts landing on the same exact start timestamp is effectively impossible; re-running the
+  // same file produces the same start for each date every time, since it's read straight from
+  // the source file's own start_time column, so that's what actually catches a repeat import.
+  const have = new Set(S.workouts.map(w => w.d + '|' + w.start))
+  const fresh = parsed.workouts.filter(w => !have.has(w.d + '|' + w.start))
   const used = new Set(fresh.flatMap(w => w.entries.map(e => e.id)))
   const customs = parsed.customEx.filter(c => used.has(c.id) && !EXIDX[c.id])
   S.customEx = [...(S.customEx || []), ...customs]
