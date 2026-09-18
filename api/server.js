@@ -800,7 +800,14 @@ function cheatCtxFor(w, unit, allWorkouts) {
   const start = Number(w?.start), end = Number(w?.end);
   const durationMs = end - start;
   const badTiming = !(start > 0) || !(end > 0) || durationMs <= 0;
-  const overlapsAnother = !badTiming && allWorkouts.some(o => o !== w && o.id !== w.id && Number(o.start) > 0 && Number(o.end) > 0 && start < Number(o.end) && Number(o.start) < end);
+  // Two overlapping entries are only a cheating signal between two *live-logged* sessions —
+  // impossible to have honestly trained both at once. An imported workout (frontend/src/lib/
+  // import-csv.js's buildWorkoutsFromByDate, hence the 'iw' id prefix) overlapping a native one
+  // is the expected, harmless shape of the exact same real session tracked in both apps during
+  // a switch-over, not fabrication — real incident: importing a history that overlapped
+  // already-logged days got both copies flagged and docked levels for it.
+  const isImported = id => typeof id === 'string' && id.startsWith('iw');
+  const overlapsAnother = !badTiming && !isImported(w?.id) && allWorkouts.some(o => o !== w && o.id !== w.id && !isImported(o.id) && Number(o.start) > 0 && Number(o.end) > 0 && start < Number(o.end) && Number(o.start) < end);
   return { sets, exCount: exSeen.size, maxWeight, maxReps, maxWeightAllowed: CHEAT_MAX_WEIGHT[unit] || CHEAT_MAX_WEIGHT.kg, start, end, durationMs, badTiming, overlapsAnother };
 }
 // Every rule's finding for one workout, worst-first. A workout's overall penalty is its single
