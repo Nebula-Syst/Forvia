@@ -61,7 +61,7 @@ const SECRET = fs.readFileSync(secretFile, 'utf8').trim();
 // why this stays one big in-memory object instead of being queried per-request. Same shape
 // db.json's arrays always had: users, subs (push), invites, follows, reactions, comments
 // (social), tasks/taskCompletions (daily-task catalog + awards), cheatPenalties (anti-cheat).
-let db = { users: [], subs: [], invites: [], follows: [], reactions: [], comments: [], tasks: [], taskCompletions: [], cheatPenalties: [], alphaRequests: [], bugReports: [], exerciseOverrides: [], muscleGroups: [], streakTiers: [], coachRequests: [], boxes: [], boxMemberships: [], boxInvites: [], routineAssignments: [], wods: [], wodResults: [], boxRequests: [], boxStaff: [], classTypes: [], dayTemplates: [], weekTemplates: [], wodTemplates: [], classSessions: [], classBookings: [], classPenalties: [], liveClasses: [], publicFoods: [] };
+let db = { users: [], subs: [], invites: [], follows: [], reactions: [], comments: [], tasks: [], taskCompletions: [], cheatPenalties: [], importLevelCaps: [], alphaRequests: [], bugReports: [], exerciseOverrides: [], muscleGroups: [], streakTiers: [], coachRequests: [], boxes: [], boxMemberships: [], boxInvites: [], routineAssignments: [], wods: [], wodResults: [], boxRequests: [], boxStaff: [], classTypes: [], dayTemplates: [], weekTemplates: [], wodTemplates: [], classSessions: [], classBookings: [], classPenalties: [], liveClasses: [], publicFoods: [] };
 // A user can hold several employee types at once (e.g. both founder and admin), not one
 // flat role — employeeTypes is an array, filtered to the known set on every read so a
 // stale/tampered value in db.json can never grant something that isn't in EMPLOYEE_TYPES.
@@ -216,8 +216,12 @@ function mergeTombstones(a, b) {
   }
   return byId;
 }
+// Returns whether this merge actually introduced a new imported workout (id prefix 'iw', same
+// convention the anti-cheat overlap exemption uses) — the signal capImportLevelGain needs to
+// know an import just landed, as opposed to a normal device sync of native workouts.
 function mergeWorkoutsInto(uid, incoming) {
   const prev = readState(uid);
+  const prevIds = new Set((prev?.workouts || []).map(w => w?.id).filter(Boolean));
   const tombById = mergeTombstones(prev?.deletedWorkoutIds, incoming.deletedWorkoutIds);
   const workoutById = new Map();
   for (const w of (prev?.workouts || [])) if (w?.id) workoutById.set(w.id, w);
@@ -225,6 +229,22 @@ function mergeWorkoutsInto(uid, incoming) {
   for (const id of tombById.keys()) workoutById.delete(id);
   incoming.workouts = [...workoutById.values()];
   incoming.deletedWorkoutIds = [...tombById.values()];
+  return incoming.workouts.some(w => !prevIds.has(w.id) && typeof w.id === 'string' && w.id.startsWith('iw'));
+}
+// Applies the fixed-XP-budget cap (see IMPORT_XP_BUDGET) against the level an import just
+// produced. Called after the merged state is already written, so rankFor(uid) here reflects the
+// real, anti-cheat-adjusted post-import total — the workouts themselves are never touched, only
+// how many of the levels they're worth show up right away (same lever as a cheat penalty, via
+// levelsDockedFor, but never marked as one: nothing here is flagged, appealable, or hidden).
+function capImportLevelGain(uid, beforeLevel) {
+  const allowedMaxLevel = Math.min(100, levelFromXp(LEVEL_CUM[beforeLevel - 1] + IMPORT_XP_BUDGET));
+  const afterLevel = rankFor(uid).level;
+  if (afterLevel <= allowedMaxLevel) return;
+  db.importLevelCaps.push({
+    id: crypto.randomBytes(8).toString('base64url'), userId: uid,
+    levels: afterLevel - allowedMaxLevel, created: new Date().toISOString(),
+  });
+  saveDb();
 }
 
 // Same fix, same reasoning, for the nutrition diary (issue: a full week of logged food vanished
@@ -711,6 +731,14 @@ function currentStreakDays(uid) {
 const XP_FOR_LEVEL = n => 80 + Math.round(0.22 * n * n);
 const LEVEL_CUM = [0];   // LEVEL_CUM[L] = total XP to *reach* level L+1; LEVEL_CUM[0] = level 1's floor
 for (let n = 1; n <= 100; n++) LEVEL_CUM.push(LEVEL_CUM[n - 1] + XP_FOR_LEVEL(n));
+// A CSV import can bring in months of real history in one save, which would otherwise level an
+// account up far more than any single normal training session could. Cap it with a *fixed* XP
+// budget — however much it costs to climb from level 20 to 50 on the curve above — granted no
+// matter where the account currently sits. Because the curve is quadratic, that same budget
+// plays out as the full 30-level jump only when starting low; someone already at level 70 buys
+// far fewer levels with it, since level 70+ costs so much more per level. No separate per-level
+// case needed — it falls out of reusing the real curve instead of a flat level-count cap.
+const IMPORT_XP_BUDGET = LEVEL_CUM[50 - 1] - LEVEL_CUM[20 - 1];
 function levelFromXp(xp) {
   let lvl = 1;
   for (let L = 2; L <= 100; L++) { if (xp >= LEVEL_CUM[L - 1]) lvl = L; else break; }
@@ -998,6 +1026,15 @@ const CYCLE_XP = LEVEL_CUM[100];
 // same cap here means a level-100 account past it simply never goes readyToPrestige again,
 // rather than confirming into a prestige number nothing can ever render.
 const MAX_PRESTIGE = 10;
+// Shared by rankFor and the admin level-nudge route: how many levels sit docked against an
+// account's raw, live-computed level. Two independent sources so far — active/upheld cheat
+// penalties (see scanForCheating) and import level caps (see capImportLevelGain) — both apply
+// the same way: the underlying XP/workouts are untouched, only the displayed level moves.
+function levelsDockedFor(uid) {
+  const cheat = db.cheatPenalties.filter(c => c.userId === uid && c.status !== 'overturned').reduce((n, c) => n + c.levels, 0);
+  const importCap = db.importLevelCaps.filter(c => c.userId === uid).reduce((n, c) => n + c.levels, 0);
+  return cheat + importCap;
+}
 function rankFor(uid) {
   const totalXp = xpFor(uid);
   const user = db.users.find(u => u.id === uid);
@@ -1014,7 +1051,7 @@ function rankFor(uid) {
   // never a number an earlier penalty already reduced. Overturned penalties are excluded.
   // Docking a level off the cap costs readyToPrestige too — a flagged account isn't "ready"
   // just because the raw XP behind that cap was still there.
-  const levelsDocked = db.cheatPenalties.filter(c => c.userId === uid && c.status !== 'overturned').reduce((n, c) => n + c.levels, 0);
+  const levelsDocked = levelsDockedFor(uid);
   const level = Math.max(1, rawLevel - levelsDocked);
   const readyToPrestige = level === 100 && prestige < MAX_PRESTIGE;
   // Docked accounts always sit at the exact floor of their level (the fractional progress
@@ -2053,10 +2090,12 @@ div{max-width:360px}h1{font-size:20px;margin:0 0 8px}p{color:#9db8a8;line-height
     const body = await readBody(req);
     if (!body.state || typeof body.state !== 'object') return json(res, 400, { error: 'state required' });
     delete body.state.active;              // in-progress workouts stay device-local
-    mergeWorkoutsInto(user.id, body.state);
+    const beforeLevel = rankFor(user.id).level;
+    const importedNewWorkouts = mergeWorkoutsInto(user.id, body.state);
     mergeFoodDiaryInto(user.id, body.state);
     scanForCheating(req, user, body.state);
     writeState(user.id, body.state);
+    if (importedNewWorkouts) capImportLevelGain(user.id, beforeLevel);
     scanForTasks(req, user, body.state);
     // workouts/deletedWorkoutIds and foodDiary/deletedFoodEntryIds go back in the response too —
     // the merges above can add something this exact push didn't know about (logged from another
@@ -2242,7 +2281,7 @@ div{max-width:360px}h1{font-size:20px;margin:0 0 8px}p{color:#9db8a8;line-height
     // The *displayed* level is rawLevel minus any active cheat-penalty docking (see rankFor) —
     // moving the number the admin actually sees by one means moving the underlying raw level
     // by one, docking included, not landing the raw level itself on the target.
-    const levelsDocked = db.cheatPenalties.filter(c => c.userId === u.id && c.status !== 'overturned').reduce((n, c) => n + c.levels, 0);
+    const levelsDocked = levelsDockedFor(u.id);
     const targetRawLevel = Math.max(1, Math.min(100, targetLevel + levelsDocked));
     // rankFor's xpInCycle is xpFor(uid) - baseline; landing exactly on the target level's
     // floor means: adjust so that (currentTotalXp + newAdjust - oldAdjust) - baseline == floor.
