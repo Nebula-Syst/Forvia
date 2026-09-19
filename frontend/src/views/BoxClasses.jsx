@@ -1,15 +1,18 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams, useLocation } from 'react-router-dom'
 import { useUI } from '../store/useUI.js'
+import { useStore } from '../store/useStore.js'
 import { boxClasses, classBook, classCancel } from '../lib/api.js'
 import { wsOn } from '../lib/ws.js'
 import { todayISO, isoOf, addMinToTime } from '../lib/format.js'
+import { useBoxAccent } from '../lib/useBoxAccent.js'
+import { cachedBoxColor, setCachedBoxColors } from '../lib/boxCache.js'
 import { t, dateLocale } from '../lib/i18n.js'
 import { typeIcon, typeColor } from '../lib/classDisciplines.js'
-import { EXIDX } from '../lib/exercises.js'
+import { wodIsEmpty } from '../lib/wod.js'
 import Icon from '../components/Icon.jsx'
 import SeatGrid from '../components/SeatGrid.jsx'
-import { Thumb } from '../components/Media.jsx'
+import WodView from '../components/WodView.jsx'
 import { Button, PillPicker } from '../components/ui.jsx'
 import { confirmSheet } from '../sheets.jsx'
 import { LIVE_CLASSES_ENABLED } from '../lib/featureFlags.js'
@@ -48,7 +51,10 @@ export default function BoxClasses() {
   const toast = useUI(s => s.toast)
   const openSheet = useUI(s => s.openSheet)
   const title = location.state?.title || ''
+  const myTheme = useStore(s => s.S.theme) || 'dark'
   const [classes, setClasses] = useState(null)
+  const [myPlan, setMyPlan] = useState(null)
+  const [boxColors, setBoxColors] = useState(null)
   const [selectedDay, setSelectedDay] = useState(todayISO())
   const [filterTime, setFilterTime] = useState('')
   const [filterType, setFilterType] = useState('')
@@ -56,7 +62,7 @@ export default function BoxClasses() {
 
   const load = () => {
     const from = mondayOf(todayISO()), to = addDays(from, 13)
-    boxClasses(boxId, from, to).then(setClasses).catch(e => toast(e.message))
+    boxClasses(boxId, from, to).then(r => { setClasses(r.sessions); setMyPlan(r.myPlan); setBoxColors(r.boxColors); setCachedBoxColors(boxId, r.boxColors, true) }).catch(e => toast(e.message))
   }
   useEffect(() => { load() }, [boxId])
   // A host starting/ending a class should flip the "Live" badge instantly for anyone with this
@@ -89,16 +95,10 @@ export default function BoxClasses() {
 
   const showExercises = c => openSheet(() => <>
     <h3>{c.name}</h3>
-    <div className="lrow-list">
-      {c.exercises.map((e, i) => (
-        <div key={i} className="lrow">
-          <Thumb ex={EXIDX[e.exerciseId] || {}} />
-          <span className="lrow-m"><span className="lrow-t" style={{ textTransform: 'capitalize' }}>{e.name}</span></span>
-          {!!e.scheme && <span className="lrow-s">{e.scheme}</span>}
-        </div>
-      ))}
-    </div>
+    <WodView wod={c.wod} />
   </>)
+
+  useBoxAccent(boxColors ? (boxColors[myTheme] || null) : cachedBoxColor(boxId, myTheme))
 
   return <div className="narrow">
     <div className="hdr">
@@ -115,6 +115,15 @@ export default function BoxClasses() {
       ))}
     </div>
     <div className="day-title">{dayTitle(selectedDay)}</div>
+    {myPlan && (
+      <div className="muted small" style={{ marginTop: -10, marginBottom: 14, color: myPlan.expired ? 'var(--red)' : myPlan.inGrace ? 'var(--orange)' : undefined }}>
+        {myPlan.name}
+        {myPlan.expired ? <> · {t('Expired — ask your coach to renew it')}</> : myPlan.inGrace ? <> · {t('Renew in {0} days or lose access', myPlan.graceDaysLeft)}</> : <>
+          {myPlan.monthlyLimit != null && <> · {myPlan.remaining > 0 ? t('{0} left this month', myPlan.remaining) : t('Monthly limit reached')}</>}
+          {myPlan.classTypes && <> · {t('Only: {0}', myPlan.classTypes.join(', '))}</>}
+        </>}
+      </div>
+    )}
 
     {!!classes?.length && (() => {
       const timeOptions = [{ value: '', label: t('All times') }, ...[...new Set(classes.map(c => c.startTime))].sort().map(tm => ({ value: tm, label: tm }))]
@@ -146,7 +155,7 @@ export default function BoxClasses() {
                       {c.myStatus !== 'offered' && !(LIVE_CLASSES_ENABLED && c.live) && isEndedClass(c) && <span className="role-tag" style={{ marginLeft: 8, background: 'var(--glass-bg-2)', color: 'var(--label-3)' }}>{t('Finished')}</span>}
                     </div>
                     {!!c.room && <div className="disc"><Icon name={typeIcon(c)} className="icn" />{c.room}</div>}
-                    {!!c.exercises?.length && (
+                    {!wodIsEmpty(c.wod) && (
                       <button className="chip-pill" style={{ border: 'none', cursor: 'pointer' }} onClick={() => showExercises(c)}>
                         <Icon name="clipboard" className="icn" />{t('View exercises')}
                       </button>
@@ -172,6 +181,23 @@ export default function BoxClasses() {
                   )
                   if (!c.myStatus && isPastClass(c)) return (
                     <div className="muted small" style={{ marginTop: 10, textAlign: 'center' }}>{t('This class has already started.')}</div>
+                  )
+                  // An expired plan blocks everything, checked before the type/limit checks below
+                  // since it overrides both — same order as the server-side check.
+                  if (!c.myStatus && myPlan?.expired) return (
+                    <div className="muted small" style={{ marginTop: 10, textAlign: 'center' }}>{t('Your plan has expired — ask your coach to renew it.')}</div>
+                  )
+                  // A type mismatch blocks even the waitlist — there's no scenario where waiting
+                  // helps, this class is simply never covered by the plan.
+                  if (!c.myStatus && myPlan?.classTypes && !myPlan.classTypes.includes(c.name)) return (
+                    <div className="muted small" style={{ marginTop: 10, textAlign: 'center' }}>{t('Your plan doesn’t include this class type.')}</div>
+                  )
+                  // A full class still offers the waitlist regardless of the limit (waitlisting
+                  // hasn't claimed a seat yet) — this only blocks an attempt that would actually
+                  // book one. remaining is null for an unlimited plan — checked explicitly rather
+                  // than `<= 0`, since `null <= 0` is true in JS and would wrongly block it.
+                  if (!c.myStatus && c.booked < c.capacity && myPlan && myPlan.remaining != null && myPlan.remaining <= 0) return (
+                    <div className="muted small" style={{ marginTop: 10, textAlign: 'center' }}>{t('You’ve reached your plan’s monthly class limit.')}</div>
                   )
                   return (
                     <Button variant={c.myStatus ? 'danger' : 'primary'} style={{ marginTop: 10 }} onClick={() => toggleClass(c)}>

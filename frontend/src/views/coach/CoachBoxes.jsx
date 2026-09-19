@@ -17,6 +17,7 @@ import LocationPicker from '../../components/LocationPicker.jsx'
 export default function CoachBoxes() {
   const nav = useNavigate()
   const user = useStore(s => s.user)
+  const myTheme = useStore(s => s.S.theme) || 'dark'
   const refreshUser = useStore(s => s.refreshUser)
   const toast = useUI(s => s.toast)
   const [boxes, setBoxes] = useState(null)
@@ -135,7 +136,7 @@ export default function CoachBoxes() {
       ) : (
         <div className="box-list">
           {boxes.map((b, i) => (
-            <button key={b.id} className="box-card" onClick={() => nav('/coach/box/' + b.id)} style={{ '--tint': TINTS[i % TINTS.length] }}>
+            <button key={b.id} className="box-card" onClick={() => nav('/coach/box/' + b.id)} style={{ '--tint': b.colors?.[myTheme] || TINTS[i % TINTS.length] }}>
               {b.imageFile
                 ? <img src={boxImageUrl(b.id)} alt="" className="thumb" />
                 : <span className="thumb flat-badge"><Icon name="shield" /></span>}

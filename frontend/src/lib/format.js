@@ -61,3 +61,31 @@ export const normalizeSearch = s => (s || '').normalize('NFD').replace(DIACRITIC
 // 'lime' is the default accent (lib/palette.js DEFAULT_ACCENT) and its hex is the Forvia
 // brand's own accent color, not a generic green — keep it in sync with palette.js.
 export const ACCENTS = { lime: '#a3e635', sky: '#0a84ff', orange: '#ff9f0a', violet: '#bf5af2', pink: '#ff375f', red: '#ff453a', teal: '#40c8e0', gold: '#ffd60a' }
+
+// Every curated color in this app (ACCENTS, CLASS_COLORS) is mid-saturation/mid-lightness, so a
+// hardcoded white icon on top of a solid tint fill (.lrow-i, box-card's thumb) always read fine.
+// A box's custom color (CoachBoxAbout.jsx) can be genuinely anything, including near-white or
+// near-black, so spots that fill solid with --tint pair it with this to pick a readable icon
+// color instead of assuming white — e.g. style={{'--tint':hex,'--tint-ink':tintInk(hex)}}.
+export function tintInk(hex) {
+  const m = /^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(hex || '')
+  if (!m) return '#fff'
+  const [r, g, b] = [1, 2, 3].map(i => parseInt(m[i], 16))
+  // Perceived luminance (ITU-R BT.601) — cheap and good enough for a binary black/white choice.
+  return (r * 299 + g * 587 + b * 114) / 1000 > 150 ? '#000' : '#fff'
+}
+
+// While inside a specific box's own screens (CoachBox.jsx and its sub-screens, BoxClasses.jsx),
+// that box's own color becomes the local accent instead of the viewer's personal one — spread
+// onto each screen's outer wrapper. --acc-soft/--acc-line already recompute for free since
+// they're expressed as color-mix() *of* var(--acc) in :root; --acc-2/--on-acc aren't derived
+// that way there, so they're recomputed here the same way, scoped to just this element's subtree.
+export function boxAccentVars(hex) {
+  if (!hex) return undefined
+  return { '--acc': hex, '--acc-2': `color-mix(in srgb, ${hex} 78%, black)`, '--on-acc': tintInk(hex) }
+}
+
+// The coach's own on/off switch for the whole feature (CoachBoxAbout.jsx) — missing/undefined
+// reads as enabled (boxes that already had colors set before the toggle existed keep working);
+// only an explicit `false` suppresses them, without ever discarding what was picked.
+export const activeBoxColor = (box, theme) => box?.colorsEnabled === false ? null : box?.colors?.[theme]

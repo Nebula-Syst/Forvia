@@ -2,7 +2,8 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useStore } from '../store/useStore.js'
 import { useUI } from '../store/useUI.js'
-import { athleteBoxes, boxJoin } from '../lib/api.js'
+import { athleteBoxes, boxJoin, boxImageUrl } from '../lib/api.js'
+import { tintInk } from '../lib/format.js'
 import { t } from '../lib/i18n.js'
 import Icon from '../components/Icon.jsx'
 import { Button, TextField, Section } from '../components/ui.jsx'
@@ -39,6 +40,7 @@ export default function MyBoxes() {
   const nav = useNavigate()
   const toast = useUI(s => s.toast)
   const openSheet = useUI(s => s.openSheet)
+  const myTheme = useStore(s => s.S.theme) || 'dark'
   const pending = useStore(s => s.pendingAssignments)
   const applyAssignment = useStore(s => s.applyRoutineAssignment)
   const refreshPending = useStore(s => s.refreshPendingAssignments)
@@ -83,13 +85,18 @@ export default function MyBoxes() {
         <div className="lrow-list">
           {boxes.map(b => (
             <button key={b.id} className="lrow tap" onClick={() => openBox(b)}>
-              <span className="lrow-i" style={{ '--tint': 'var(--indigo)' }}><Icon name="shield" /></span>
+              {b.imageFile
+                ? <img src={boxImageUrl(b.id)} alt="" className="lrow-i" style={{ objectFit: 'cover' }} />
+                : <span className="lrow-i" style={{ '--tint': b.colors?.[myTheme] || 'var(--indigo)', '--tint-ink': b.colors?.[myTheme] ? tintInk(b.colors[myTheme]) : '#fff' }}><Icon name="shield" /></span>}
               <span className="lrow-m">
                 <span className="lrow-t">{b.title}
                   {b.role === 'staff' && <span className="role-tag" style={{ marginLeft: 8 }}>{t('Staff')}</span>}
                   {b.role === 'owner' && <span className="role-tag" style={{ marginLeft: 8 }}>{t('Owner')}</span>}
                 </span>
-                <span className="lrow-s">{b.role === 'owner' ? t('Your box') : t('Coach: {0}', b.coachName || '?')}</span>
+                <span className="lrow-s">
+                  {b.role === 'owner' ? t('Your box') : t('Coach: {0}', b.coachName || '?')}
+                  {b.role === 'member' && b.plan && ` · ${b.plan.name}${b.plan.expired ? ` · ${t('Expired')}` : b.plan.inGrace ? ` · ${t('Renew soon')}` : b.plan.monthlyLimit != null ? ` · ${b.plan.remaining}/${b.plan.monthlyLimit}` : ''}`}
+                </span>
               </span>
               <Icon name="chevronRight" className="lrow-c" />
             </button>

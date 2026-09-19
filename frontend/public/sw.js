@@ -38,7 +38,10 @@ self.addEventListener('fetch', e => {
     )))
   } else {
     e.respondWith(fetch(e.request).then(res => {
-      if (res.ok) caches.open(CACHE).then(c => c.put(e.request, res.clone()))
+      // Clone synchronously, before handing `res` back — caches.open() is async, and by the
+      // time its .then() ran, the page had already started reading res's body (or finished),
+      // so res.clone() here threw "Response body is already used".
+      if (res.ok) { const copy = res.clone(); caches.open(CACHE).then(c => c.put(e.request, copy)) }
       return res
     }).catch(() => caches.match(e.request).then(hit => hit || caches.match('index.html'))))
   }

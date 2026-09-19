@@ -32,12 +32,18 @@ import { unzipSync, strFromU8 } from 'fflate'
 import { StackedBar } from './components/MacroBars.jsx'
 import LocationPicker from './components/LocationPicker.jsx'
 import LiquidFillGauge from 'react-liquid-gauge'
-import { passwordLogin, passwordRegister, setPassword, deleteAccount, socialComments, socialComment, socialCommentRemove, socialUpload, pinWorkout, unpinWorkout, pinPR, reportBug, foodSearch, foodByBarcode, publicFoodSearch, createPublicFood, coachAssignRoutine, coachRequestBox, coachUpdateBox, boxImageUrl } from './lib/api.js'
+import { passwordLogin, passwordRegister, setPassword, deleteAccount, socialComments, socialComment, socialCommentRemove, socialUpload, pinWorkout, unpinWorkout, pinPR, reportBug, foodSearch, foodByBarcode, publicFoodSearch, createPublicFood, coachAssignRoutine, coachRequestBox, coachAssignPlan } from './lib/api.js'
 
 const S = () => useStore.getState().S
 const update = (...a) => useStore.getState().update(...a)
 const ui = () => useUI.getState()
 const toast = m => ui().toast(m)
+// A downgrade from Pro can leave someone with more than the Free cap (5) of custom foods,
+// saved meals, or custom exercises already made — the cap checks below only ever block
+// *creating* a new one. Rather than delete the extras, they stay — just locked: visible
+// everywhere, not usable to log/add until back on Pro. "Which 5 stay unlocked" is simply
+// array order (oldest first — these arrays are only ever appended to, never reordered).
+const lockedIds = (list, pro) => new Set(pro ? [] : (list || []).slice(5).map(x => x.id))
 const snd = () => S().sound
 const setUser = u => useStore.getState().setUser(u)
 
@@ -379,81 +385,49 @@ export function boxRequestSheet(onDone) {
   ui().openSheet(close => <BoxRequestForm close={close} onDone={onDone} />)
 }
 
-/* ============================ coach: edit a box ============================ */
-// Same fields as the original request (title, location, description, cover image), editable
-// afterward — owner-only, wired from CoachBox.jsx's pencil button. Distinct from BoxRequestForm
-// (that one files a NEW request for an admin to review; this one changes an EXISTING, already-
-// approved box directly, no review step).
-function EditBoxForm({ box, close, onDone }) {
-  const user = useStore(s => s.user)
-  const boxLocMode = useStore(s => s.config)?.box_location_mode || 'search'
-  const [title, setTitle] = useState(box.title || '')
-  const [description, setDescription] = useState(box.description || '')
-  const [location, setLocation] = useState(box.location || null)
-  const [imageName, setImageName] = useState('')
-  const [imageDataUrl, setImageDataUrl] = useState('')
-  const [removeImage, setRemoveImage] = useState(false)
+/* ============================ box membership plans ============================ */
+// name/description/features/price are display-only (Forvia never charges anyone directly — see
+// the coach box roadmap's payments notes); monthlyLimit is the one field with real teeth,
+// enforced server-side at booking time. Features are edited as one bullet per line and
+// joined/split at the boundary rather than as a real add/remove list — a plan's feature list is
+// short, freeform marketing copy, not structured data anything else reads.
+// A vertical tap-to-pick list, not a Segmented control — Segmented is built for 2-4 equal-width
+// options and breaks down visually once a box has more than a couple of plans (each option's
+// label wraps into a cramped column). Picking a row applies it immediately (same idiom as
+// SelectRow's own picker sheet), no separate "Save changes" step.
+function AssignPlanForm({ box, athlete, plans, currentPlanId, close, onDone }) {
   const [busy, setBusy] = useState(false)
-
-  const pickImage = e => {
-    const file = e.target.files?.[0]
-    e.target.value = ''
-    if (!file) return
-    if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) return toast(t('JPEG, PNG or WebP only'))
-    if (file.size > MAX_BOX_IMAGE_MB * 1024 * 1024) return toast(t('That file is too large — max {0} MB', MAX_BOX_IMAGE_MB))
-    const reader = new FileReader()
-    reader.onload = () => { setImageDataUrl(reader.result); setImageName(file.name); setRemoveImage(false) }
-    reader.readAsDataURL(file)
-  }
-
-  const send = async () => {
-    const v = title.trim()
-    if (!v) return toast(t('Name required'))
-    const loc = boxLocMode === 'off' ? (location?.label?.trim() ? { label: location.label.trim() } : null) : location
-    if (!loc) return toast(t('Set where this box is located'))
+  const pick = async planId => {
+    if (planId === (currentPlanId || '')) return close()
     setBusy(true)
     try {
-      await coachUpdateBox(box.id, { title: v, description: description.trim(), location: loc, imageDataUrl: imageDataUrl || null, removeImage })
-      toast(t('Box updated'))
+      await coachAssignPlan(box.id, athlete.id, planId || null)
+      toast(t('Plan updated'))
       close()
       onDone && onDone()
-    } catch (e) { toast(e.message || t('Could not save')) }
-    finally { setBusy(false) }
+    } catch (e) { toast(e.message || t('Could not save')); setBusy(false) }
   }
-
-  const hasCurrentImage = box.imageFile && !imageDataUrl && !removeImage
-
+  const planSubtitle = p => `${p.price} · ${p.monthlyLimit == null ? t('Unlimited') : t('{0} classes/mo', p.monthlyLimit)}`
   return <>
-    <h3>{t('Edit box')}</h3>
-    <div className="muted small" style={{ margin: '10px 0 6px' }}>{t('Title')}</div>
-    <TextField value={title} onChange={e => setTitle(e.target.value)} placeholder={t('e.g. CrossFit Sevilla')} autoFocus />
-    <div className="muted small" style={{ margin: '14px 0 6px' }}>{t('Location')}</div>
-    {boxLocMode === 'off' ? (
-      <TextField value={location?.label || ''} onChange={e => setLocation({ label: e.target.value })} placeholder={t('e.g. a street address')} />
-    ) : (
-      <LocationPicker value={location} onChange={setLocation} autoDetect={false} placeholder={t('Search a street address…')} biasFrom={user?.coachLocation} precise={boxLocMode === 'precise'} />
-    )}
-    <div className="muted small" style={{ margin: '14px 0 6px' }}>{t('Description (optional)')}</div>
-    <textarea className="field area sm" rows={2} value={description} onChange={e => setDescription(e.target.value)} placeholder={t('Tell us more…')} />
-    <div className="muted small" style={{ margin: '14px 0 6px' }}>{t('Cover image (optional)')}</div>
-    <label className="doc-upload">
-      <input type="file" accept="image/jpeg,image/png,image/webp" hidden onChange={pickImage} />
-      {hasCurrentImage
-        ? <img src={boxImageUrl(box.id)} alt="" className="ico" style={{ objectFit: 'cover' }} />
-        : <span className="ico"><Icon name={imageName ? 'checkCircle' : 'upload'} /></span>}
-      <div>
-        <div className="t">{imageName || (hasCurrentImage ? t('Current image') : t('Upload an image'))}</div>
-        <div className="s">{imageName || hasCurrentImage ? t('Tap to change') : t('JPEG, PNG or WebP')}</div>
-      </div>
-    </label>
-    {(box.imageFile && !removeImage) && (
-      <Button variant="ghost" size="sm" style={{ marginTop: 6 }} onClick={() => { setRemoveImage(true); setImageDataUrl(''); setImageName('') }}>{t('Remove image')}</Button>
-    )}
-    <Button variant="primary" style={{ marginTop: 16 }} onClick={send} disabled={busy}>{t('Save changes')}</Button>
+    <h3>{athlete.name}</h3>
+    <div className="muted small" style={{ margin: '10px 0 6px' }}>{t('Plan')}</div>
+    <div className="sect-b">
+      <button className="lrow tap" disabled={busy} onClick={() => pick('')}>
+        <span className="lrow-m"><span className="lrow-t">{t('No plan')}</span></span>
+        {!currentPlanId && <Icon name="check" className="lrow-k" />}
+      </button>
+      {plans.map(p => (
+        <button key={p.id} className="lrow tap" disabled={busy} onClick={() => pick(p.id)}>
+          <span className="lrow-m"><span className="lrow-t">{p.name}</span><span className="lrow-s">{planSubtitle(p)}</span></span>
+          {p.id === currentPlanId && <Icon name="check" className="lrow-k" />}
+        </button>
+      ))}
+    </div>
+    <div style={{ height: 8 }} />
   </>
 }
-export function editBoxSheet(box, onDone) {
-  ui().openSheet(close => <EditBoxForm box={box} close={close} onDone={onDone} />)
+export function assignPlanSheet(box, athlete, plans, currentPlanId, onDone) {
+  ui().openSheet(close => <AssignPlanForm box={box} athlete={athlete} plans={plans} currentPlanId={currentPlanId} close={close} onDone={onDone} />)
 }
 
 /* ============================ social: comments on a workout ============================ */
@@ -956,7 +930,7 @@ function OneRM({ ex }) {
 
 // hideAddToPlan: mid-workout you're already doing the exercise, not planning one — the
 // picker/library callers still get the button, this is the one context that doesn't.
-function ExerciseDetail({ ex, close, hideAddToPlan }) {
+function ExerciseDetail({ ex, close, hideAddToPlan, hideCustomActions }) {
   const st = useStore(s => s.S)
   const last = lastEntryFor(st, ex.id)
   const best = bestWeightFor(st, ex.id)
@@ -972,7 +946,7 @@ function ExerciseDetail({ ex, close, hideAddToPlan }) {
     {ex.desc && <div className="exnote">{ex.desc}</div>}
     {best > 0 && <div className="small row" style={{ marginBottom: 6, gap: 5 }}><Icon name="trophy" style={{ fontSize: 14, color: 'var(--yellow)' }} />{t('Best:')} <b className="accent">{fmtNum(best)} {st.unit}</b>{last ? ` · ${t('last')} ${fmtDate(last.d)}: ${last.sets.map(s => setLabel(ex.id, s, last.target)).join(', ')}` : ''}</div>}
     {!hideAddToPlan && <Button variant="primary" icon="plus" style={{ margin: '10px 0 4px' }} onClick={() => addToRoutineSheet(ex)}>{t('Add to my plan')}</Button>}
-    {ex.custom && <div className="row" style={{ gap: 8, marginTop: 8 }}>
+    {ex.custom && !hideCustomActions && <div className="row" style={{ gap: 8, marginTop: 8 }}>
       <Button icon="pencil" style={{ flex: 1 }} onClick={() => { close(); customExSheet(ex) }}>{t('Edit')}</Button>
       <Button variant="danger" icon="trash" style={{ flex: 1 }} onClick={() => deleteCustomEx(ex, close)}>{t('Delete')}</Button>
     </div>}
@@ -980,7 +954,7 @@ function ExerciseDetail({ ex, close, hideAddToPlan }) {
     {instrFor(ex).length > 0 &&<><h4 className="sec">{t('How to')}{!INSTR_LANGS.includes(getLang()) && <span className="dim" style={{ textTransform: 'none', letterSpacing: 0 }}> · {t('instructions in English')}</span>}</h4><ol className="steps-list">{instrFor(ex).map((s, i) => <li key={i}>{s}</li>)}</ol></>}
   </>
 }
-export const exerciseDetailSheet = (ex, opts = {}) => ui().openSheet(close => <ExerciseDetail ex={ex} close={close} hideAddToPlan={opts.hideAddToPlan} />)
+export const exerciseDetailSheet = (ex, opts = {}) => ui().openSheet(close => <ExerciseDetail ex={ex} close={close} hideAddToPlan={opts.hideAddToPlan} hideCustomActions={opts.hideCustomActions} />)
 
 /* ============================ add to routine ============================ */
 function AddToRoutine({ ex, close }) {
@@ -1013,7 +987,11 @@ function AddToRoutine({ ex, close }) {
     </div>
   </>
 }
-export const addToRoutineSheet = ex => ui().openSheet(close => <AddToRoutine ex={ex} close={close} />)
+export const addToRoutineSheet = ex => {
+  const { user, S } = useStore.getState()
+  if (lockedIds(S.customEx, user?.pro).has(ex.id)) return toast(t('This exercise is locked — go Pro to use it again.'))
+  ui().openSheet(close => <AddToRoutine ex={ex} close={close} />)
+}
 
 /* ============================ custom exercises (issue #11) ============================ */
 // Name + body part is all it takes — the exercise then behaves like any built-in one
@@ -1054,7 +1032,15 @@ function CustomExForm({ existing, prefill, onDone, close }) {
     {existing && <><div style={{ height: 8 }} /><Button variant="danger" icon="trash" onClick={() => { close(); deleteCustomEx(existing) }}>{t('Delete exercise')}</Button></>}
   </>
 }
-export const customExSheet = (existing, onDone, prefill) => ui().openSheet(close => <CustomExForm existing={existing} prefill={prefill} onDone={onDone} close={close} />)
+// Same 5-item Free cap as customFoodDefSheet/saveMealSheet/createMealSheet above — checked
+// only when creating (no `existing`), never editing/deleting one already made.
+export const customExSheet = (existing, onDone, prefill) => {
+  if (!existing) {
+    const { user, S } = useStore.getState()
+    if (!user?.pro && (S.customEx || []).length >= 5) return toast(t('Free is limited to 5 custom exercises — go Pro for unlimited.'))
+  }
+  ui().openSheet(close => <CustomExForm existing={existing} prefill={prefill} onDone={onDone} close={close} />)
+}
 
 export function deleteCustomEx(ex, afterDelete) {
   if (S().active?.entries.some(e => e.id === ex.id)) { toast(t('Finish your current workout first')); return }
@@ -1096,6 +1082,8 @@ function usageMap(st) {
 // stays open underneath whatever that opens, ready for the next pick.
 function ExercisePicker({ onPick, multi, close }) {
   const st = useStore(s => s.S)
+  const pro = useStore(s => s.user?.pro)
+  const locked = lockedIds(st.customEx, pro)
   const usage = usageMap(st)
   const [q, setQ] = useState('')
   const [bp, setBp] = useState('')          // '' = all, '★' = chosen, else a body part
@@ -1114,9 +1102,12 @@ function ExercisePicker({ onPick, multi, close }) {
   const f = eqOn ? base.filter(e => e.eq === eqOn) : base
   const chosenCount = Object.keys(usage).length
   const isPicked = id => picked.some(p => p.id === id)
-  const tap = e => multi
-    ? setPicked(ps => isPicked(e.id) ? ps.filter(p => p.id !== e.id) : [...ps, e])
-    : onPick(e)
+  const tap = e => {
+    if (locked.has(e.id)) return toast(t('This exercise is locked — go Pro to use it again.'))
+    return multi
+      ? setPicked(ps => isPicked(e.id) ? ps.filter(p => p.id !== e.id) : [...ps, e])
+      : onPick(e)
+  }
   const addNew = ex => multi ? setPicked(ps => [...ps, ex]) : onPick(ex)
   const typeLabel = bp === '★' ? `${t('Chosen')} (${chosenCount})` : (bp ? t(bp) : t('All'))
   const eqLabel = eqOn ? t(eqOn) : t('Any equipment')
@@ -1178,9 +1169,10 @@ function ExercisePicker({ onPick, multi, close }) {
       </div>}
       {f.slice(0, shown).map(e => {
         const on = multi && isPicked(e.id)
-        return <div key={e.id} className={'item' + (on ? ' on' : '')} onClick={() => tap(e)}>
+        const isLocked = locked.has(e.id)
+        return <div key={e.id} className={'item' + (on ? ' on' : '')} style={isLocked ? { opacity: .5 } : undefined} onClick={() => tap(e)}>
           <Thumb ex={e} /><div className="grow"><div className="tt capitalize">{nameFor(e)}</div><div className="ss capitalize">{t(e.tg || e.bp)} · {t(e.eq)}</div></div>
-          {usage[e.id] && <span className="tag acc"><Icon name="starFill" /></span>}
+          {isLocked ? <Icon name="lock" style={{ color: 'var(--label-3)' }} /> : usage[e.id] && <span className="tag acc"><Icon name="starFill" /></span>}
           <button className="iconbtn" aria-label={t('Exercise info')} onClick={ev => { ev.stopPropagation(); exerciseDetailSheet(e) }}><Icon name="info" /></button>
         </div>
       })}
@@ -2198,7 +2190,11 @@ function LogCustomFoodSheet({ dateIso, mealKey, food, close }) {
     <Button variant="primary" onClick={save}>{t('Log food')}</Button>
   </>
 }
-export const logCustomFoodSheet = (dateIso, mealKey, food) => ui().openSheet(close => <LogCustomFoodSheet dateIso={dateIso} mealKey={mealKey} food={food} close={close} />)
+export const logCustomFoodSheet = (dateIso, mealKey, food) => {
+  const { user, S } = useStore.getState()
+  if (lockedIds(S.customFoods, user?.pro).has(food.id)) return toast(t('This food is locked — go Pro to use it again.'))
+  ui().openSheet(close => <LogCustomFoodSheet dateIso={dateIso} mealKey={mealKey} food={food} close={close} />)
+}
 
 // Creating or editing a "Mis alimentos" definition itself (Settings → Nutrition → My foods)
 // — just the rate, no quantity or meal, since those only make sense at logging time.
@@ -2260,7 +2256,16 @@ function CustomFoodDefForm({ existing, close }) {
     {existing && <><div style={{ height: 8 }} /><Button variant="danger" onClick={del}>{t('Delete')}</Button></>}
   </>
 }
-export const customFoodDefSheet = existing => ui().openSheet(close => <CustomFoodDefForm existing={existing} close={close} />)
+// Free is capped at 5 custom foods (and, below, 5 saved meals) — only checked when creating a
+// new one, never when editing/deleting an existing one, so going over the cap before this
+// existed (or dropping back to Free later) never locks someone out of their own data.
+export const customFoodDefSheet = existing => {
+  if (!existing) {
+    const { user, S } = useStore.getState()
+    if (!user?.pro && (S.customFoods || []).length >= 5) return toast(t('Free is limited to 5 custom foods — go Pro for unlimited.'))
+  }
+  ui().openSheet(close => <CustomFoodDefForm existing={existing} close={close} />)
+}
 
 // "Mis comidas" — saving a meal card's current items as a reusable bundle (Nutrition.jsx's
 // clipboard button) and logging one back into the diary (FoodSearchSheet's search results).
@@ -2268,6 +2273,8 @@ function saveMealTotals(items) {
   return { kcal: items.reduce((n, it) => n + (it.kcal || 0), 0), count: items.length }
 }
 function logSavedMeal(dateIso, meal, savedMeal) {
+  const { user, S } = useStore.getState()
+  if (lockedIds(S.savedMeals, user?.pro).has(savedMeal.id)) return toast(t('This meal is locked — go Pro to use it again.'))
   update(s => {
     const list = s.foodDiary[dateIso] || (s.foodDiary[dateIso] = [])
     savedMeal.items.forEach(it => list.push({ ...it, id: uid(), meal }))
@@ -2295,7 +2302,11 @@ function SaveMealForm({ items, close }) {
     <Button variant="primary" onClick={save}>{t('Save')}</Button>
   </>
 }
-export const saveMealSheet = items => ui().openSheet(close => <SaveMealForm items={items} close={close} />)
+export const saveMealSheet = items => {
+  const { user, S } = useStore.getState()
+  if (!user?.pro && (S.savedMeals || []).length >= 5) return toast(t('Free is limited to 5 saved meals — go Pro for unlimited.'))
+  ui().openSheet(close => <SaveMealForm items={items} close={close} />)
+}
 
 // Viewing (and deleting) a saved meal from Settings → Nutrition → "My meals" — no editing its
 // items here, same reasoning as a custom food's macros: that belongs to whatever created it.
@@ -2340,6 +2351,8 @@ function IngredientSearch({ onPick }) {
   const [communityItems, setCommunityItems] = useState([])
   const [busy, setBusy] = useState(false)
   const customFoods = useStore(s => s.S.customFoods)
+  const pro = useStore(s => s.user?.pro)
+  const lockedFoodIds = lockedIds(customFoods, pro)
   const myMatches = q.trim() ? customFoods.filter(f => f.name.toLowerCase().includes(q.trim().toLowerCase())) : []
   useEffect(() => {
     const query = q.trim()
@@ -2365,13 +2378,15 @@ function IngredientSearch({ onPick }) {
     <Segmented options={FOOD_SOURCES()} value={source} onChange={setSource} />
     <div style={{ height: 10 }} />
     <div className="list">
-      {showMine && myMatches.map(f => (
-        <div key={f.id} className="item" onClick={() => onPick({ kind: 'rate', food: f })}>
+      {showMine && myMatches.map(f => {
+        const locked = lockedFoodIds.has(f.id)
+        return <div key={f.id} className="item" style={locked ? { opacity: .5 } : undefined}
+          onClick={() => locked ? toast(t('This food is locked — go Pro to use it again.')) : onPick({ kind: 'rate', food: f })}>
           <div className="thumb thumb-x"><Icon name="sparkles" /></div>
           <div className="grow"><div className="tt">{f.name}</div><div className="ss">{f.mode === 'weight' ? t('{0} kcal / 100g', f.kcal) : t('{0} kcal / unit', f.kcal)}</div></div>
-          <Icon name="chevronRight" className="chev" />
+          <Icon name={locked ? 'lock' : 'chevronRight'} className={locked ? undefined : 'chev'} style={locked ? { color: 'var(--label-3)' } : undefined} />
         </div>
-      ))}
+      })}
       {showCommunity && communityItems.map(f => (
         <div key={f.id} className="item" onClick={() => onPick({ kind: 'rate', food: f })}>
           <div className="thumb thumb-x"><Icon name="globe" /></div>
@@ -2480,7 +2495,11 @@ function CreateMealSheet({ close }) {
     <Button variant="primary" onClick={save} disabled={!ingredients.length}>{t('Save meal')}</Button>
   </>
 }
-export const createMealSheet = () => ui().openSheet(close => <CreateMealSheet close={close} />)
+export const createMealSheet = () => {
+  const { user, S } = useStore.getState()
+  if (!user?.pro && (S.savedMeals || []).length >= 5) return toast(t('Free is limited to 5 saved meals — go Pro for unlimited.'))
+  ui().openSheet(close => <CreateMealSheet close={close} />)
+}
 
 // Editing (and deleting) an already-logged item — reached from NutritionDiary.jsx's "See
 // all" list, the one place a food item renders as its own row rather than folded into a
@@ -2547,11 +2566,21 @@ export const editFoodSheet = (dateIso, item) => ui().openSheet(close => <EditFoo
 // FoodSearchSheet below hides the "Scan barcode" row entirely rather than opening this to a
 // dead camera on Safari/Firefox. `stopped` guards every async continuation (the detect loop,
 // the lookup after a hit) against running past an unmount or a hit already handled.
+//
+// Full-bleed camera view (see the 'fullscreen' sheet kind in Modals.jsx) with a rectangular
+// viewfinder in the middle — everything outside it is darkened/blurred (.scan-band) purely for
+// aim, but the crop below is what actually enforces it: each tick draws only the on-screen box's
+// region into an offscreen canvas (mapping it back to source-video pixel coordinates, since the
+// video is object-fit:cover and its displayed size rarely matches its native resolution) and
+// only THAT gets handed to the detector, so a code has to actually sit inside the box to read,
+// not just be visible anywhere in the wider frame.
 function BarcodeScanSheet({ dateIso, mealKey, close }) {
   const videoRef = useRef(null)
+  const boxRef = useRef(null)
+  const canvasRef = useRef(null)
   const [status, setStatus] = useState('starting')
   useEffect(() => {
-    let stream = null, raf = null, stopped = false
+    let stream = null, timer = null, stopped = false
     const stop = () => { if (stream) stream.getTracks().forEach(tr => tr.stop()) }
     async function start() {
       try {
@@ -2561,10 +2590,30 @@ function BarcodeScanSheet({ dateIso, mealKey, close }) {
         videoRef.current.srcObject = stream
         await videoRef.current.play()
         setStatus('scanning')
+        const canvas = canvasRef.current
+        const ctx = canvas.getContext('2d')
+        // A barcode doesn't need 60 scans/sec (requestAnimationFrame's rate) to read — that pace
+        // just kept the main thread busy enough that taps on the close button above needed
+        // several tries to land. ~7/sec (setTimeout, not rAF) reads just as fast in practice and
+        // leaves the thread free between scans.
         const loop = async () => {
           if (stopped) return
           try {
-            const codes = await detector.detect(videoRef.current)
+            const video = videoRef.current
+            const vRect = video.getBoundingClientRect()
+            const bRect = boxRef.current.getBoundingClientRect()
+            // object-fit:cover scales the source to fully cover the element, cropping whichever
+            // axis overflows — recover that scale/offset to convert an on-screen rect into the
+            // matching rect in the source video's own pixel coordinates.
+            const scale = Math.max(vRect.width / video.videoWidth, vRect.height / video.videoHeight)
+            const offX = (video.videoWidth * scale - vRect.width) / 2
+            const offY = (video.videoHeight * scale - vRect.height) / 2
+            const sx = (offX + (bRect.left - vRect.left)) / scale
+            const sy = (offY + (bRect.top - vRect.top)) / scale
+            const sw = bRect.width / scale, sh = bRect.height / scale
+            canvas.width = sw; canvas.height = sh
+            ctx.drawImage(video, sx, sy, sw, sh, 0, 0, sw, sh)
+            const codes = await detector.detect(canvas)
             if (codes.length) {
               stopped = true
               stop()
@@ -2576,26 +2625,54 @@ function BarcodeScanSheet({ dateIso, mealKey, close }) {
               return
             }
           } catch { /* a frame with no readable code — keep scanning */ }
-          raf = requestAnimationFrame(loop)
+          timer = setTimeout(loop, 140)
         }
-        raf = requestAnimationFrame(loop)
+        timer = setTimeout(loop, 140)
       } catch (e) {
         if (!stopped) setStatus('error')
       }
     }
     start()
-    return () => { stopped = true; if (raf) cancelAnimationFrame(raf); stop() }
+    return () => { stopped = true; if (timer) clearTimeout(timer); stop() }
   }, [])
-  return <>
-    <h3>{t('Scan barcode')}</h3>
-    {status === 'error'
-      ? <div className="empty">{t('Could not access the camera.')}</div>
-      : <video ref={videoRef} muted playsInline style={{ width: '100%', borderRadius: 12, background: '#000', aspectRatio: '3/4', objectFit: 'cover' }} />}
-    <div style={{ height: 10 }} />
-    <Button variant="ghost" onClick={close}>{t('Cancel')}</Button>
-  </>
+  return (
+    <div className="fs-view">
+      <button className="iconbtn scan-close" aria-label={t('Cancel')} onPointerDown={e => { e.preventDefault(); close() }}><Icon name="xmark" /></button>
+      <h3 className="scan-title">{t('Scan barcode')}</h3>
+      {/* The small top-left icon button above has been unreliable on-device for reasons CSS
+          inspection alone hasn't pinned down (likely the camera <video> compositing oddly on
+          some mobile browsers). This is the same plain Button component used for "Cancel"
+          everywhere else in the app — already proven to register taps reliably — as a large,
+          unmissable, definitely-working way out regardless of what's wrong with the icon one. */}
+      <Button variant="ghost" className="scan-cancel-btn" onClick={close}>{t('Cancel')}</Button>
+      {status === 'error' ? (
+        <div className="empty" style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', padding: '0 24px', textAlign: 'center' }}>
+          {t('Could not access the camera.')}
+        </div>
+      ) : <>
+        <video ref={videoRef} muted playsInline className="scan-video" />
+        <div className="scan-mask">
+          <div className="scan-band" />
+          <div className="scan-mid">
+            <div className="scan-band" />
+            <div className="scan-box" ref={boxRef} />
+            <div className="scan-band" />
+          </div>
+          <div className="scan-band">
+            <div className="scan-hint">{t('Line up the barcode inside the box')}</div>
+          </div>
+        </div>
+      </>}
+      <canvas ref={canvasRef} style={{ display: 'none' }} />
+    </div>
+  )
 }
-export const barcodeScanSheet = (dateIso, mealKey) => ui().openSheet(close => <BarcodeScanSheet dateIso={dateIso} mealKey={mealKey} close={close} />, { locked: true })
+// Deliberately NOT locked: a fullscreen sheet has no backdrop/swipe gesture to accidentally
+// trigger a dismiss, so there's no upside to locking it — only downside, since locking also
+// disables the Android back button and Escape as escape hatches (see Modals.jsx), leaving the
+// small close button as the only way out. If that button is ever slow to register a tap (a busy
+// main thread, a mis-tap), back/Escape still get you out instead of trapping you on camera.
+export const barcodeScanSheet = (dateIso, mealKey) => ui().openSheet(close => <BarcodeScanSheet dateIso={dateIso} mealKey={mealKey} close={close} />, { kind: 'fullscreen' })
 
 function FoodSearchSheet({ dateIso, mealKey, close }) {
   const [q, setQ] = useState('')
@@ -2607,6 +2684,9 @@ function FoodSearchSheet({ dateIso, mealKey, close }) {
   // once (see CustomFoodForm/CustomFoodDefForm) shouldn't mean retyping its macros every time.
   const customFoods = useStore(s => s.S.customFoods)
   const savedMeals = useStore(s => s.S.savedMeals)
+  const pro = useStore(s => s.user?.pro)
+  const lockedFoodIds = lockedIds(customFoods, pro)
+  const lockedMealIds = lockedIds(savedMeals, pro)
   const myMatches = q.trim() ? customFoods.filter(f => f.name.toLowerCase().includes(q.trim().toLowerCase())) : []
   const mealMatches = q.trim() ? savedMeals.filter(m => m.name.toLowerCase().includes(q.trim().toLowerCase())) : []
   useEffect(() => {
@@ -2639,20 +2719,24 @@ function FoodSearchSheet({ dateIso, mealKey, close }) {
     <Segmented options={FOOD_SOURCES()} value={source} onChange={setSource} />
     <div style={{ height: 10 }} />
     <div className="list">
-      {showMine && myMatches.map(f => (
-        <div key={f.id} className="item" onClick={() => { close(); logCustomFoodSheet(dateIso, mealKey, f) }}>
+      {showMine && myMatches.map(f => {
+        const locked = lockedFoodIds.has(f.id)
+        return <div key={f.id} className="item" style={locked ? { opacity: .5 } : undefined}
+          onClick={() => { if (locked) return toast(t('This food is locked — go Pro to use it again.')); close(); logCustomFoodSheet(dateIso, mealKey, f) }}>
           <div className="thumb thumb-x"><Icon name="sparkles" /></div>
           <div className="grow"><div className="tt">{f.name}</div><div className="ss">{f.mode === 'weight' ? t('{0} kcal / 100g', f.kcal) : t('{0} kcal / unit', f.kcal)}</div></div>
-          <Icon name="chevronRight" className="chev" />
+          <Icon name={locked ? 'lock' : 'chevronRight'} className={locked ? undefined : 'chev'} style={locked ? { color: 'var(--label-3)' } : undefined} />
         </div>
-      ))}
-      {mealMatches.map(m => (
-        <div key={m.id} className="item" onClick={() => { logSavedMeal(dateIso, mealKey, m); close() }}>
+      })}
+      {mealMatches.map(m => {
+        const locked = lockedMealIds.has(m.id)
+        return <div key={m.id} className="item" style={locked ? { opacity: .5 } : undefined}
+          onClick={() => { if (locked) return toast(t('This meal is locked — go Pro to use it again.')); logSavedMeal(dateIso, mealKey, m); close() }}>
           <div className="thumb thumb-x"><Icon name="clipboard" /></div>
           <div className="grow"><div className="tt">{m.name}</div><div className="ss">{t('{0} items · {1} kcal', m.items.length, saveMealTotals(m.items).kcal)}</div></div>
-          <Icon name="chevronRight" className="chev" />
+          <Icon name={locked ? 'lock' : 'chevronRight'} className={locked ? undefined : 'chev'} style={locked ? { color: 'var(--label-3)' } : undefined} />
         </div>
-      ))}
+      })}
       {/* Forvia's own community food database — anonymised by the server, so this row never
           shows or knows who submitted it, same as anyone finding a food you shared. */}
       {showCommunity && communityItems.map(f => (

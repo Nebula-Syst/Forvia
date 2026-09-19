@@ -7,14 +7,13 @@ import { EXIDX } from '../lib/exercises.js'
 import { fmtDate, fmtDur, fmtVol } from '../lib/format.js'
 import { t, nameFor } from '../lib/i18n.js'
 import { socialFollow, socialUnfollow, socialFeed, socialDiscover, socialReact, socialUser, socialUsers, socialFollowing, streakTiers as fetchStreakTiers } from '../lib/api.js'
-import { tierFor, tierBySlug } from '../lib/rank.js'
-import { FALLBACK_STREAK_TIERS } from '../lib/streak.js'
 import { feedPostSheet } from '../sheets.jsx'
 import { Thumb } from '../components/Media.jsx'
 import Icon from '../components/Icon.jsx'
 import RankBadge from '../components/RankBadge.jsx'
-import ProfileBadge from '../components/ProfileBadge.jsx'
 import Avatar from '../components/Avatar.jsx'
+import ProfileHeaderCard from '../components/ProfileHeaderCard.jsx'
+import { useRevealPaging, PAGE_SIZE, REVEAL_DELAY_MS } from '../lib/useRevealPaging.js'
 import { Segmented } from '../components/ui.jsx'
 import { nav } from '../lib/nav.js'
 import { useParams } from 'react-router-dom'
@@ -164,12 +163,10 @@ function FeedCard({ item, onReact, onFollow, unit, pinned }) {
 //
 // The backend still hands back the whole page in one call (FEED_LIMIT=50 — see
 // api/server.js, a self-hosted instance's follow graph is small enough that this is
-// cheap) — PAGE_SIZE below is purely how many of those already-fetched cards are ever
-// mounted at once, revealed 10 at a time as the sentinel at the bottom scrolls into view.
+// cheap) — PAGE_SIZE (lib/useRevealPaging.js) is purely how many of those already-fetched
+// cards are ever mounted at once, revealed as the sentinel at the bottom scrolls into view.
 // A skeleton card stands in for a beat on each reveal so a fast local reveal still reads
 // as "loading" rather than a jump-cut, same as it would over a slower connection.
-const PAGE_SIZE = 5
-const REVEAL_DELAY_MS = 500
 
 function FeedCardSkeleton() {
   return <div className="card feed-card" style={{ marginBottom: 18 }}>
@@ -338,39 +335,7 @@ export function UserProfile() {
   return <SkeletonTheme baseColor="var(--surface-2)" highlightColor="var(--glass-bg-2)">
   <div className="narrow social-narrow">
     <div className="hdr"><button className="iconbtn" onClick={() => nav('/social')} aria-label={t('Previous')}><Icon name="chevronLeft" /></button></div>
-    <div className={'card' + (data.perks?.borderBeam ? ' border-beam' : '')} style={{ textAlign: 'center' }}>
-      <Avatar name={data.user.name} avatarUrl={data.user.avatarUrl} perks={data.perks} size={64} fontSize={22} style={{ margin: '0 auto 10px' }} />
-      <div className="row" style={{ justifyContent: 'center', gap: 6 }}>
-        <div className={'tt' + (data.perks?.animatedName ? ' name-animated' : '')} style={{ fontWeight: 700, fontSize: 18 }}>
-          {data.user.username ? '@' + data.user.username : data.user.name}
-        </div>
-        {data.perks?.crownBadge && <Icon name="crown" style={{ color: 'var(--gold, var(--yellow))', fontSize: 16 }} />}
-      </div>
-      {/* The real name still shows, just demoted to a subtitle, once a username is set —
-          the handle is the public identity from here down (feed, comments), but knowing
-          who's actually behind "@josem" is still useful on their own profile page. */}
-      {data.user.username && <div className="dim small">{data.user.name}</div>}
-      <div style={{ display: 'flex', justifyContent: 'center', marginTop: 6 }}>
-        <RankBadge level={data.level} prestige={data.prestige} size="sm" />
-      </div>
-      {data.perks?.veteranBadge && <span className="veteran-badge" style={{ marginTop: 4 }}>{t('Veteran')}</span>}
-      {data.user.bio && <div className="ss profile-bio-text" style={{ marginTop: 6 }}>{data.user.bio}</div>}
-      <div className="profile-badges">
-        {(data.user.badges || []).map((type, slot) => {
-          if (!type) return null
-          const isRank = type.startsWith('rank:'), isPrestige = type.startsWith('prestige:'), isStreak = type.startsWith('streak:')
-          const streakList = streakTierList && streakTierList.length ? streakTierList : FALLBACK_STREAK_TIERS
-          const streakArtIdx = isStreak ? Math.min(10, Math.max(0, streakList.findIndex(s => 'streak:' + s.id === type)) + 1) : null
-          return (
-            <span key={slot} className={'badge-slot filled' + ((isRank || isPrestige || isStreak) && data.perks?.animatedBadge ? ' pulse' : '')}>
-              <ProfileBadge type={isPrestige ? 'prestige' : isStreak ? 'streak' : isRank ? 'rank' : type}
-                prestige={isPrestige ? Number(type.slice(9)) : data.prestige}
-                streakTier={streakArtIdx}
-                tier={isRank ? tierBySlug(type.slice(5)).name : tierFor(data.level).name} size={80} />
-            </span>
-          )
-        })}
-      </div>
+    <ProfileHeaderCard user={data.user} level={data.level} prestige={data.prestige} perks={data.perks} streakTierList={streakTierList}>
       <div className="row" style={{ justifyContent: 'center', gap: 22, marginTop: 14 }}>
         <div><div style={{ fontWeight: 700 }}>{data.workouts}</div><div className="dim small">{t('Workouts')}</div></div>
         <div><div style={{ fontWeight: 700 }}>{data.followers}</div><div className="dim small">{t('Followers')}</div></div>
@@ -379,7 +344,7 @@ export function UserProfile() {
       {!isMe && <button className={'btn sm' + (data.isFollowing ? '' : ' primary')} style={{ width: '100%', marginTop: 14 }} onClick={toggleFollow}>
         {data.isFollowing ? t('Following') : t('Follow')}
       </button>}
-    </div>
+    </ProfileHeaderCard>
     <div style={{ height: 14 }} />
     {data.items.length
       ? <div className="list">
@@ -392,37 +357,6 @@ export function UserProfile() {
   </SkeletonTheme>
 }
 
-// Same reveal-N-at-a-time idea as PostList's PAGE_SIZE above, extracted for the search/friends
-// sheets and UserProfile's own workout list below: all three fetch everything in one call (see
-// PostList's comment on why that's fine for a self-hosted instance) but used to mount every
-// row/card at once, which is the actual slow part once a list gets long. Same loadingMore +
-// REVEAL_DELAY_MS beat as PostList too, each caller supplying its own skeleton — one reveal
-// mechanism, one feel, wherever a list can run long. `resetKey` is caller-controlled rather
-// than `items` itself, since e.g. SearchSheet's filtered array gets a new identity on every
-// follow-toggle re-render — tying the reset to that would snap an open list back to 5 rows
-// just from tapping Follow.
-function useRevealPaging(items, resetKey, pageSize = PAGE_SIZE) {
-  const [shown, setShown] = useState(pageSize)
-  const [loadingMore, setLoadingMore] = useState(false)
-  useEffect(() => { setShown(pageSize) }, [resetKey])
-  const sentinelElRef = useRef(null)
-  const liveRef = useRef({ items, shown, loadingMore })
-  liveRef.current = { items, shown, loadingMore }
-  useEffect(() => {
-    const node = sentinelElRef.current
-    if (!node) return
-    const io = new IntersectionObserver(entries => {
-      if (!entries[0].isIntersecting) return
-      const { items, shown, loadingMore } = liveRef.current
-      if (loadingMore || !items || shown >= items.length) return
-      setLoadingMore(true)
-      setTimeout(() => { setShown(s => Math.min(items.length, s + pageSize)); setLoadingMore(false) }, REVEAL_DELAY_MS)
-    }, { rootMargin: '200px' })
-    io.observe(node)
-    return () => io.disconnect()
-  }, [items === null || !items, shown, loadingMore])
-  return { shown, loadingMore, hasMore: !!items && shown < items.length, sentinelElRef }
-}
 
 function PersonRowSkeleton() {
   return <div className="lrow">

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { userSearch } from '../lib/api.js'
 import { t } from '../lib/i18n.js'
 import Avatar from './Avatar.jsx'
+import Icon from './Icon.jsx'
 
 // Finds a real account by @username — never by email or display name (impersonation-prone,
 // and email is private). Picking a result calls onPick and clears the field; there's no way
@@ -37,6 +38,7 @@ export default function UserSearch({ onPick, placeholder, exclude = [] }) {
   return (
     <div className="usr-picker" ref={boxRef}>
       <div className="usr-field">
+        <Icon name="magnifier" className="usr-icon" />
         <span className="usr-at">@</span>
         <input className="usr-input" value={query} placeholder={placeholder || t('username')}
           onFocus={() => setOpen(true)}

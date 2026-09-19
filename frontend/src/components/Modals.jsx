@@ -70,6 +70,12 @@ function Sheet({ sheet }) {
   }, [])
 
   const close = () => closeSheet(sheet.id)
+  // Edge-to-edge, no scrim/grab-handle/swipe-to-dismiss — reads as its own screen (a camera
+  // viewfinder) rather than a drawer over one. Still a sheet under the hood so it keeps the
+  // existing back-button/history integration below for free.
+  if (sheet.kind === 'fullscreen') {
+    return <div className="fs-view">{sheet.render(close)}</div>
+  }
   if (sheet.kind === 'center') {
     return (
       <div>

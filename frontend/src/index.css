@@ -276,6 +276,18 @@ body.resting #app{padding-bottom:calc(250px + var(--sab))}
   -webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;color:var(--label);
 }
 .hdr .sub{color:var(--label-2);font-size:15px;font-weight:500;letter-spacing:-.006em;margin-top:5px}
+/* Lighter title for nested management screens (coach box directory + its sub-screens) — the
+   default .hdr h1 above is a 40px gradient headline meant for top-level tabs (Home, Nutrition),
+   too heavy here. Wraps onto a 2nd line instead of truncating when a box name is long. */
+.hdr h1.hdr-sub{
+  font-size:19px;line-height:1.25;font-weight:700;letter-spacing:-.01em;
+  color:var(--label);background:none;-webkit-text-fill-color:currentColor;
+  white-space:normal;
+}
+/* Centers the title on the header bar itself (not just in the space left of the back button) —
+   a symmetric 36px spacer column on the right balances the back button's own 36px on the left. */
+.hdr.hdr-center{display:grid;grid-template-columns:36px 1fr 36px;align-items:center;gap:8px}
+.hdr.hdr-center h1.hdr-sub{text-align:center}
 
 .iconbtn{
   width:36px;height:36px;border-radius:50%;flex:none;
@@ -527,7 +539,7 @@ h4.sec{
   width:32px;height:32px;border-radius:9px;flex:none;font-size:17px;
   display:flex;align-items:center;justify-content:center;
   background-image:var(--glass-sheen), linear-gradient(155deg, color-mix(in srgb, var(--tint,var(--acc)) 100%, #fff 22%), var(--tint,var(--acc)));
-  color:#fff;
+  color:var(--tint-ink,#fff);
   box-shadow:0 3px 8px -2px color-mix(in srgb, var(--tint,var(--acc)) 55%, transparent), inset 0 1px 0 rgba(255,255,255,.3);
 }
 .lrow-m{flex:1;min-width:0;display:flex;flex-direction:column;gap:1px}
@@ -1105,6 +1117,48 @@ h4.sec{
 .field:focus,.input:focus{box-shadow:inset 0 0 0 2px var(--acc);border-color:transparent}
 .field.area,textarea.input{min-height:92px;resize:vertical;line-height:1.42}
 
+/* --- WOD editor (components/WodEditor.jsx, lib/wod.js) --- */
+/* Flat single-color page, like a Word doc — no per-line ruling/stripes (tried, read as a lined
+   notebook, which wasn't wanted). Lexical still gives one real <p> per line (wodLexical.js —
+   Enter starts a new ParagraphNode) and WodView.jsx's read-only rendering renders one <p> per
+   line too, so both surfaces share this same plain paragraph spacing; the per-line node split
+   just isn't painted as separate rows any more. Título/Subtítulo/Separador are the only
+   structure that still shows — through weight/size/alignment, not lines or backgrounds. */
+.wod-editor-shell{position:relative}
+.wod-editable{min-height:160px;cursor:text}
+.wod-editable:focus{box-shadow:inset 0 0 0 2px var(--acc);border-color:transparent}
+.wod-editable p,.wod-line-view{
+  margin:0;padding:3px 0;min-height:1.4em;line-height:1.5;
+  white-space:pre-wrap;word-break:break-word;
+}
+.wod-editable p.wod-title,.wod-line-view.wod-title{
+  text-align:center;padding:12px 0 4px;font-weight:800;text-transform:uppercase;letter-spacing:.02em;
+}
+.wod-editable p.wod-subtitle,.wod-line-view.wod-subtitle{
+  padding:8px 0 1px;font-size:13px;font-weight:700;text-transform:uppercase;
+  letter-spacing:.04em;color:var(--label-2);
+}
+.wod-editable p.wod-note,.wod-line-view.wod-note{font-style:italic;color:var(--label-2)}
+/* +Separador — the one deliberate rule on the page, so it still needs to read as a line. */
+.wod-divider-wrap{padding:6px 0;line-height:0}
+.wod-divider{border:0;height:var(--hair);background:color-mix(in srgb, var(--label) 14%, transparent);width:65%;margin:0 auto}
+.wod-placeholder{
+  position:absolute;top:13px;left:15px;right:15px;color:var(--label-3);
+  font-size:17px;letter-spacing:-.012em;pointer-events:none;user-select:none;
+}
+.wod-chip{
+  display:inline;background:var(--acc-soft);color:var(--acc);border-radius:7px;
+  padding:2px 6px;font-weight:600;white-space:nowrap;
+}
+.wod-view{background:var(--glass-bg-2);border:1px solid var(--glass-border);border-radius:var(--r);padding:13px 15px;overflow:hidden}
+.wod-chip-view{
+  display:inline-flex;align-items:center;gap:5px;background:var(--acc-soft);color:var(--acc);
+  border-radius:7px;padding:1px 7px 1px 1px;font-weight:600;vertical-align:middle;
+}
+.wod-chip-view[role="button"]{cursor:pointer}
+.wod-chip-view[role="button"]:active{background:color-mix(in srgb, var(--acc) 26%, transparent)}
+.wod-chip-view .thumb{width:20px;height:20px;border-radius:5px;font-size:11px}
+
 /* --- location picker (components/LocationPicker.jsx) --- */
 /* A coach's marketplace location — real places only, picked from geocoded search results or
    a reverse-geocoded GPS fix, never typed free text straight into the saved value. */
@@ -1144,12 +1198,15 @@ h4.sec{
    .loc-picker above (real results only, never a typed string), styled as an "@handle" field
    instead of a location search. */
 .usr-picker{position:relative}
+/* A pill-shaped search field, not a plain bordered box — reads as "search for someone" rather
+   than a generic text input, matching how search fields elsewhere in iOS-style UIs look. */
 .usr-field{
-  display:flex;align-items:center;gap:8px;width:100%;background:var(--glass-bg-2);
-  border:1px solid var(--glass-border);border-radius:var(--r);box-shadow:var(--shadow-sm);
-  padding:11px 12px;transition:box-shadow var(--fast),border-color var(--fast);
+  display:flex;align-items:center;gap:8px;width:100%;background:var(--surface-2);
+  border:1px solid transparent;border-radius:999px;
+  padding:10px 14px;transition:box-shadow var(--fast),background var(--fast);
 }
-.usr-field:focus-within{box-shadow:inset 0 0 0 2px var(--acc);border-color:transparent}
+.usr-field:focus-within{box-shadow:0 0 0 2px var(--acc);background:var(--glass-bg-2)}
+.usr-icon{color:var(--label-3);font-size:15px;flex:none}
 .usr-at{color:var(--label-3);font-weight:700;font-size:15px}
 .usr-input{flex:1;min-width:0;background:none;border:none;outline:none;color:var(--label);
   font-size:15px;letter-spacing:-.01em;padding:2px 0}
@@ -1214,6 +1271,25 @@ h4.sec{
   background:color-mix(in srgb, var(--tint,var(--acc)) 16%, transparent);
   color:var(--tint,var(--acc));
 }
+
+/* CoachBox.jsx's 4-way menu (About/Classes/Plan/Staff) — a 2×2 grid of tappable cards rather
+   than a vertical list, picked over the row-list direction for being quicker to scan/tap once
+   a coach knows the icons; each stacks its badge above a short label, no chevron needed since
+   the whole card is the tap target. */
+.box-menu-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.box-menu-card{
+  display:flex;flex-direction:column;align-items:center;text-align:center;
+  background:var(--glass-bg);background-image:var(--glass-sheen);
+  backdrop-filter:saturate(var(--glass-sat)) blur(var(--glass-blur));
+  -webkit-backdrop-filter:saturate(var(--glass-sat)) blur(var(--glass-blur));
+  border:1px solid var(--glass-border);box-shadow:var(--shadow-sm);
+  border-radius:var(--r-lg);padding:20px 12px;
+  transition:background var(--fast),transform var(--fast) var(--ease);
+}
+.box-menu-card:active{background:var(--glass-bg-2);transform:scale(.97)}
+.box-menu-card .flat-badge{width:40px;height:40px;border-radius:12px;font-size:18px;margin-bottom:10px}
+.box-menu-card .tt{font-size:14px;font-weight:600;color:var(--label);letter-spacing:-.006em}
+.box-menu-card .ss{font-size:11.5px;color:var(--label-2);margin-top:3px;line-height:1.3}
 
 /* CoachBox.jsx's "single card" direction — an icon+label eyebrow leading a .card, matching the
    coach dashboard hero's own eyebrow row. */
@@ -1385,7 +1461,7 @@ button.class-card:active{background:var(--glass-bg-2);transform:translateY(0)}
    fully custom per box, not a fixed discipline), so this is two small pickers instead of one
    combined grid: a scrolling row of icon-only circles (colored by whichever color is
    currently picked, so the preview stays live) and a row of solid color swatches below it. */
-.icon-picker{display:flex;gap:8px;overflow-x:auto;padding-bottom:2px;margin-bottom:14px}
+.icon-picker{display:flex;gap:8px;overflow-x:auto;padding-bottom:10px;margin-bottom:14px}
 .icon-opt{
   flex:none;width:44px;height:44px;border-radius:50%;display:flex;align-items:center;justify-content:center;
   background:var(--glass-bg-2);border:2px solid transparent;color:var(--label-3);
@@ -1396,6 +1472,37 @@ button.class-card:active{background:var(--glass-bg-2);transform:translateY(0)}
 .color-picker{display:flex;flex-wrap:wrap;gap:10px;margin-bottom:16px}
 .color-opt{width:32px;height:32px;border-radius:50%;flex:none;border:2px solid transparent;box-shadow:var(--shadow-sm)}
 .color-opt.on{border-color:var(--label);box-shadow:0 0 0 2px var(--bg), var(--shadow-sm)}
+/* The "pick any color" tile in a .color-picker row — a native <input type="color"> hidden
+   inside it, so tapping opens the OS's own picker while this still looks like part of the row.
+   Dashed border + pencil icon when idle; once a genuinely custom (non-palette) hex is chosen,
+   it fills solid with that color instead, same as any other swatch. */
+.color-opt-custom{
+  display:flex;align-items:center;justify-content:center;position:relative;overflow:hidden;
+  background:var(--surface-2);border:2px dashed var(--label-3);color:var(--label-2);font-size:14px;cursor:pointer;
+}
+.color-opt-custom.on{border-style:solid}
+
+/* A real saturation/value square + hue slider for the box-color "custom" tile (CoachBoxAbout.jsx)
+   — white->hue horizontally, black->transparent vertically, blended with multiply so the corner
+   away from both reads as pure black regardless of hue. */
+.hex-picker-square{
+  position:relative;width:100%;height:130px;border-radius:12px;touch-action:none;cursor:crosshair;
+  background-image:linear-gradient(to top, #000, transparent), linear-gradient(to right, #fff, hsl(var(--hue),100%,50%));
+  background-blend-mode:multiply;
+}
+.hex-picker-dot{
+  position:absolute;width:16px;height:16px;border-radius:50%;transform:translate(-50%,-50%);
+  border:2px solid #fff;box-shadow:0 0 0 1px rgba(0,0,0,.4),var(--shadow-sm);pointer-events:none;
+}
+.hex-picker-hue{
+  position:relative;height:16px;border-radius:99px;margin-top:12px;touch-action:none;cursor:pointer;
+  background:linear-gradient(to right, red, yellow, lime, cyan, blue, magenta, red);
+}
+.hex-picker-hue-dot{
+  position:absolute;top:50%;width:20px;height:20px;border-radius:50%;background:#fff;
+  transform:translate(-50%,-50%);box-shadow:0 0 0 1px rgba(0,0,0,.4),var(--shadow-sm);pointer-events:none;
+}
+.hex-input{background:var(--surface-2);border-radius:9px;padding:9px 12px;font-size:13.5px;color:var(--label);font-family:monospace;text-align:center}
 
 /* Duration/capacity fields with their unit baked in ("60 min") instead of a bare number —
    wraps a NumberField (reset to plain text via .num-plain) in a field-styled box. */
@@ -1459,6 +1566,11 @@ button.class-card:active{background:var(--glass-bg-2);transform:translateY(0)}
 /* CoachBox.jsx staff list — a compact row list reusing .lrow-i's icon-badge recipe, distinct
    from the roster's lrow-list only in that removal is the sole action (no drill-in). */
 .staff-list{display:flex;flex-direction:column;gap:2px}
+/* CoachBoxAthletes.jsx roster — a plain dot ahead of the name, on when the athlete has
+   logged a workout this week, dim otherwise. Deliberately static (no pulse, unlike
+   .btn.live's dot) since this marks a weekly fact, not something happening right now. */
+.roster-dot{width:6px;height:6px;border-radius:50%;flex:none;display:inline-block;vertical-align:middle;margin:0 6px 2px 0;background:var(--label-4)}
+.roster-dot.on{background:var(--green)}
 /* NumberField's own base look — a plain `<NumberField>` dropped somewhere with no `.stp` or
    `.unit-field` wrapper around it (CustomFoodForm's/EditFoodSheet's grid2 macro fields, e.g.)
    used to fall through to the browser's native input chrome (a stark white box in dark
@@ -1910,6 +2022,22 @@ body.resting .active-pill{bottom:calc(210px + var(--sab))}
 /* ---------------------------------------------------------------- modal -- */
 #modal-root{position:fixed;inset:0;z-index:100;display:none}
 #modal-root.open{display:block}
+.fs-view{position:absolute;inset:0;background:#000;overflow:hidden}
+
+/* Barcode scanner viewfinder — a full-bleed camera feed with a rectangular hole in the middle.
+   The "hole" is just the plain .scan-box sitting in the flex flow with nothing applied to it;
+   the 4 bands around it (top/bottom full-width, left/right only alongside the box) each blur
+   and darken the same live video showing through underneath, which is what actually reads as
+   "everything outside the box is masked off" without touching the box's own content. */
+.scan-video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;z-index:0}
+.scan-mask{position:absolute;inset:0;display:flex;flex-direction:column;z-index:1;pointer-events:none}
+.scan-band{position:relative;flex:1 1 auto;background:rgba(0,0,0,.55);backdrop-filter:blur(6px) brightness(.45);-webkit-backdrop-filter:blur(6px) brightness(.45)}
+.scan-mid{flex:0 0 auto;display:flex}
+.scan-box{flex:0 0 auto;width:min(80vw,360px);aspect-ratio:2.1/1;border:2px solid rgba(255,255,255,.9);border-radius:18px;box-shadow:0 2px 18px rgba(0,0,0,.5)}
+.scan-title{position:absolute;top:calc(var(--sat) + 18px);left:0;right:0;text-align:center;color:#fff;margin:0;font-size:17px;font-weight:600;text-shadow:0 1px 4px rgba(0,0,0,.6);z-index:2}
+.scan-hint{position:absolute;top:16px;left:0;right:0;text-align:center;color:rgba(255,255,255,.85);font-size:13px;text-shadow:0 1px 4px rgba(0,0,0,.6)}
+.scan-close{position:absolute;top:calc(var(--sat) + 12px);left:14px;background:rgba(0,0,0,.4);color:#fff;border-color:rgba(255,255,255,.25);z-index:2}
+.scan-cancel-btn{position:absolute;left:18px;right:18px;bottom:calc(24px + var(--sab));z-index:2;background:rgba(20,20,20,.7);color:#fff;border-color:rgba(255,255,255,.3)}
 .mback{
   position:absolute;inset:0;background:rgba(0,0,0,.4);
   backdrop-filter:blur(2px);-webkit-backdrop-filter:blur(2px);

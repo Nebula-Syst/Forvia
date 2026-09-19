@@ -11,6 +11,11 @@ import { Button } from '../components/ui.jsx'
 
 export default function Library() {
   const S = useStore(s => s.S)
+  const pro = useStore(s => s.user?.pro)
+  // A downgrade from Pro can leave more than 5 custom exercises around — the extras (oldest 5
+  // stay unlocked) show here but can't be planned into a routine (addToRoutineSheet itself
+  // blocks it; this is just the visible cue).
+  const lockedIds = new Set(pro ? [] : (S.customEx || []).slice(5).map(e => e.id))
   const [q, setQ] = useState('')
   const [bp, setBp] = useState('')
   const [eq, setEq] = useState('')
@@ -41,11 +46,14 @@ export default function Library() {
       </div>
       {f.slice(0, shown).map(e => {
         const best = bestWeightFor(S, e.id)
-        return <div key={e.id} className="item" onClick={() => exerciseDetailSheet(e)}>
+        const locked = lockedIds.has(e.id)
+        return <div key={e.id} className="item" style={locked ? { opacity: .5 } : undefined} onClick={() => exerciseDetailSheet(e)}>
           <Thumb ex={e} />
           <div className="grow"><div className="tt capitalize">{nameFor(e)}</div><div className="ss capitalize">{t(e.tg || e.bp)} · {t(e.eq)}</div></div>
-          {best > 0 && <span className="tag acc">{fmtNum(best)}</span>}
-          <Button size="sm" variant="tinted" icon="plus" onClick={ev => { ev.stopPropagation(); addToRoutineSheet(e) }}>{t('Plan')}</Button>
+          {locked ? <Icon name="lock" style={{ color: 'var(--label-3)' }} /> : <>
+            {best > 0 && <span className="tag acc">{fmtNum(best)}</span>}
+            <Button size="sm" variant="tinted" icon="plus" onClick={ev => { ev.stopPropagation(); addToRoutineSheet(e) }}>{t('Plan')}</Button>
+          </>}
         </div>
       })}
       {f.length === 0 && <div className="empty"><div className="ico"><Icon name="magnifier" /></div>{t('No match')}</div>}

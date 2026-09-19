@@ -39,6 +39,10 @@ export default function Settings() {
         <Tile icon="personCircle" tint="var(--blue)" title={t('Account')}
           subtitle={MOBILE ? t('About this app') : DEMO ? t('Demo') : t('Sign-in, email, sessions')}
           onClick={() => nav('/settings/account')} />
+        {user && !DEMO && (
+          <Tile icon="crown" tint="var(--acc)" title={t('Subscription')} subtitle={t('Plans, coming soon')}
+            onClick={() => nav('/settings/subscription')} />
+        )}
         {showProfile && (
           <Tile icon="sparkles" tint="var(--purple)" title={t('Profile')} subtitle={t('Bio, badges')}
             onClick={() => nav('/settings/profile')} />

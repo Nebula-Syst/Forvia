@@ -40,6 +40,7 @@ import SettingsNutrition from './views/settings/SettingsNutrition.jsx'
 import SettingsNutritionFoods from './views/settings/SettingsNutritionFoods.jsx'
 import SettingsNutritionMeals from './views/settings/SettingsNutritionMeals.jsx'
 import SettingsAppearance from './views/settings/SettingsAppearance.jsx'
+import SettingsSubscription from './views/settings/SettingsSubscription.jsx'
 import SettingsNotifications from './views/settings/SettingsNotifications.jsx'
 import SettingsData from './views/settings/SettingsData.jsx'
 import SettingsFairPlay from './views/settings/SettingsFairPlay.jsx'
@@ -67,6 +68,10 @@ import CoachBoxes from './views/coach/CoachBoxes.jsx'
 import CoachBox from './views/coach/CoachBox.jsx'
 import CoachAthlete from './views/coach/CoachAthlete.jsx'
 import CoachClasses from './views/coach/CoachClasses.jsx'
+import CoachBoxAbout from './views/coach/CoachBoxAbout.jsx'
+import CoachBoxPlans from './views/coach/CoachBoxPlans.jsx'
+import CoachBoxStaff from './views/coach/CoachBoxStaff.jsx'
+import CoachBoxAthletes from './views/coach/CoachBoxAthletes.jsx'
 import MyBoxes from './views/MyBoxes.jsx'
 import BoxJoin from './views/BoxJoin.jsx'
 import BoxWod from './views/BoxWod.jsx'
@@ -162,6 +167,7 @@ function Shell() {
               <Route path="/settings/nutrition/foods" element={<SettingsNutritionFoods />} />
               <Route path="/settings/nutrition/meals" element={<SettingsNutritionMeals />} />
               <Route path="/settings/appearance" element={<SettingsAppearance />} />
+              <Route path="/settings/subscription" element={<SettingsSubscription />} />
               <Route path="/settings/notifications" element={<SettingsNotifications />} />
               <Route path="/settings/data" element={<SettingsData />} />
               <Route path="/settings/fair-play" element={<SettingsFairPlay />} />
@@ -195,6 +201,10 @@ function Shell() {
               <Route path="/coach/box/:boxId" element={user ? <CoachBox /> : <Navigate to="/home" replace />} />
               <Route path="/coach/box/:boxId/athlete/:athleteId" element={user ? <CoachAthlete /> : <Navigate to="/home" replace />} />
               <Route path="/coach/box/:boxId/classes" element={user ? <CoachClasses /> : <Navigate to="/home" replace />} />
+              <Route path="/coach/box/:boxId/about" element={user ? <CoachBoxAbout /> : <Navigate to="/home" replace />} />
+              <Route path="/coach/box/:boxId/plans" element={user ? <CoachBoxPlans /> : <Navigate to="/home" replace />} />
+              <Route path="/coach/box/:boxId/staff" element={user ? <CoachBoxStaff /> : <Navigate to="/home" replace />} />
+              <Route path="/coach/box/:boxId/athletes" element={user ? <CoachBoxAthletes /> : <Navigate to="/home" replace />} />
               <Route path="/settings/boxes" element={user ? <MyBoxes /> : <Navigate to="/home" replace />} />
               <Route path="/box/join/:code" element={user ? <BoxJoin /> : <Navigate to="/home" replace />} />
               <Route path="/box/:boxId/wod" element={user ? <BoxWod /> : <Navigate to="/home" replace />} />

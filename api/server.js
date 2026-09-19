@@ -61,7 +61,7 @@ const SECRET = fs.readFileSync(secretFile, 'utf8').trim();
 // why this stays one big in-memory object instead of being queried per-request. Same shape
 // db.json's arrays always had: users, subs (push), invites, follows, reactions, comments
 // (social), tasks/taskCompletions (daily-task catalog + awards), cheatPenalties (anti-cheat).
-let db = { users: [], subs: [], invites: [], follows: [], reactions: [], comments: [], tasks: [], taskCompletions: [], cheatPenalties: [], importLevelCaps: [], alphaRequests: [], bugReports: [], exerciseOverrides: [], muscleGroups: [], streakTiers: [], coachRequests: [], boxes: [], boxMemberships: [], boxInvites: [], routineAssignments: [], wods: [], wodResults: [], boxRequests: [], boxStaff: [], classTypes: [], dayTemplates: [], weekTemplates: [], wodTemplates: [], classSessions: [], classBookings: [], classPenalties: [], liveClasses: [], publicFoods: [] };
+let db = { users: [], subs: [], invites: [], follows: [], reactions: [], comments: [], tasks: [], taskCompletions: [], cheatPenalties: [], importLevelCaps: [], alphaRequests: [], bugReports: [], exerciseOverrides: [], muscleGroups: [], streakTiers: [], coachRequests: [], boxes: [], boxMemberships: [], boxInvites: [], routineAssignments: [], wods: [], wodResults: [], boxRequests: [], boxStaff: [], classTypes: [], dayTemplates: [], weekTemplates: [], wodTemplates: [], classSessions: [], classBookings: [], classPenalties: [], liveClasses: [], publicFoods: [], boxPlans: [] };
 // A user can hold several employee types at once (e.g. both founder and admin), not one
 // flat role — employeeTypes is an array, filtered to the known set on every read so a
 // stale/tampered value in db.json can never grant something that isn't in EMPLOYEE_TYPES.
@@ -132,6 +132,14 @@ const publicUser = user => {
     // same +/- pattern as level/prestige) is added on top of that real number, not instead of
     // it — for testing/demoing a streak badge without hand-crafting weeks of workout history.
     streakBonus: user.streakBonus || 0,
+    // The Free/Pro split (SettingsSubscription.jsx) — no billing yet, so this is only ever
+    // flipped by an admin (POST /api/admin/user/pro) for testing, same posture as adminXpAdjust
+    // before a real mechanism existed. Gates: perksFor's maxPhotos below, coaching (POST
+    // /api/coach/apply), and prestiging (POST /api/prestige). Custom foods/saved meals' 5-item
+    // cap for Free is frontend-only (sheets.jsx) — they live in the trusted per-user state blob
+    // synced via PUT /api/data, not a discrete create endpoint, so there's nowhere server-side
+    // to check this without touching that hot path.
+    pro: !!user.pro,
   };
 };
 // A user's social presence to OTHER users — never leaks the auth-only fields above.
@@ -989,6 +997,26 @@ function scanForTasks(req, user, state) {
     audit(req, 'task.auto_complete', { user, msg: awarded.join(', ').slice(0, 120) });
   }
 }
+// Streak bonus is a Pro perk (SettingsSubscription.jsx) and a real XP multiplier, not just a
+// badge — it reuses the exact same tier ladder as the streak badges (FALLBACK_STREAK_TIERS /
+// db.streakTiers) rather than a second, invisible scale, so the bonus tracks milestones the
+// user already sees. Scaled PROPORTIONALLY across however many tiers actually exist — reaching
+// the top tier ("Inmortal", 365 days by default) always lands on exactly STREAK_XP_MAX_MULTIPLIER
+// (×3), never more, even if an admin adds/removes tiers later (a flat +20%-per-tier would have
+// overshot ×3 with an 11th tier, or undershot it with fewer than 10). A Free account always
+// gets 1 (no bonus, no matter the streak).
+const STREAK_XP_MAX_MULTIPLIER = 3;
+function streakXpMultiplier(uid) {
+  const user = db.users.find(u => u.id === uid);
+  if (!user?.pro) return 1;
+  const days = currentStreakDays(uid);
+  const tiers = (db.streakTiers.length ? db.streakTiers : FALLBACK_STREAK_TIERS).slice().sort((a, b) => a.days - b.days);
+  if (!tiers.length) return 1;
+  let idx = -1;
+  for (let i = 0; i < tiers.length; i++) { if (days >= tiers[i].days) idx = i; else break; }
+  if (idx === -1) return 1;
+  return 1 + ((idx + 1) / tiers.length) * (STREAK_XP_MAX_MULTIPLIER - 1);
+}
 // Deliberately computed fresh from what's already stored (workout count, PRs, the
 // bodyweight-goal check Home.jsx itself uses) rather than kept as a mutable counter —
 // same reasoning as statsFor/feedItemsFor: nothing to desync, nothing to migrate.
@@ -996,11 +1024,18 @@ function scanForTasks(req, user, state) {
 // one-time server-side actions (a claim; a ruling), not re-derivable from workout history.
 // Raw, un-docked total — anti-cheat penalties are applied in rankFor below, against the
 // level actually on screen, not against a number nobody's account is ever measured by.
+//
+// The streak multiplier only scales the training-derived part (workouts + their PRs) — not
+// the goal bonus, task points, or an admin's manual XP adjust, none of which are "keep training
+// consistently" in the way a workout or a PR is. Recomputed fresh every call just like the
+// multiplier itself, so losing a streak (or Pro) is reflected on the very next read, same as
+// everything else in this function.
 function xpFor(uid) {
   const S = readState(uid);
   const workouts = S?.workouts || [];
-  let xp = workouts.reduce((n, w) => n + workoutXp(w), 0);
-  xp += workouts.reduce((n, w) => n + (w.prs?.length || 0), 0) * PR_XP;
+  const mult = streakXpMultiplier(uid);
+  let xp = Math.round(workouts.reduce((n, w) => n + workoutXp(w), 0) * mult);
+  xp += Math.round(workouts.reduce((n, w) => n + (w.prs?.length || 0), 0) * PR_XP * mult);
   const bw = S?.bodyweight?.length ? S.bodyweight[S.bodyweight.length - 1] : null;
   if (S?.targetW && bw && Math.abs(S.targetW - bw.w) < 0.05) xp += GOAL_XP;
   xp += db.taskCompletions.filter(c => c.userId === uid).reduce((n, c) => n + c.points, 0);
@@ -1103,12 +1138,17 @@ function backfillCheatPenaltySnapshots() {
 // theme (appTheme) stayed real — it's a genuine reward, not launch-blocking polish.
 function perksFor(uid) {
   const { level, prestige } = rankFor(uid);
+  // A Free account never unlocks past the 1-photo floor no matter how high they rank —
+  // photo slots earned by leveling only actually pay off once on Pro.
+  const pro = !!db.users.find(u => u.id === uid)?.pro;
   return {
     pinFavoritePR: level >= 11,   // Bronze
     bio: true,
-    maxPhotos: prestige >= 6 ? 8 : (level >= 51 ? 6 : 4),   // Diamond / Prestige 6
+    maxPhotos: !pro ? 1 : (prestige >= 6 ? 8 : (level >= 51 ? 6 : 4)),   // Diamond / Prestige 6
     pinnedMax: (level >= 61 ? 1 : 0) + (level >= 81 ? 1 : 0) + (prestige >= 3 ? 1 : 0),   // Master + Elite + Prestige 3
     subscriptionDiscount: prestige >= 10 ? 50 : (prestige >= 5 ? 25 : 0),
+    // For display only (Rank.jsx) — xpFor is where this actually applies to XP.
+    streakXpBonusPct: Math.round((streakXpMultiplier(uid) - 1) * 100),
     appTheme: prestige >= 8,   // Prestige 8 — exclusive app-wide color theme
   };
 }
@@ -1138,6 +1178,56 @@ const canViewAthlete = (userId, athleteUid) => {
     .concat(db.boxStaff.filter(s => s.userId === userId).map(s => s.boxId)));
   return db.boxMemberships.some(m => m.userId === athleteUid && myBoxIds.has(m.boxId));
 };
+// Membership plans: a plan choice is an attribute of the existing membership relationship (the
+// boxMemberships row), not a new one — one plan per (boxId, userId) at a time, stored as a
+// nullable planId right on that row. A booking counts against a plan's monthly limit once it's
+// actually claimed a seat ('booked') or burned one by not showing ('no-show') — waitlist/offered
+// rows haven't consumed anything yet, and a cancelled 'booked' row frees its slot back (it's
+// simply no longer in this set once its status changes).
+const LIMIT_STATUSES = new Set(['booked', 'no-show']);
+function monthlyClassUsage(boxId, userId, monthKey) {
+  return db.classBookings.filter(b => {
+    if (b.athleteId !== userId || !LIMIT_STATUSES.has(b.status)) return false;
+    const session = db.classSessions.find(s => s.id === b.sessionId);
+    return !!session && session.boxId === boxId && session.date.slice(0, 7) === monthKey;
+  }).length;
+}
+// A plan is a monthly subscription in real life — the coach collects payment in person (in-app
+// payment is a future feature; when it lands, it should renew the same planAssignedAt field
+// instead of needing a new mechanism). Each athlete gets their own 30-day cycle starting the
+// moment a plan is (re)assigned to them (coach.box.member.plan below), not a shared calendar
+// month — reassigning the same plan again (after collecting a new payment) is how it renews.
+// Past the 30 days there's a further 5-day grace window (still fully usable, including an
+// unlimited plan) before access actually cuts off — a real subscription going a day or two
+// unpaid shouldn't lock someone out overnight.
+const PLAN_PERIOD_MS = 30 * 24 * 60 * 60 * 1000;
+const PLAN_GRACE_MS = 5 * 24 * 60 * 60 * 1000;
+// null means "nothing to enforce or show" — either no plan assigned (defaults to unlimited/any
+// type, so shipping this never locks out an existing member) or a plan that's unlimited,
+// unrestricted, and neither expired nor in its grace window. A plan can be unlimited but still
+// type-restricted (e.g. "Founder Unlimited CrossFit") or vice versa, so the two checks are
+// independent, not one "has a plan?" gate — expiry is a third, separate axis that overrides both
+// once the cycle (plus grace) is up.
+function athletePlanInfo(boxId, userId) {
+  const membership = db.boxMemberships.find(m => m.boxId === boxId && m.userId === userId);
+  if (!membership?.planId) return null;
+  const plan = db.boxPlans.find(p => p.id === membership.planId);
+  if (!plan) return null;
+  const dueAt = membership.planAssignedAt ? new Date(new Date(membership.planAssignedAt).getTime() + PLAN_PERIOD_MS) : null;
+  const graceUntil = dueAt ? new Date(dueAt.getTime() + PLAN_GRACE_MS) : null;
+  const now = Date.now();
+  const expired = !!graceUntil && now >= graceUntil.getTime();
+  const inGrace = !expired && !!dueAt && now >= dueAt.getTime();
+  const classTypes = plan.classTypes?.length ? plan.classTypes : null;
+  if (plan.monthlyLimit == null && !classTypes && !expired && !inGrace) return null;
+  const usedThisMonth = plan.monthlyLimit == null ? 0 : monthlyClassUsage(boxId, userId, isoOf(new Date()).slice(0, 7));
+  return {
+    id: plan.id, name: plan.name, monthlyLimit: plan.monthlyLimit, usedThisMonth,
+    remaining: plan.monthlyLimit == null ? null : Math.max(0, plan.monthlyLimit - usedThisMonth),
+    classTypes, expired, inGrace,
+    graceDaysLeft: inGrace ? Math.max(0, Math.ceil((graceUntil.getTime() - now) / 86400000)) : null,
+  };
+}
 // Guard for /api/coach/* — resolves the caller and 401/403s if they aren't an approved coach.
 function requireCoach(req, res) {
   const user = readSession(req);
@@ -1331,6 +1421,43 @@ function parseLocation(raw) {
   }
   return { label, lat, lon };
 }
+
+// Shared by the class-occurrence WOD route and the WOD template routes just below it — see
+// the frontend's lib/wod.js for why this is free text plus a small set of line->exercise
+// links rather than a structured sets/reps object. A link's `line` is an index into
+// `text.split('\n')`; a stale index (the coach deleted lines client-side before the request
+// landed) is dropped rather than stored, so a viewer never sees a link pointing at nothing.
+// A WOD is { lines: [{ segments: [{t:'text', v} | {t:'ex', id, label}] }] } — see
+// frontend/src/lib/wod.js. `budget` caps total text+label characters across the whole WOD
+// (same 4000-char ceiling the old flat-text shape had), not just each field in isolation.
+function sanitizeWod(raw) {
+  let budget = 4000;
+  const lines = (Array.isArray(raw?.lines) ? raw.lines : []).slice(0, 200).map(line => {
+    const type = ['title', 'subtitle', 'note', 'divider'].includes(line?.type) ? line.type : 'text';
+    // A divider is a bare rule — nothing to link an exercise to, so it never carries segments.
+    if (type === 'divider') return { type, segments: [] };
+    return {
+      type,
+      segments: (Array.isArray(line?.segments) ? line.segments : []).slice(0, 100).map(seg => {
+        if (budget <= 0) return null;
+        if (seg?.t === 'ex') {
+          const id = String(seg?.id || '').slice(0, 60);
+          if (!id) return null;
+          const label = String(seg?.label || '').slice(0, budget);
+          budget -= label.length;
+          return { t: 'ex', id, label };
+        }
+        const v = String(seg?.v || '').slice(0, budget);
+        budget -= v.length;
+        return v ? { t: 'text', v } : null;
+      }).filter(Boolean),
+    };
+  });
+  return { lines };
+}
+
+const wodExerciseCount = wod => (wod?.lines || []).reduce((n, l) => n + (l.segments || []).filter(s => s.t === 'ex').length, 0);
+const wodIsEmpty = wod => !(wod?.lines || []).some(l => (l.segments || []).some(s => (s.t === 'ex' ? s.label : s.v || '').trim()));
 
 const routes = {
   'GET /api/health': async (req, res) => json(res, 200, { ok: true, users: db.users.length }),
@@ -1577,6 +1704,10 @@ const routes = {
     const user = readSession(req);
     if (!user) return json(res, 401, { error: 'not signed in' });
     if (user.coach) return json(res, 400, { error: 'already a coach' });
+    // Becoming a coach is a Pro perk — a Free account can still browse/apply to join a box as
+    // an athlete, just not run one. Already-approved coaches predating this gate keep working
+    // regardless of their own pro flag; this only blocks new applications.
+    if (!user.pro) return json(res, 403, { error: 'A Pro subscription is required to apply as a coach' });
     // Once a request is pending, block a second one outright rather than silently merging —
     // the frontend already hides the form in this state; this is the backstop for a stale
     // tab, a second device, or a double-tapped submit landing as two in-flight requests.
@@ -1695,6 +1826,9 @@ const routes = {
   'POST /api/prestige': async (req, res) => {
     const user = readSession(req);
     if (!user) return json(res, 401, { error: 'not signed in' });
+    // Prestige itself is a Pro perk — a Free account still climbs to level 100 and sits
+    // readyToPrestige (nothing about leveling changes), it just can't cash that in without Pro.
+    if (!user.pro) return json(res, 403, { error: 'A Pro subscription is required to prestige' });
     const rank = rankFor(user.id);
     if (!rank.readyToPrestige) return json(res, 400, { error: 'not ready to prestige' });
     user.prestigeConfirmed = rank.prestige + 1;
@@ -2232,6 +2366,7 @@ div{max-width:360px}h1{font-size:20px;margin:0 0 8px}p{color:#9db8a8;line-height
       return {
         id: u.id, name: u.name, email: u.email || null, created: u.created || null,
         disabled: !!u.disabled, admin: isAdmin(u), employeeTypes: employeeTypesOf(u), invitedBy: u.invitedBy || null,
+        pro: !!u.pro,
         workouts: workouts.length,
         lastWorkout: last ? last.d : null,
         lastSync: S._ts || null,
@@ -2262,7 +2397,13 @@ div{max-width:360px}h1{font-size:20px;margin:0 0 8px}p{color:#9db8a8;line-height
       lastSync: S._ts || null,
       routines: (S.routines || []).map(r => ({ id: r.id, name: r.name, emoji: r.emoji, count: (r.ex || []).length })),
       bodyweight: S.bodyweight || [],
-      workouts: (S.workouts || []).slice().reverse()   // newest first for display
+      workouts: (S.workouts || []).slice().reverse(),   // newest first for display
+      // The three Free-tier counts (5 each — sheets.jsx's customFoodDefSheet/saveMealSheet/
+      // createMealSheet/customExSheet) — shown so an admin can see how close someone actually
+      // is to the cap they're asking about, not just flip their Pro flag blind.
+      customFoodsCount: (S.customFoods || []).length,
+      savedMealsCount: (S.savedMeals || []).length,
+      customExCount: (S.customEx || []).length,
     });
   },
 
@@ -2336,6 +2477,20 @@ div{max-width:360px}h1{font-size:20px;margin:0 0 8px}p{color:#9db8a8;line-height
     audit(req, 'admin.user.streak', { user: admin, target: u, msg: `bonus -> ${u.streakBonus}` });
     wsSend(u.id, { type: 'rank:changed' });
     json(res, 200, { streakBonus: u.streakBonus });
+  },
+
+  // No billing exists yet (SettingsSubscription.jsx is catalog-only) — this is the only way
+  // an account becomes Pro for now, same "admin nudge, real mechanism later" posture as
+  // adminXpAdjust/streakBonus above.
+  'POST /api/admin/user/pro': async (req, res) => {
+    const admin = requireAdmin(req, res); if (!admin) return;
+    const body = await readBody(req);
+    const u = db.users.find(x => x.id === body.id);
+    if (!u) return json(res, 404, { error: 'no such user' });
+    u.pro = !u.pro;
+    saveDb();
+    audit(req, 'admin.user.pro', { user: admin, target: u, msg: String(u.pro) });
+    json(res, 200, { pro: u.pro });
   },
 
   'POST /api/admin/user/disable': async (req, res) => {
@@ -3289,6 +3444,30 @@ div{max-width:360px}h1{font-size:20px;margin:0 0 8px}p{color:#9db8a8;line-height
     box.title = title;
     box.description = description;
     box.location = location;
+    box.hours = String(body.hours || '').trim().slice(0, 120);
+    box.phone = String(body.phone || '').trim().slice(0, 30);
+    box.link = String(body.link || '').trim().slice(0, 200);
+    // Free-form, coach-authored — not a fixed picklist, so no server-side allow-set to check
+    // against, just the same shape/length caps every other short-text list in this file uses.
+    box.amenities = Array.isArray(body.amenities) ? body.amenities.map(a => String(a || '').trim().slice(0, 30)).filter(Boolean).slice(0, 20) : [];
+    // One color per *viewer's* theme (dark/light/prestige, or whatever themes exist later) —
+    // not one fixed color — so a coach can pick something that reads well against both a light
+    // and a dark background instead of one hex silently vanishing depending who's looking. Keyed
+    // by theme value, any subset (missing keys just fall back client-side); not restricted to
+    // the swatch palette, since the picker's "custom" swatch opens a native color input.
+    if (body.colors && typeof body.colors === 'object') {
+      const colors = {};
+      for (const [k, v] of Object.entries(body.colors)) {
+        const key = String(k || '').slice(0, 20);
+        if (key && HEX_COLOR_RE.test(v || '')) colors[key] = v;
+      }
+      box.colors = colors;
+    }
+    // Undefined/missing reads as enabled client-side (existing boxes that set colors before this
+    // toggle existed keep working) — this only ever stores an explicit true/false once a coach
+    // actually touches the switch, letting them keep their chosen colors saved (never wiped)
+    // while suppressing them everywhere without re-picking anything.
+    if (body.colorsEnabled !== undefined) box.colorsEnabled = !!body.colorsEnabled;
     if (body.removeImage) {
       box.imageFile = null;
     } else {
@@ -3337,9 +3516,28 @@ div{max-width:360px}h1{font-size:20px;margin:0 0 8px}p{color:#9db8a8;line-height
     const roster = db.boxMemberships.filter(m => m.boxId === boxId).map(m => {
       const u = db.users.find(x => x.id === m.userId);
       if (!u) return null;
-      return { ...socialUser(u), joined: m.joined, streakDays: currentStreakDays(u.id), ...statsFor(u.id) };
+      const info = athletePlanInfo(boxId, m.userId);
+      return { ...socialUser(u), joined: m.joined, planId: m.planId || null, planExpired: !!info?.expired, planInGrace: !!info?.inGrace, streakDays: currentStreakDays(u.id), ...statsFor(u.id) };
     }).filter(Boolean);
     json(res, 200, { roster });
+  },
+
+  // Adding a member directly by @username — same UserSearch picker as "add staff", for a coach
+  // who already knows the person's handle rather than sharing the invite link. Owner-only, same
+  // posture as the invite link itself (isStaffOfBox's own comment: inviting/removing members
+  // stays owner-only even though staff can manage the day-to-day roster).
+  'POST /api/coach/box/member/add': async (req, res) => {
+    const coach = requireCoach(req, res); if (!coach) return;
+    const body = await readBody(req);
+    const boxId = String(body.boxId || '');
+    if (!isCoachOfBox(coach.id, boxId)) return json(res, 404, { error: 'not found' });
+    const target = db.users.find(u => u.id === body.userId);
+    if (!target || target.disabled) return json(res, 404, { error: 'user not found' });
+    if (isMemberOfBox(target.id, boxId)) return json(res, 400, { error: 'already a member' });
+    db.boxMemberships.push({ id: crypto.randomBytes(8).toString('base64url'), boxId, userId: target.id, joined: new Date().toISOString() });
+    saveDb();
+    audit(req, 'coach.box.member.add', { user: coach, msg: target.id });
+    json(res, 200, { ok: true });
   },
 
   // Search real accounts by @username, for the "add staff" picker — never by email/display
@@ -3470,7 +3668,7 @@ div{max-width:360px}h1{font-size:20px;margin:0 0 8px}p{color:#9db8a8;line-height
       const box = db.boxes.find(b => b.id === m.boxId);
       if (!box) return null;
       const coach = db.users.find(u => u.id === box.coachId);
-      return { ...box, coachName: coach?.name || null, role: 'member' };
+      return { ...box, coachName: coach?.name || null, role: 'member', plan: athletePlanInfo(box.id, me.id) };
     }).filter(Boolean);
     // Boxes I help staff — a distinct role tag so the client can route these to the coach-side
     // box view (CoachBox.jsx) instead of the athlete WOD/leaderboard views.
@@ -3507,6 +3705,39 @@ div{max-width:360px}h1{font-size:20px;margin:0 0 8px}p{color:#9db8a8;line-height
         entries: (w.entries || []).map(e => ({ id: e.id, target: e.target || null, sets: e.sets || [], notes: e.notes || null })),
       }));
     json(res, 200, { workouts });
+  },
+
+  // A coach's view of an athlete's identity card — the same badges/rank/perks shown on their
+  // public profile (GET /api/social/user), but authorized through the box relationship instead
+  // of that route's public/isFollowing gate, since a coach needs this regardless of whether the
+  // athlete has gone public. Box-scoped (unlike /coach/athlete/workouts above) because the plan
+  // status riding along here only makes sense for one specific box.
+  'GET /api/coach/athlete/profile': async (req, res) => {
+    const me = readSession(req);
+    if (!me) return json(res, 401, { error: 'not signed in' });
+    const q = new URL(req.url, 'http://x').searchParams;
+    const boxId = q.get('boxId') || '';
+    const athleteId = q.get('athleteId') || '';
+    if (!canManageBox(me.id, boxId)) return json(res, 404, { error: 'not found' });
+    const membership = db.boxMemberships.find(m => m.boxId === boxId && m.userId === athleteId);
+    const u = db.users.find(x => x.id === athleteId);
+    if (!membership || !u) return json(res, 404, { error: 'not found' });
+    const plan = membership.planId ? db.boxPlans.find(p => p.id === membership.planId) : null;
+    const info = athletePlanInfo(boxId, athleteId);
+    json(res, 200, {
+      user: socialUser(u),
+      ...rankFor(athleteId),
+      perks: perksFor(athleteId),
+      streakDays: currentStreakDays(athleteId),
+      ...statsFor(athleteId),
+      joined: membership.joined,
+      plan: plan ? {
+        id: plan.id, name: plan.name, monthlyLimit: plan.monthlyLimit,
+        usedThisMonth: info?.usedThisMonth ?? 0, remaining: info?.remaining ?? null,
+        classTypes: plan.classTypes?.length ? plan.classTypes : null,
+        expired: !!info?.expired, inGrace: !!info?.inGrace, graceDaysLeft: info?.graceDaysLeft ?? null,
+      } : null,
+    });
   },
 
   /* ---------- routine assignment ---------- */
@@ -3726,6 +3957,109 @@ div{max-width:360px}h1{font-size:20px;margin:0 0 8px}p{color:#9db8a8;line-height
     json(res, 200, { ok: true });
   },
 
+  // Membership plans: name/description/feature list/price are display-only — Forvia never
+  // processes real payments (a self-hoster wires their own billing elsewhere), so `price` here
+  // is just a number shown on the plan card, not anything that charges a card. `monthlyLimit`
+  // is the one field with real teeth (see athletePlanInfo/the booking route below); null means
+  // unlimited.
+  'GET /api/coach/box/plans': async (req, res) => {
+    const me = readSession(req);
+    if (!me) return json(res, 401, { error: 'not signed in' });
+    const boxId = new URL(req.url, 'http://x').searchParams.get('boxId') || '';
+    if (!canManageBox(me.id, boxId)) return json(res, 404, { error: 'not found' });
+    const plans = db.boxPlans.filter(p => p.boxId === boxId).sort((a, b) => a.created.localeCompare(b.created)).map(p => ({
+      ...p, assignedCount: db.boxMemberships.filter(m => m.boxId === boxId && m.planId === p.id).length,
+    }));
+    json(res, 200, { plans });
+  },
+
+  'POST /api/coach/box/plans': async (req, res) => {
+    const me = readSession(req);
+    if (!me) return json(res, 401, { error: 'not signed in' });
+    const body = await readBody(req);
+    const boxId = String(body.boxId || '');
+    if (!canManageBox(me.id, boxId)) return json(res, 404, { error: 'not found' });
+    const name = String(body.name || '').trim().slice(0, 60);
+    if (!name) return json(res, 400, { error: 'name required' });
+    const description = String(body.description || '').trim().slice(0, 300);
+    const features = Array.isArray(body.features) ? body.features.map(f => String(f || '').trim().slice(0, 140)).filter(Boolean).slice(0, 12) : [];
+    const price = Math.max(0, Number(body.price) || 0);
+    const monthlyLimit = body.monthlyLimit == null ? null : Math.max(0, Math.round(Number(body.monthlyLimit)) || 0);
+    // Which class types this plan covers, by name (classSessions never keep a reference back to
+    // the classTypes row they were created from — see class-types' own delete comment — so name
+    // is the only stable thing to match against). Empty/omitted = every type, unrestricted.
+    const classTypes = Array.isArray(body.classTypes) ? body.classTypes.map(c => String(c || '').trim()).filter(Boolean).slice(0, 30) : [];
+    const plan = { id: crypto.randomBytes(8).toString('base64url'), boxId, name, description, features, price, monthlyLimit, classTypes, created: new Date().toISOString() };
+    db.boxPlans.push(plan);
+    saveDb();
+    audit(req, 'coach.box.plan.create', { user: me, msg: name });
+    json(res, 200, { plan });
+  },
+
+  'POST /api/coach/box/plans/update': async (req, res) => {
+    const me = readSession(req);
+    if (!me) return json(res, 401, { error: 'not signed in' });
+    const body = await readBody(req);
+    const boxId = String(body.boxId || '');
+    if (!canManageBox(me.id, boxId)) return json(res, 404, { error: 'not found' });
+    const plan = db.boxPlans.find(p => p.id === body.id && p.boxId === boxId);
+    if (!plan) return json(res, 404, { error: 'not found' });
+    const name = String(body.name || '').trim().slice(0, 60);
+    if (!name) return json(res, 400, { error: 'name required' });
+    plan.name = name;
+    plan.description = String(body.description || '').trim().slice(0, 300);
+    plan.features = Array.isArray(body.features) ? body.features.map(f => String(f || '').trim().slice(0, 140)).filter(Boolean).slice(0, 12) : [];
+    plan.price = Math.max(0, Number(body.price) || 0);
+    plan.monthlyLimit = body.monthlyLimit == null ? null : Math.max(0, Math.round(Number(body.monthlyLimit)) || 0);
+    plan.classTypes = Array.isArray(body.classTypes) ? body.classTypes.map(c => String(c || '').trim()).filter(Boolean).slice(0, 30) : [];
+    saveDb();
+    audit(req, 'coach.box.plan.update', { user: me, msg: plan.id });
+    json(res, 200, { plan });
+  },
+
+  // Deleting a plan someone's still assigned to is allowed — same no-back-reference-guard
+  // posture as class-types deletion above — it just falls back to "no plan" (unlimited, see
+  // athletePlanInfo) for anyone who was on it, rather than leaving a dangling planId around.
+  'POST /api/coach/box/plans/delete': async (req, res) => {
+    const me = readSession(req);
+    if (!me) return json(res, 401, { error: 'not signed in' });
+    const body = await readBody(req);
+    const boxId = String(body.boxId || '');
+    if (!canManageBox(me.id, boxId)) return json(res, 404, { error: 'not found' });
+    const before = db.boxPlans.length;
+    db.boxPlans = db.boxPlans.filter(p => !(p.id === body.id && p.boxId === boxId));
+    if (db.boxPlans.length === before) return json(res, 404, { error: 'not found' });
+    db.boxMemberships.forEach(m => { if (m.boxId === boxId && m.planId === body.id) m.planId = null; });
+    saveDb();
+    audit(req, 'coach.box.plan.delete', { user: me, msg: body.id });
+    json(res, 200, { ok: true });
+  },
+
+  // Assigning is just setting a field on the existing membership row — planId nullable so this
+  // doubles as "unassign" (body.planId omitted/null).
+  'POST /api/coach/box/member/plan': async (req, res) => {
+    const me = readSession(req);
+    if (!me) return json(res, 401, { error: 'not signed in' });
+    const body = await readBody(req);
+    const boxId = String(body.boxId || '');
+    if (!canManageBox(me.id, boxId)) return json(res, 404, { error: 'not found' });
+    const membership = db.boxMemberships.find(m => m.boxId === boxId && m.userId === body.athleteId);
+    if (!membership) return json(res, 404, { error: 'not a member' });
+    let planId = null;
+    if (body.planId) {
+      const plan = db.boxPlans.find(p => p.id === body.planId && p.boxId === boxId);
+      if (!plan) return json(res, 400, { error: 'no such plan' });
+      planId = plan.id;
+    }
+    membership.planId = planId;
+    // Re-picking the same plan is how a coach renews it after collecting the next payment in
+    // person — always restart the 30-day cycle here, even if planId didn't actually change.
+    membership.planAssignedAt = planId ? new Date().toISOString() : null;
+    saveDb();
+    audit(req, 'coach.box.member.plan', { user: me, msg: body.athleteId + ':' + (planId || 'none') });
+    json(res, 200, { ok: true });
+  },
+
   // A class is added straight to a real calendar date — never an implicit "every week
   // forever" recurrence. If a coach wants a day or a week to repeat, they save it as a
   // template (below) and apply it to another date/week on purpose; nothing repeats on its
@@ -3749,7 +4083,7 @@ div{max-width:360px}h1{font-size:20px;margin:0 0 8px}p{color:#9db8a8;line-height
     if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(startTime)) return json(res, 400, { error: 'invalid start time (HH:MM)' });
     const session = {
       id: crypto.randomBytes(8).toString('base64url'), boxId, date, startTime, name, durationMin, capacity, icon, color, room,
-      exercises: [], coachId: db.boxes.find(b => b.id === boxId)?.coachId || null, created: new Date().toISOString(),
+      wod: { lines: [] }, coachId: db.boxes.find(b => b.id === boxId)?.coachId || null, created: new Date().toISOString(),
     };
     db.classSessions.push(session);
     saveDb();
@@ -3774,14 +4108,17 @@ div{max-width:360px}h1{font-size:20px;margin:0 0 8px}p{color:#9db8a8;line-height
     json(res, 200, { ok: true });
   },
 
-  // The exercises for one specific occurrence ("today's CrossFit WOD") — deliberately NOT
-  // part of a class type or a day/week template, since the schedule slot can repeat while the
-  // actual workout content is different every time. Free-form per entry (name the coach
-  // picked + whatever scheme text they typed, e.g. "21-15-9" or "5x5 @ 60kg") rather than a
-  // structured sets/reps object — a WOD's notation varies too much to force into one shape,
-  // and the exercise catalog itself lives only in the frontend (see exercises-data.js), so the
-  // backend just stores whatever the trusted coach client sends, capped and sanitized.
-  'POST /api/coach/box/classes/exercises': async (req, res) => {
+  // The WOD for one specific occurrence ("today's CrossFit WOD") — deliberately NOT part of
+  // a class type or a day/week template, since the schedule slot can repeat while the actual
+  // workout content is different every time. Free text, exactly like a real whiteboard (a
+  // WOD's notation — EMOM minutes with several movements packed into one, a rep ladder
+  // shared across two exercises, a percentage of a benchmark lift — varies far too much to
+  // force into a structured sets/reps shape), plus a small set of manual links from a line
+  // number to a real exercise (see frontend lib/wod.js) so a viewer can still tap through to
+  // a movement's gif without the coach having to fill out a form for each one. The exercise
+  // catalog itself lives only in the frontend (see exercises-data.js), so the backend just
+  // stores whatever the trusted coach client sends, capped and sanitized.
+  'POST /api/coach/box/classes/wod': async (req, res) => {
     const me = readSession(req);
     if (!me) return json(res, 401, { error: 'not signed in' });
     const body = await readBody(req);
@@ -3789,15 +4126,11 @@ div{max-width:360px}h1{font-size:20px;margin:0 0 8px}p{color:#9db8a8;line-height
     if (!canManageBox(me.id, boxId)) return json(res, 404, { error: 'not found' });
     const session = db.classSessions.find(s => s.id === body.sessionId && s.boxId === boxId);
     if (!session) return json(res, 404, { error: 'not found' });
-    const exercises = (Array.isArray(body.exercises) ? body.exercises : []).slice(0, 40).map(e => ({
-      exerciseId: String(e.exerciseId || '').slice(0, 60),
-      name: String(e.name || '').trim().slice(0, 80),
-      scheme: String(e.scheme || '').trim().slice(0, 120),
-    })).filter(e => e.name);
-    session.exercises = exercises;
+    const wod = sanitizeWod(body.wod);
+    session.wod = wod;
     saveDb();
-    audit(req, 'coach.class.exercises', { user: me, msg: session.id + ':' + exercises.length });
-    json(res, 200, { exercises });
+    audit(req, 'coach.class.wod', { user: me, msg: session.id + ':' + wodExerciseCount(wod) });
+    json(res, 200, { wod });
   },
 
   // A day template is a named snapshot of everything scheduled on one real date — "save this
@@ -3850,7 +4183,7 @@ div{max-width:360px}h1{font-size:20px;margin:0 0 8px}p{color:#9db8a8;line-height
     db.classBookings = db.classBookings.filter(b => !removedIds.includes(b.sessionId));
     const coachId = db.boxes.find(b => b.id === boxId)?.coachId || null;
     for (const s of dt.slots) {
-      db.classSessions.push({ id: crypto.randomBytes(8).toString('base64url'), boxId, date, startTime: s.startTime, name: s.name, icon: s.icon, color: s.color, room: s.room, durationMin: s.durationMin, capacity: s.capacity, exercises: [], coachId, created: new Date().toISOString() });
+      db.classSessions.push({ id: crypto.randomBytes(8).toString('base64url'), boxId, date, startTime: s.startTime, name: s.name, icon: s.icon, color: s.color, room: s.room, durationMin: s.durationMin, capacity: s.capacity, wod: { lines: [] }, coachId, created: new Date().toISOString() });
     }
     saveDb();
     audit(req, 'coach.class.daytemplate.apply', { user: me, msg: dt.id + ':' + date });
@@ -3928,7 +4261,7 @@ div{max-width:360px}h1{font-size:20px;margin:0 0 8px}p{color:#9db8a8;line-height
       db.classSessions = db.classSessions.filter(s => !(s.boxId === boxId && s.date === date));
       db.classBookings = db.classBookings.filter(b => !removedIds.includes(b.sessionId));
       for (const s of (wt.days[i] || [])) {
-        db.classSessions.push({ id: crypto.randomBytes(8).toString('base64url'), boxId, date, startTime: s.startTime, name: s.name, icon: s.icon, color: s.color, room: s.room, durationMin: s.durationMin, capacity: s.capacity, exercises: [], coachId, created: new Date().toISOString() });
+        db.classSessions.push({ id: crypto.randomBytes(8).toString('base64url'), boxId, date, startTime: s.startTime, name: s.name, icon: s.icon, color: s.color, room: s.room, durationMin: s.durationMin, capacity: s.capacity, wod: { lines: [] }, coachId, created: new Date().toISOString() });
         count++;
       }
     }
@@ -3950,9 +4283,9 @@ div{max-width:360px}h1{font-size:20px;margin:0 0 8px}p{color:#9db8a8;line-height
     json(res, 200, { ok: true });
   },
 
-  // A WOD template is a reusable named exercise list (a benchmark like "Fran", or just a WOD
-  // the coach expects to reuse), independent of any date — separate from day/week templates,
-  // which only ever carry the schedule shape (time/type/room), never the workout content.
+  // A WOD template is a reusable named WOD (a benchmark like "Fran", or just one the coach
+  // expects to reuse), independent of any date — separate from day/week templates, which
+  // only ever carry the schedule shape (time/type/room), never the workout content.
   'POST /api/coach/box/wod-templates': async (req, res) => {
     const me = readSession(req);
     if (!me) return json(res, 401, { error: 'not signed in' });
@@ -3961,17 +4294,13 @@ div{max-width:360px}h1{font-size:20px;margin:0 0 8px}p{color:#9db8a8;line-height
     if (!canManageBox(me.id, boxId)) return json(res, 404, { error: 'not found' });
     const name = String(body.name || '').trim().slice(0, 60);
     if (!name) return json(res, 400, { error: 'name required' });
-    const exercises = (Array.isArray(body.exercises) ? body.exercises : []).slice(0, 40).map(e => ({
-      exerciseId: String(e.exerciseId || '').slice(0, 60),
-      name: String(e.name || '').trim().slice(0, 80),
-      scheme: String(e.scheme || '').trim().slice(0, 120),
-    })).filter(e => e.name);
-    if (!exercises.length) return json(res, 400, { error: 'no exercises to save' });
-    const wod = { id: crypto.randomBytes(8).toString('base64url'), boxId, name, exercises, created: new Date().toISOString() };
-    db.wodTemplates.push(wod);
+    const wod = sanitizeWod(body.wod);
+    if (wodIsEmpty(wod)) return json(res, 400, { error: 'nothing to save' });
+    const template = { id: crypto.randomBytes(8).toString('base64url'), boxId, name, wod, created: new Date().toISOString() };
+    db.wodTemplates.push(template);
     saveDb();
     audit(req, 'coach.wodtemplate.create', { user: me, msg: name });
-    json(res, 200, { template: wod });
+    json(res, 200, { template });
   },
 
   'GET /api/coach/box/wod-templates': async (req, res) => {
@@ -3989,14 +4318,14 @@ div{max-width:360px}h1{font-size:20px;margin:0 0 8px}p{color:#9db8a8;line-height
     const body = await readBody(req);
     const boxId = String(body.boxId || '');
     if (!canManageBox(me.id, boxId)) return json(res, 404, { error: 'not found' });
-    const wod = db.wodTemplates.find(t => t.id === body.id && t.boxId === boxId);
-    if (!wod) return json(res, 404, { error: 'not found' });
+    const template = db.wodTemplates.find(t => t.id === body.id && t.boxId === boxId);
+    if (!template) return json(res, 404, { error: 'not found' });
     const session = db.classSessions.find(s => s.id === body.sessionId && s.boxId === boxId);
     if (!session) return json(res, 404, { error: 'session not found' });
-    session.exercises = wod.exercises;
+    session.wod = template.wod;
     saveDb();
-    audit(req, 'coach.wodtemplate.apply', { user: me, msg: wod.id + ':' + session.id });
-    json(res, 200, { exercises: session.exercises });
+    audit(req, 'coach.wodtemplate.apply', { user: me, msg: template.id + ':' + session.id });
+    json(res, 200, { wod: session.wod });
   },
 
   'POST /api/coach/box/wod-templates/delete': async (req, res) => {
@@ -4039,7 +4368,12 @@ div{max-width:360px}h1{font-size:20px;margin:0 0 8px}p{color:#9db8a8;line-height
         const live = db.liveClasses.find(l => l.sessionId === s.id) || null;
         return { ...s, booked: bookedRows.length, attendees, myStatus: mine ? mine.status : null, live };
       });
-    json(res, 200, { sessions });
+    // Box colors too — an athlete can't reach GET /api/coach/box (owner/staff only), so this is
+    // the one athlete-accessible route BoxClasses.jsx has to hang its per-box accent theming off.
+    // Gated by colorsEnabled here (not client-side) since an athlete never sees the raw toggle.
+    const box = db.boxes.find(b => b.id === boxId);
+    const boxColors = box && box.colorsEnabled !== false ? (box.colors || {}) : {};
+    json(res, 200, { sessions, myPlan: athletePlanInfo(boxId, me.id), boxColors });
   },
 
   // Books into the class if there's room, otherwise onto the waitlist — never rejected outright
@@ -4058,8 +4392,28 @@ div{max-width:360px}h1{font-size:20px;margin:0 0 8px}p{color:#9db8a8;line-height
     // fully 'booked' row blocks a duplicate booking.
     const existing = db.classBookings.find(b => b.sessionId === session.id && b.athleteId === me.id && (b.status === 'booked' || b.status === 'waitlist' || b.status === 'offered'));
     if (existing && existing.status === 'booked') return json(res, 400, { error: 'already booked' });
+    const info = athletePlanInfo(session.boxId, me.id);
+    // An expired plan blocks everything — same reasoning as the type-restriction check right
+    // below (waiting doesn't help either), checked first since it overrides both other checks.
+    if (info?.expired) {
+      return json(res, 400, { error: 'Your plan has expired — ask your coach to renew it' });
+    }
+    // A type restriction blocks even joining the waitlist — unlike the monthly limit below,
+    // there's no scenario where waiting helps, the class is simply never covered by the plan.
+    if (info?.classTypes && !info.classTypes.includes(session.name)) {
+      return json(res, 400, { error: 'Your plan doesn’t include this class type' });
+    }
     const bookedCount = db.classBookings.filter(b => b.sessionId === session.id && b.status === 'booked').length;
-    const status = bookedCount < session.capacity ? 'booked' : 'waitlist';
+    // Only a real "booked" claim is gated by the plan's monthly limit — someone at their limit
+    // can still join the waitlist for a full class (that hasn't consumed a slot yet either), in
+    // case the limit or their usage changes before a spot actually opens up for them. remaining
+    // is null for an unlimited plan (even one that's still type-restricted above) — checked
+    // explicitly rather than `<= 0`, since `null <= 0` is true in JS and would wrongly block it.
+    const wouldBook = bookedCount < session.capacity;
+    if (wouldBook && info && info.remaining != null && info.remaining <= 0) {
+      return json(res, 400, { error: 'You’ve reached your plan’s monthly class limit' });
+    }
+    const status = wouldBook ? 'booked' : 'waitlist';
     let row;
     if (existing) { existing.status = status; row = existing; }
     else { row = { id: crypto.randomBytes(8).toString('base64url'), sessionId: session.id, athleteId: me.id, status, bookedAt: new Date().toISOString() }; db.classBookings.push(row); }
@@ -4182,7 +4536,7 @@ div{max-width:360px}h1{font-size:20px;margin:0 0 8px}p{color:#9db8a8;line-height
     if (!session || !canManageBox(me.id, session.boxId)) return json(res, 404, { error: 'not found' });
     const row = db.liveClasses.find(l => l.sessionId === session.id);
     if (!row) return json(res, 404, { error: 'not live' });
-    const maxEx = (session.exercises || []).length;
+    const maxEx = wodExerciseCount(session.wod);
     switch (body.action) {
       case 'pause':
         if (row.status === 'running') { row.pausedElapsedMs = liveElapsedMs(row); row.status = 'paused'; row.phaseStartedAt = null; }

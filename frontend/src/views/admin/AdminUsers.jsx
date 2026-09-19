@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useStore } from '../../store/useStore.js'
 import { useUI } from '../../store/useUI.js'
-import { api, adminUserCreate, adminSetEmployeeTypes, adminUserLevel, adminUserPrestige, adminUserStreak } from '../../lib/api.js'
+import { api, adminUserCreate, adminSetEmployeeTypes, adminUserLevel, adminUserPrestige, adminUserStreak, adminUserPro } from '../../lib/api.js'
 import { fmtDate, fmtVol, fmtDur } from '../../lib/format.js'
 import { workoutVolume, setsDone, streakDays } from '../../lib/history.js'
 import { confirmSheet } from '../../sheets.jsx'
@@ -66,6 +66,12 @@ function UserDetail({ id, onChanged, close }) {
     setBusy(true)
     adminUserStreak(u.id, delta).then(() => { load(); onChanged() }).catch(e => toast(e.message)).finally(() => setBusy(false))
   }
+  // No billing yet — this is the only way an account becomes Pro for now (gates coaching,
+  // prestiging, and the photo-slot floor; see api/server.js publicUser's own comment).
+  const togglePro = () => {
+    setBusy(true)
+    adminUserPro(u.id).then(() => { load(); onChanged() }).catch(e => toast(e.message)).finally(() => setBusy(false))
+  }
   const rank = u.rank || {}
   const tier = tierFor(rank.level || 1)
   return <>
@@ -117,6 +123,18 @@ function UserDetail({ id, onChanged, close }) {
         <button className="iconbtn" style={{ width: 28, height: 28, borderRadius: 7 }} disabled={busy} onClick={() => nudgeStreak(-1)} aria-label={t('streak down')}><Icon name="minus" /></button>
         <button className="iconbtn" style={{ width: 28, height: 28, borderRadius: 7 }} disabled={busy} onClick={() => nudgeStreak(1)} aria-label={t('streak up')}><Icon name="plus" /></button>
       </div>
+    </div>
+
+    <div className="row between" style={{ marginBottom: 12, padding: '8px 10px', background: 'var(--surface-2)', borderRadius: 12 }}>
+      <div className="small" style={{ fontWeight: 600 }}>{t('Pro subscription')}</div>
+      <button className={'chip' + (u.pro ? ' on' : '')} disabled={busy} onClick={togglePro}>{u.pro ? t('Pro') : t('Free')}</button>
+    </div>
+    {/* The three Free-tier caps (5 each) — so an admin can see how close someone actually is
+        before flipping their Pro flag, not just the flag itself. */}
+    <div className="tiles" style={{ textAlign: 'left', marginBottom: 12 }}>
+      <div className="tile"><div className="l">{t('Custom foods')}</div><div className="v" style={{ fontSize: '1.1rem' }}>{d.customFoodsCount}{!u.pro ? '/5' : ''}</div></div>
+      <div className="tile"><div className="l">{t('Saved meals')}</div><div className="v" style={{ fontSize: '1.1rem' }}>{d.savedMealsCount}{!u.pro ? '/5' : ''}</div></div>
+      <div className="tile"><div className="l">{t('Custom exercises')}</div><div className="v" style={{ fontSize: '1.1rem' }}>{d.customExCount}{!u.pro ? '/5' : ''}</div></div>
     </div>
 
     <div className="small muted" style={{ margin: '0 0 6px' }}>{t('Employee types')}</div>
@@ -218,8 +236,9 @@ export default function AdminUsers() {
   const liveUsers = (users || []).filter(u => u.live)
   const activeCount = (users || []).filter(u => u.lastSync && Date.now() - u.lastSync < 7 * 86400000).length
   const disabledCount = (users || []).filter(u => u.disabled).length
+  const proCount = (users || []).filter(u => u.pro).length
   const ql = q.trim().toLowerCase()
-  const shownUsers = (users || []).filter(u => !ql || u.name.toLowerCase().includes(ql) || (u.email || '').toLowerCase().includes(ql) || (u.employeeTypes || []).some(x => x.includes(ql)))
+  const shownUsers = (users || []).filter(u => !ql || u.name.toLowerCase().includes(ql) || (u.email || '').toLowerCase().includes(ql) || (u.employeeTypes || []).some(x => x.includes(ql)) || (ql === 'pro' && u.pro))
 
   return <div className="narrow">
     <div className="hdr">
@@ -234,6 +253,7 @@ export default function AdminUsers() {
       <div className="tile"><div className="l">{t('Training now')}</div><div className="v" style={{ color: liveUsers.length ? 'var(--acc)' : undefined }}>{users ? liveUsers.length : '—'}</div></div>
       <div className="tile"><div className="l">{t('Active 7d')}</div><div className="v">{users ? activeCount : '—'}</div></div>
       <div className="tile"><div className="l">{t('Disabled')}</div><div className="v">{users ? disabledCount : '—'}</div></div>
+      <div className="tile"><div className="l">{t('Pro')}</div><div className="v" style={{ color: proCount ? 'var(--acc)' : undefined }}>{users ? proCount : '—'}</div></div>
     </div>
 
     {liveUsers.length > 0 && <div className="card" style={{ borderColor: 'var(--acc)' }}>
@@ -263,9 +283,10 @@ export default function AdminUsers() {
               <td>{u.live && <Icon name="dot" style={{ fontSize: 8, color: 'var(--green)', marginRight: 5 }} />}{u.name}</td>
               <td className="dim-cell">{u.email || '—'}</td>
               <td>
+                {u.pro && <span className="tag acc" style={{ marginRight: 4 }}>{t('Pro')}</span>}
                 {(u.employeeTypes || []).map(x => <span key={x} className="tag acc" style={{ marginRight: 4 }}>{x}</span>)}
                 {u.disabled && <span className="tag" style={{ color: 'var(--red)' }}>{t('off')}</span>}
-                {!(u.employeeTypes || []).length && !u.disabled && <span className="dim-cell">—</span>}
+                {!u.pro && !(u.employeeTypes || []).length && !u.disabled && <span className="dim-cell">—</span>}
               </td>
               <td className="dim-cell">{u.live ? t('training now') : u.workouts}</td>
               <td className="dim-cell">{u.lastWorkout ? fmtDate(u.lastWorkout) : '—'}</td>

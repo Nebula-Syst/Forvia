@@ -11,6 +11,11 @@ import { savedMealDetailSheet, createMealSheet } from '../../sheets.jsx'
 export default function SettingsNutritionMeals() {
   const nav = useNavigate()
   const meals = useStore(s => s.S.savedMeals)
+  const pro = useStore(s => s.user?.pro)
+  // A downgrade from Pro can leave more than 5 around — the extras (oldest 5 stay unlocked)
+  // still show here and can still be deleted, just can't be logged until back on Pro (enforced
+  // in sheets.jsx's logSavedMeal/FoodSearchSheet).
+  const lockedIds = new Set(pro ? [] : meals.slice(5).map(m => m.id))
 
   return <div className="narrow settings-page">
     <div className="hdr">
@@ -26,8 +31,9 @@ export default function SettingsNutritionMeals() {
           <div key={m.id} className="item" onClick={() => savedMealDetailSheet(m)}>
             <div className="grow">
               <div className="tt">{m.name}</div>
-              <div className="ss">{t('{0} items · {1} kcal', m.items.length, m.items.reduce((n, it) => n + (it.kcal || 0), 0))}</div>
+              <div className="ss">{t('{0} items · {1} kcal', m.items.length, m.items.reduce((n, it) => n + (it.kcal || 0), 0))}{lockedIds.has(m.id) ? ` · ${t('Locked')}` : ''}</div>
             </div>
+            {lockedIds.has(m.id) && <Icon name="lock" style={{ color: 'var(--label-3)', marginRight: 6 }} />}
             <Icon name="chevronRight" className="chev" />
           </div>
         ))}

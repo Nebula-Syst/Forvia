@@ -18,6 +18,11 @@ import { markRankSeen } from '../lib/levelWatch.js'
 
 const PRESTIGE_LEVELS = Array.from({ length: 10 }, (_, i) => i + 1)
 const RING_R = 84, RING_C = 2 * Math.PI * RING_R
+// Mirrors STREAK_XP_MAX_MULTIPLIER in api/server.js — purely descriptive here (the "+X%" label
+// per tier below), the actual multiplier is computed server-side in streakXpMultiplier(), scaled
+// proportionally across however many tiers actually exist so the top tier always lands on
+// exactly this max, never more or less.
+const STREAK_XP_MAX_MULTIPLIER = 3
 
 // Perk text per rank tier / prestige level — mirrors perksFor() in api/server.js. Each
 // entry is a *list* (one line today, but PerkText already renders a checklist if a
@@ -212,6 +217,13 @@ export default function Rank() {
           {curStreakTier ? curStreakTier.name : t('No streak yet')}
         </div>
         <div className="rank-level-line">{t('{0} day streak', streak)}</div>
+        {me.pro ? (
+          me.perks?.streakXpBonusPct > 0 && (
+            <div className="ss" style={{ color: streakColor, fontWeight: 700, marginTop: -6, marginBottom: 8 }}>{t('+{0}% XP from your streak', me.perks.streakXpBonusPct)}</div>
+          )
+        ) : (
+          <div className="ss" style={{ color: 'var(--label-2)', marginTop: -6, marginBottom: 8 }}>{t('Go Pro to turn your streak into bonus XP')}</div>
+        )}
         {nextStreakTier ? (
           <>
             <div className="rank-xp-row">
@@ -244,7 +256,12 @@ export default function Rank() {
             <div className="rank-xp-row" style={{ justifyContent: 'center' }}>
               <span style={{ fontWeight: 700, color: tier.color }}>{t('Level cap reached — ready to prestige')}</span>
             </div>
-            <Button variant="primary" style={{ marginTop: 10 }} onClick={doPrestige}>{t('Upgrade mastery')}</Button>
+            {me.pro ? (
+              <Button variant="primary" style={{ marginTop: 10 }} onClick={doPrestige}>{t('Upgrade mastery')}</Button>
+            ) : <>
+              <div className="ss" style={{ color: 'var(--label-2)', marginTop: 4 }}>{t('Prestiging is a Pro perk')}</div>
+              <Button variant="primary" style={{ marginTop: 10 }} onClick={() => nav('/settings/subscription')}>{t('See plans')}</Button>
+            </>}
           </>
         ) : <>
           <div className="rank-xp-row">
@@ -366,7 +383,7 @@ export default function Rank() {
                 <span className="tt" style={{ fontWeight: current ? 700 : 500 }}>{st.name}</span>
                 <span className="rank-lvl-pill" style={{ color: locked ? undefined : tier.color, background: locked ? 'var(--surface-2)' : `color-mix(in srgb, ${tier.color} 16%, transparent)` }}>{t('{0}d', st.days)}</span>
               </div>
-              <PerkText items={[t('Coming soon.')]} />
+              <PerkText items={[t('+{0}% XP from training (Pro)', Math.round((i + 1) / streakTierList.length * (STREAK_XP_MAX_MULTIPLIER - 1) * 100))]} />
             </div>
             {done && <Icon name="check" className="accent" />}
             {locked && <Icon name="lock" className="dim" />}

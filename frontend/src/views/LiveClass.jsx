@@ -7,6 +7,7 @@ import { useWakeLock } from '../lib/wakelock.js'
 import { clockStr, useLiveTick } from '../lib/liveClass.js'
 import { LIVE_CLASSES_ENABLED } from '../lib/featureFlags.js'
 import { EXIDX } from '../lib/exercises.js'
+import { wodSteps } from '../lib/wod.js'
 import { t } from '../lib/i18n.js'
 import { typeColor } from '../lib/classDisciplines.js'
 import Icon from '../components/Icon.jsx'
@@ -71,16 +72,17 @@ export default function LiveClass() {
         )}
         {liveTick.done && <div className="muted small" style={{ marginTop: 4 }}>{t('Time!')}</div>}
 
-        {!!session?.exercises?.length && (() => {
-          const current = session.exercises[live.currentExerciseIndex]
+        {(() => {
+          const steps = wodSteps(session?.wod)
+          if (!steps.length) return null
+          const current = steps[live.currentExerciseIndex]
           const catalogEx = current && EXIDX[current.exerciseId]
           return (
             <div style={{ marginTop: 20, textAlign: 'left' }}>
               {catalogEx && <Media ex={catalogEx} compact />}
-              <div style={{ fontWeight: 800, fontSize: 17, textTransform: 'capitalize' }}>{current?.name}</div>
-              {!!current?.scheme && <div className="muted small" style={{ marginTop: 2 }}>{current.scheme}</div>}
-              {session.exercises.length > 1 && (
-                <div className="muted small" style={{ marginTop: 10 }}>{t('{0} of {1}', live.currentExerciseIndex + 1, session.exercises.length)}</div>
+              <div style={{ fontWeight: 800, fontSize: 17, whiteSpace: 'pre-wrap' }}>{current?.text}</div>
+              {steps.length > 1 && (
+                <div className="muted small" style={{ marginTop: 10 }}>{t('{0} of {1}', live.currentExerciseIndex + 1, steps.length)}</div>
               )}
             </div>
           )

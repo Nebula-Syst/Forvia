@@ -12,6 +12,11 @@ import { customFoodDefSheet } from '../../sheets.jsx'
 export default function SettingsNutritionFoods() {
   const nav = useNavigate()
   const foods = useStore(s => s.S.customFoods)
+  const pro = useStore(s => s.user?.pro)
+  // A downgrade from Pro can leave more than 5 around — the extras (oldest 5 stay unlocked)
+  // still show here and can still be edited/deleted, just can't be logged until back on Pro
+  // (enforced in sheets.jsx's logCustomFoodSheet/IngredientSearch/FoodSearchSheet).
+  const lockedIds = new Set(pro ? [] : foods.slice(5).map(f => f.id))
 
   return <div className="narrow settings-page">
     <div className="hdr">
@@ -27,8 +32,9 @@ export default function SettingsNutritionFoods() {
           <div key={f.id} className="item" onClick={() => customFoodDefSheet(f)}>
             <div className="grow">
               <div className="tt">{f.name}</div>
-              <div className="ss">{f.mode === 'weight' ? t('{0} kcal / 100g', f.kcal) : t('{0} kcal / unit', f.kcal)}</div>
+              <div className="ss">{f.mode === 'weight' ? t('{0} kcal / 100g', f.kcal) : t('{0} kcal / unit', f.kcal)}{lockedIds.has(f.id) ? ` · ${t('Locked')}` : ''}</div>
             </div>
+            {lockedIds.has(f.id) && <Icon name="lock" style={{ color: 'var(--label-3)', marginRight: 6 }} />}
             <Icon name="chevronRight" className="chev" />
           </div>
         ))}

@@ -74,6 +74,13 @@ export default function CoachApply() {
 
     {user?.coach ? (
       <p className="sub">{t('You are already a coach.')}</p>
+    ) : !user?.pro ? (
+      <div className="sent-hero">
+        <div className="ring"><Icon name="crown" /></div>
+        <h2>{t('Coaching is a Pro perk')}</h2>
+        <p>{t('Running a box — routines, roster, WOD of the day — needs a Pro subscription first.')}</p>
+        <Button variant="primary" onClick={() => nav('/settings/subscription')}>{t('See plans')}</Button>
+      </div>
     ) : pending === null ? null : (sent || pending) ? (
       <div className="sent-hero">
         <div className="ring"><Icon name="checkCircle" /></div>

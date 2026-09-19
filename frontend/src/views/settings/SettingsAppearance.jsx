@@ -8,8 +8,10 @@ import { Section, Row, Switch, Segmented } from '../../components/ui.jsx'
 
 // Hardcoded, not read from CSS vars: a swatch has to show what a theme looks like
 // regardless of which one is active right now, so it can't lean on :root[data-theme]
-// like the rest of the app does.
-const THEMES = [
+// like the rest of the app does. Exported as the single source of truth for "which themes
+// exist" — CoachBoxAbout.jsx's per-theme box-color picker reads this list too, so a theme
+// added here later shows up there automatically instead of needing a second hardcoded list.
+export const THEMES = [
   { value: 'dark', label: 'Dark', bg: '#000000', card: '#1c1c1e', text: '#ffffff', sub: '#8e8e93' },
   { value: 'light', label: 'Light', bg: '#f2f2f7', card: '#ffffff', text: '#000000', sub: '#8e8e93' },
   { value: 'prestige', label: 'Prestige', bg: '#0d0221', card: '#2a1854', text: '#f5e9ff', sub: '#b79ee0', perk: true },

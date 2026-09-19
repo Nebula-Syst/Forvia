@@ -2,25 +2,30 @@ import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useUI } from '../../store/useUI.js'
 import {
+  coachBox,
   coachClassTypes, coachCreateClassType, coachUpdateClassType, coachDeleteClassType,
-  coachCreateClass, coachRemoveClass, coachSetClassExercises,
+  coachCreateClass, coachRemoveClass, coachSetClassWod,
   coachDayTemplates, coachCreateDayTemplate, coachApplyDayTemplate, coachDeleteDayTemplate,
   coachWeekTemplates, coachCreateWeekTemplate, coachApplyWeekTemplate, coachDeleteWeekTemplate,
   coachWodTemplates, coachCreateWodTemplate, coachApplyWodTemplate, coachDeleteWodTemplate,
   coachClassRoster, coachClassAttendance, boxClasses,
   coachStartLiveClass, coachControlLiveClass, boxLiveClass,
 } from '../../lib/api.js'
-import { todayISO, isoOf, addMinToTime } from '../../lib/format.js'
-import { t, dateLocale, nameFor } from '../../lib/i18n.js'
+import { todayISO, isoOf, addMinToTime, activeBoxColor } from '../../lib/format.js'
+import { useBoxAccent } from '../../lib/useBoxAccent.js'
+import { cachedBoxColor, setCachedBoxColors } from '../../lib/boxCache.js'
+import { useStore } from '../../store/useStore.js'
+import { t, dateLocale } from '../../lib/i18n.js'
 import { CLASS_ICONS, CLASS_COLORS, typeIcon, typeColor } from '../../lib/classDisciplines.js'
 import { clockStr, useLiveTick } from '../../lib/liveClass.js'
 import { LIVE_CLASSES_ENABLED } from '../../lib/featureFlags.js'
 import { EXIDX } from '../../lib/exercises.js'
+import { EMPTY_WOD, wodIsEmpty, wodLineCount, wodSteps } from '../../lib/wod.js'
 import { wsOn } from '../../lib/ws.js'
-import { exercisePicker } from '../../sheets.jsx'
 import Icon from '../../components/Icon.jsx'
 import Avatar from '../../components/Avatar.jsx'
 import Media from '../../components/Media.jsx'
+import WodEditor from '../../components/WodEditor.jsx'
 import { Button, TextField, NumberField } from '../../components/ui.jsx'
 
 const addDays = (iso, n) => { const d = new Date(iso + 'T00:00:00'); d.setDate(d.getDate() + n); return isoOf(d) }
@@ -60,6 +65,39 @@ const monthGrid = iso => {
   return Array.from({ length: 42 }, (_, i) => { const x = new Date(start); x.setDate(start.getDate() + i); return isoOf(x) })
 }
 
+// A month-grid picker for "apply this template to…" (day or week templates) — its own sheet
+// instead of reusing whatever day/week happens to be on screen, because that's exactly what
+// forced a coach to first fight the main calendar into the right week before they could even
+// find the Apply button (e.g. no way to target "next week" from a Sunday without leaving this
+// flow). `weekMode` resolves whichever date is tapped to that week's Monday before calling back.
+function TemplateDatePicker({ initial, weekMode, sessions, close, onPick }) {
+  const [cursor, setCursor] = useState(initial || todayISO())
+  return <>
+    <h3 style={{ marginBottom: 4 }}>{weekMode ? t('Pick a week to apply to') : t('Pick a day to apply to')}</h3>
+    <p className="muted small" style={{ marginBottom: 12 }}>
+      {weekMode ? t('Replaces the whole week (Mon–Sun) of the date you tap.') : t('Replaces whatever that date already has.')}
+    </p>
+    <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+      <button className="iconbtn" onClick={() => setCursor(addMonths(cursor, -1))} aria-label={t('Previous')}><Icon name="chevronLeft" /></button>
+      <span style={{ fontWeight: 700 }}>{monthLabel(cursor)}</span>
+      <button className="iconbtn" onClick={() => setCursor(addMonths(cursor, 1))} aria-label={t('Next')}><Icon name="chevronRight" /></button>
+    </div>
+    <div className="month-grid">
+      {monthGrid(cursor).map(d => {
+        const inMonth = d.slice(0, 7) === cursor.slice(0, 7)
+        const hasClasses = (sessions || []).some(s => s.date === d)
+        return (
+          <button key={d} className={'month-cell' + (inMonth ? '' : ' out')}
+            onClick={() => { close(); onPick(weekMode ? mondayOf(d) : d) }}>
+            {Number(d.slice(8, 10))}
+            {hasClasses && <span className="month-dot" />}
+          </button>
+        )
+      })}
+    </div>
+  </>
+}
+
 // Owner/staff side of Phase 1 ("classes & schedule"). Classes live on real calendar dates —
 // nothing repeats on its own. A class TYPE (name/icon/color/room/duration/capacity, no
 // schedule) is just a preset picked when adding a class straight to a date. If a day or a
@@ -73,6 +111,7 @@ export default function CoachClasses() {
   const { boxId } = useParams()
   const nav = useNavigate()
   const toast = useUI(s => s.toast)
+  const openSheet = useUI(s => s.openSheet)
 
   const [types, setTypes] = useState(null)
   const [editingTypeId, setEditingTypeId] = useState(null)
@@ -84,6 +123,8 @@ export default function CoachClasses() {
   const [tyCapacity, setTyCapacity] = useState(12)
   const [tyBusy, setTyBusy] = useState(false)
 
+  const myTheme = useStore(s => s.S.theme) || 'dark'
+  const [box, setBox] = useState(null)
   const [sessions, setSessions] = useState(null)
   const [selectedDay, setSelectedDay] = useState(todayISO())
   const [weekAnchor, setWeekAnchor] = useState(mondayOf(todayISO()))
@@ -104,7 +145,8 @@ export default function CoachClasses() {
 
   const [openSession, setOpenSession] = useState(null)
   const [roster, setRoster] = useState(null)
-  const [exDraft, setExDraft] = useState([])
+  const [wodDraft, setWodDraft] = useState(EMPTY_WOD)
+  const [wodResetKey, setWodResetKey] = useState(0)
   const [tab, setTab] = useState('horario')
 
   const [live, setLive] = useState(null)
@@ -118,12 +160,13 @@ export default function CoachClasses() {
   const liveTick = useLiveTick(live)
 
   const load = () => {
+    coachBox(boxId).then(r => { setBox(r.box); setCachedBoxColors(boxId, r.box.colors, r.box.colorsEnabled) }).catch(e => toast(e.message))
     coachClassTypes(boxId).then(setTypes).catch(e => toast(e.message))
     coachDayTemplates(boxId).then(setDayTemplates).catch(e => toast(e.message))
     coachWeekTemplates(boxId).then(setWeekTemplates).catch(e => toast(e.message))
     coachWodTemplates(boxId).then(setWodTemplates).catch(e => toast(e.message))
     const from = addDays(mondayOf(todayISO()), -7)
-    boxClasses(boxId, from, addDays(from, 180)).then(setSessions).catch(e => toast(e.message))
+    boxClasses(boxId, from, addDays(from, 180)).then(r => setSessions(r.sessions)).catch(e => toast(e.message))
   }
   useEffect(() => { load() }, [boxId])
 
@@ -165,8 +208,11 @@ export default function CoachClasses() {
       .then(() => { setDayTplName(''); toast(t('Day template saved')); load() })
       .catch(e => toast(e.message))
   }
-  const applyDayTemplate = dt => coachApplyDayTemplate(boxId, dt.id, selectedDay)
-    .then(n => { toast(t('{0} classes placed', n)); load() }).catch(e => toast(e.message))
+  const applyDayTemplate = dt => openSheet(close => (
+    <TemplateDatePicker initial={selectedDay} sessions={sessions} close={close}
+      onPick={date => coachApplyDayTemplate(boxId, dt.id, date)
+        .then(n => { toast(t('{0} classes placed', n)); load() }).catch(e => toast(e.message))} />
+  ))
   const removeDayTemplate = dt => coachDeleteDayTemplate(boxId, dt.id).then(() => { toast(t('Removed')); load() }).catch(e => toast(e.message))
 
   const saveWeekTemplate = () => {
@@ -176,16 +222,19 @@ export default function CoachClasses() {
       .then(() => { setWeekTplName(''); toast(t('Week template saved')); load() })
       .catch(e => toast(e.message))
   }
-  const applyWeekTemplate = wt => coachApplyWeekTemplate(boxId, wt.id, weekAnchor)
-    .then(n => { toast(t('{0} classes placed', n)); load() }).catch(e => toast(e.message))
+  const applyWeekTemplate = wt => openSheet(close => (
+    <TemplateDatePicker initial={weekAnchor} weekMode sessions={sessions} close={close}
+      onPick={weekStart => coachApplyWeekTemplate(boxId, wt.id, weekStart)
+        .then(n => { toast(t('{0} classes placed', n)); load() }).catch(e => toast(e.message))} />
+  ))
   const removeWeekTemplate = wt => coachDeleteWeekTemplate(boxId, wt.id).then(() => { toast(t('Removed')); load() }).catch(e => toast(e.message))
 
   const openRoster = s => {
-    setOpenSession(s); setExDraft(s.exercises || []); setLive(null)
+    setOpenSession(s); setWodDraft(s.wod || EMPTY_WOD); setWodResetKey(k => k + 1); setLive(null)
     coachClassRoster(s.id).then(r => setRoster(r.roster)).catch(e => toast(e.message))
     boxLiveClass(s.id).then(setLive).catch(e => toast(e.message))
   }
-  const closeRoster = () => { setOpenSession(null); setRoster(null); setExDraft([]); setLive(null) }
+  const closeRoster = () => { setOpenSession(null); setRoster(null); setWodDraft(EMPTY_WOD); setLive(null) }
   const markAttendance = (row, status) => coachClassAttendance(row.bookingId, status)
     .then(() => { toast(t('Saved')); openRoster(openSession); load() }).catch(e => toast(e.message))
 
@@ -205,32 +254,27 @@ export default function CoachClasses() {
   }
   const controlLive = action => coachControlLiveClass(boxId, openSession.id, action).then(setLive).catch(e => toast(e.message))
 
-  const addExercises = () => {
-    exercisePicker(list => {
-      setExDraft(prev => [...prev, ...list.map(e => ({ exerciseId: e.id, name: nameFor(e), scheme: '' }))])
-    }, { multi: true })
-  }
-  const updateExScheme = (i, scheme) => setExDraft(prev => prev.map((e, idx) => idx === i ? { ...e, scheme } : e))
-  const removeExDraft = i => setExDraft(prev => prev.filter((_, idx) => idx !== i))
-  const saveExercises = () => coachSetClassExercises(boxId, openSession.id, exDraft)
+  const saveWod = () => coachSetClassWod(boxId, openSession.id, wodDraft)
     .then(() => { toast(t('Saved')); load() }).catch(e => toast(e.message))
 
   const saveWodTemplate = () => {
     const n = wodTplName.trim()
     if (!n) return toast(t('Name required'))
-    if (!exDraft.length) return toast(t('Add exercises first'))
-    coachCreateWodTemplate(boxId, n, exDraft)
+    if (wodIsEmpty(wodDraft)) return toast(t('Write the WOD first'))
+    coachCreateWodTemplate(boxId, n, wodDraft)
       .then(() => { setWodTplName(''); toast(t('WOD template saved')); load() })
       .catch(e => toast(e.message))
   }
   const applyWodTemplate = wt => coachApplyWodTemplate(boxId, wt.id, openSession.id)
-    .then(ex => { setExDraft(ex); toast(t('Loaded')) }).catch(e => toast(e.message))
+    .then(wod => { setWodDraft(wod); setWodResetKey(k => k + 1); toast(t('Loaded')) }).catch(e => toast(e.message))
   const removeWodTemplate = wt => coachDeleteWodTemplate(boxId, wt.id).then(() => { toast(t('Removed')); load() }).catch(e => toast(e.message))
 
+  useBoxAccent(box ? activeBoxColor(box, myTheme) : cachedBoxColor(boxId, myTheme))
+
   return <div className="narrow">
-    <div className="hdr">
-      <button className="iconbtn" onClick={() => nav('/coach/box/' + boxId)} aria-label={t('Back')}><Icon name="chevronLeft" /></button>
-      <div style={{ flex: 1, marginLeft: 8 }}><h1 style={{ margin: 0 }}>{t('Classes')}</h1></div>
+    <div className="hdr hdr-center">
+      <button className="iconbtn" onClick={() => openSession ? closeRoster() : nav('/coach/box/' + boxId)} aria-label={t('Back')}><Icon name="chevronLeft" /></button>
+      <h1 className="hdr-sub" style={{ margin: 0 }}>{t('Classes')}</h1>
     </div>
 
     {openSession ? (
@@ -268,32 +312,24 @@ export default function CoachClasses() {
         )}
 
         <div className="divider" style={{ margin: '14px 0' }} />
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
-          <span className="sect-t" style={{ padding: 0 }}>{t('Exercises')}</span>
-          <button className="iconbtn" style={{ width: 30, height: 30 }} onClick={addExercises} aria-label={t('Add exercise')}><Icon name="plus" /></button>
-        </div>
-        {!exDraft.length ? <div className="muted small" style={{ marginBottom: 10 }}>{t('No exercises added yet.')}</div> : (
-          <div className="lrow-list" style={{ marginBottom: 10 }}>
-            {exDraft.map((e, i) => (
-              <div key={i} className="lrow">
-                <span className="lrow-m"><span className="lrow-t" style={{ textTransform: 'capitalize' }}>{e.name}</span></span>
-                <input className="field" placeholder={t('e.g. 21-15-9, 5x5 @ 60kg')} value={e.scheme} onChange={ev => updateExScheme(i, ev.target.value)} style={{ flex: 1, maxWidth: 150, padding: '7px 10px', fontSize: 13 }} />
-                <button className="iconbtn" style={{ width: 26, height: 26, borderRadius: 7, color: 'var(--red)', marginLeft: 6 }} onClick={() => removeExDraft(i)} aria-label={t('remove')}><Icon name="xmark" /></button>
-              </div>
-            ))}
-          </div>
-        )}
-        {!!exDraft.length && <Button variant="primary" size="sm" onClick={saveExercises} style={{ marginBottom: 16 }}>{t('Save exercises')}</Button>}
+        <span className="sect-t" style={{ padding: 0, display: 'block', marginBottom: 10 }}>{t('WOD')}</span>
+        {/* Free text, exactly like a real whiteboard — a WOD's own notation (an EMOM minute
+            with several movements in it, a rep ladder shared across two exercises, "3 sets
+            by feel") varies too much to force into a structured sets/reps form. +Exercise
+            drops a real exercise in as an inline chip wherever the cursor is, even twice on
+            the same line ("M1: Power Clean + Push Jerk") — see components/WodEditor.jsx. */}
+        <WodEditor value={wodDraft} onChange={setWodDraft} resetKey={wodResetKey} />
+        <Button variant="primary" size="sm" onClick={saveWod} disabled={wodIsEmpty(wodDraft)} style={{ margin: '12px 0 16px' }}>{t('Save WOD')}</Button>
 
         <div className="row" style={{ gap: 8, marginBottom: wodTemplates?.length ? 12 : 0 }}>
           <TextField placeholder={t('Name this WOD — e.g. Fran')} value={wodTplName} onChange={e => setWodTplName(e.target.value)} style={{ flex: 1 }} />
-          <Button variant="tinted" style={{ width: 'auto' }} onClick={saveWodTemplate} disabled={!exDraft.length}>{t('Save')}</Button>
+          <Button variant="tinted" style={{ width: 'auto' }} onClick={saveWodTemplate} disabled={wodIsEmpty(wodDraft)}>{t('Save')}</Button>
         </div>
         {!!wodTemplates?.length && (
           <div className="lrow-list">
             {wodTemplates.map(wt => (
               <div key={wt.id} className="lrow">
-                <span className="lrow-m"><span className="lrow-t">{wt.name}</span><span className="lrow-s">{t('{0} exercises', wt.exercises.length)}</span></span>
+                <span className="lrow-m"><span className="lrow-t">{wt.name}</span><span className="lrow-s">{t('{0} lines', wodLineCount(wt.wod))}</span></span>
                 <Button size="sm" onClick={() => applyWodTemplate(wt)}>{t('Load')}</Button>
                 <button className="iconbtn" style={{ width: 28, height: 28, borderRadius: 7, color: 'var(--red)', marginLeft: 6 }} onClick={() => removeWodTemplate(wt)} aria-label={t('remove')}><Icon name="xmark" /></button>
               </div>
@@ -347,10 +383,10 @@ export default function CoachClasses() {
                 </div>
               </div>
             )}
-            <Button variant="primary" onClick={startLive}><Icon name="play" className="icn" />{t('Start live class')}</Button>
+            <Button variant="primary" icon="play" onClick={startLive}>{t('Start live class')}</Button>
           </div>
         ) : (
-          <div className="card live-card">
+          (() => { const liveSteps = wodSteps(openSession.wod); return <div className="card live-card">
             <div className="live-clock">{clockStr(liveTick.seconds)}</div>
             {(liveTick.phase || liveTick.round) && (
               <div className="live-phase">
@@ -360,18 +396,17 @@ export default function CoachClasses() {
             )}
             {liveTick.done && <div className="muted small" style={{ marginTop: 4 }}>{t('Time!')}</div>}
 
-            {!!(openSession.exercises || []).length && (() => {
-              const current = openSession.exercises[live.currentExerciseIndex]
+            {!!liveSteps.length && (() => {
+              const current = liveSteps[live.currentExerciseIndex]
               const catalogEx = current && EXIDX[current.exerciseId]
               return <>
                 {catalogEx && <div style={{ marginTop: 16, textAlign: 'left' }}><Media ex={catalogEx} compact /></div>}
                 <div className="row" style={{ alignItems: 'center', justifyContent: 'space-between', marginTop: catalogEx ? 8 : 16 }}>
                   <button className="iconbtn" onClick={() => controlLive('prev-exercise')} disabled={live.currentExerciseIndex === 0} aria-label={t('Previous')}><Icon name="chevronLeft" /></button>
                   <div style={{ textAlign: 'center', flex: 1, minWidth: 0 }}>
-                    <div style={{ fontWeight: 800, textTransform: 'capitalize' }}>{current?.name}</div>
-                    {!!current?.scheme && <div className="muted small">{current.scheme}</div>}
+                    <div style={{ fontWeight: 800, whiteSpace: 'pre-wrap' }}>{current?.text}</div>
                   </div>
-                  <button className="iconbtn" onClick={() => controlLive('next-exercise')} disabled={live.currentExerciseIndex >= openSession.exercises.length - 1} aria-label={t('Next')}><Icon name="chevronRight" /></button>
+                  <button className="iconbtn" onClick={() => controlLive('next-exercise')} disabled={live.currentExerciseIndex >= liveSteps.length - 1} aria-label={t('Next')}><Icon name="chevronRight" /></button>
                 </div>
               </>
             })()}
@@ -383,7 +418,7 @@ export default function CoachClasses() {
               <Button variant="tinted" style={{ flex: 1 }} onClick={() => controlLive('reset')}><Icon name="reset" className="icn" />{t('Reset')}</Button>
             </div>
             <Button variant="danger" style={{ marginTop: 10 }} onClick={() => controlLive('end')}>{t('End live class')}</Button>
-          </div>
+          </div> })()
         )}
         </>}
 
@@ -510,7 +545,7 @@ export default function CoachClasses() {
                 </div>
               )}
             </div>
-            <p className="sect-f">{t('Save this day, or apply a saved one — replaces whatever this day already has.')}</p>
+            <p className="sect-f">{t('Save this day, or apply a saved one to any date you pick — replaces whatever that day already has.')}</p>
           </div>
 
           <div className="sect">
@@ -530,7 +565,7 @@ export default function CoachClasses() {
                 </div>
               )}
             </div>
-            <p className="sect-f">{t('Save the whole week, or apply a saved one — replaces that week entirely.')}</p>
+            <p className="sect-f">{t('Save the whole week, or apply a saved one to any week you pick — replaces that week entirely.')}</p>
           </div>
         </div>
       })()}
