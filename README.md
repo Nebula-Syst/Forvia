@@ -257,9 +257,10 @@ own code** — auth, sessions, account management, data sync, the base admin pan
 catalog — lives in its own service and repository now,
 **[forvia-core](https://github.com/Nebula-Syst/forvia-core)**, and stays under openGym's original
 **AGPL v3.0**: free to self-host and modify, but a modified version run as a network service must
-offer its own source under the same license. A handful of frontend files in *this* repository are
-also still substantially openGym's own code, pending a proper file-by-file legal review — see
-[NOTICE.md](NOTICE.md) for exactly which ones, and why they're called out separately.
+offer its own source under the same license. One piece of *this* repository is still openGym's own
+work too: the icon set's glyph artwork in `components/Icon.jsx` — the component code around it was
+rewritten, but redrawing the icons themselves is a design task, not a code one, and hasn't
+happened yet. See [NOTICE.md](NOTICE.md) for the exact scope.
 
 **Third-party content is not, and Forvia cannot sublicense it.** The exercise metadata and
 instruction text originate from [ExerciseDB v1](https://exercisedb.dev/) and reach Forvia through

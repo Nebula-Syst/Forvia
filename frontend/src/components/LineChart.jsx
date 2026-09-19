@@ -2,7 +2,124 @@ import { useLayoutEffect, useRef, useState } from 'react'
 import { fmtNum, fmtDate, MONTHS, isoOf } from '../lib/format.js'
 import { t } from '../lib/i18n.js'
 
-const W = 340   // viewBox width; the svg stretches to its container, height comes from `h`
+const VIEWBOX_WIDTH = 340   // the svg stretches to its container; only the height (`h`) varies
+
+// "Nice" step sizes for the y-axis gridlines — 1/2/2.5/5/10 × a power of ten, whichever is
+// the smallest that still fits roughly a third of the value range per step.
+const NICE_STEP_MULTIPLIERS = [1, 2, 2.5, 5, 10]
+
+function niceStep(range) {
+  const raw = range / 3
+  const magnitude = Math.pow(10, Math.floor(Math.log10(raw)))
+  const fit = NICE_STEP_MULTIPLIERS.find(m => raw <= m * magnitude)
+  return (fit ?? 10) * magnitude
+}
+
+// Builds the pixel-space mapping for one chart: X(timestamp) and Y(value), plus the
+// resolved value range (goal-inclusive, padded) callers need for gridlines.
+function buildScale(points, { height, padding, goal, invert }) {
+  const values = points.map(p => p.y)
+  let ymin = Math.min(...values)
+  let ymax = Math.max(...values)
+  if (goal != null && isFinite(goal)) { ymin = Math.min(ymin, goal); ymax = Math.max(ymax, goal) }
+  if (ymin === ymax) { ymin -= 1; ymax += 1 }
+  else { const slack = (ymax - ymin) * 0.12; ymin -= slack; ymax += slack }
+
+  const t0 = points[0].t
+  const t1 = points[points.length - 1].t || t0 + 1
+  const plotWidth = VIEWBOX_WIDTH - padding.l - padding.r
+  const plotHeight = height - padding.t - padding.b
+
+  const X = time => t1 === t0
+    ? padding.l + plotWidth / 2
+    : padding.l + (time - t0) / (t1 - t0) * plotWidth
+  const Y = value => {
+    const frac = (value - ymin) / (ymax - ymin)
+    return padding.t + (invert ? frac : 1 - frac) * plotHeight
+  }
+  return { X, Y, ymin, ymax, t0, t1 }
+}
+
+function buildYGridlines(scale, padding, width) {
+  const step = niceStep(scale.ymax - scale.ymin)
+  const lines = []
+  for (let v = Math.ceil(scale.ymin / step) * step; v <= scale.ymax + 1e-9; v += step) {
+    const y = scale.Y(v)
+    lines.push(
+      <g key={'y' + v}>
+        <line x1={padding.l} y1={y} x2={width - padding.r} y2={y} stroke="var(--sep-op)" strokeWidth="1" strokeDasharray="2 4" />
+        <text x={padding.l - 5} y={y + 3.5} textAnchor="end" fontSize="9.5" fill="var(--label-2)">{fmtNum(v)}</text>
+      </g>
+    )
+  }
+  return lines
+}
+
+function monthTicks(t0, t1) {
+  const ticks = []
+  let cursor = new Date(new Date(t0).getFullYear(), new Date(t0).getMonth() + 1, 1)
+  const end = new Date(t1)
+  while (cursor <= end) {
+    ticks.push({ t: +cursor, label: t(MONTHS[cursor.getMonth()]) })
+    cursor = new Date(cursor.getFullYear(), cursor.getMonth() + 1, 1)
+  }
+  return ticks
+}
+
+function fallbackDateTicks(t0, t1) {
+  return [0, 1, 2].map(i => {
+    const time = t0 + (t1 - t0) * i / 2
+    const d = new Date(time)
+    return {
+      t: time,
+      label: `${d.getDate()} ${t(MONTHS[d.getMonth()])}`,
+      anchor: i === 0 ? 'start' : i === 2 ? 'end' : 'middle',
+    }
+  })
+}
+
+function buildXGridlines(scale, padding, height, isSinglePoint) {
+  const ticks = monthTicks(scale.t0, scale.t1)
+  const resolved = ticks.length || isSinglePoint ? ticks : fallbackDateTicks(scale.t0, scale.t1)
+  const stride = Math.max(1, Math.ceil(resolved.length / 7))
+  return resolved
+    .filter((_, i) => i % stride === 0)
+    .map((tick, i) => {
+      const x = scale.X(tick.t)
+      return (
+        <g key={'x' + i}>
+          <line x1={x} y1={padding.t} x2={x} y2={height - padding.b} stroke="var(--sep-op)" strokeWidth="1" strokeDasharray="2 4" />
+          <text x={x} y={height - 7} textAnchor={tick.anchor || 'middle'} fontSize="9.5" fill="var(--label-2)">{tick.label}</text>
+        </g>
+      )
+    })
+}
+
+function nearestPoint(hoverCandidates, targetX) {
+  return hoverCandidates.reduce((closest, p) =>
+    Math.abs(p.x - targetX) < Math.abs(closest.x - targetX) ? p : closest, hoverCandidates[0])
+}
+
+// Positions the hover tooltip from its own measured size, after layout — the chart lives in
+// an overflow-clipped box, so a fixed half-width offset hangs the label off the edge at the
+// first and last point, and the clip then eats it. Reading offsetWidth here also covers
+// translated labels, which are not all the same length; writing straight to the node's style
+// keeps this off the render path, since hover fires on every mouse move.
+function usePositionedTooltip(hover, height, wrapRef, tipRef) {
+  useLayoutEffect(() => {
+    const tip = tipRef.current, wrap = wrapRef.current
+    if (!hover || !tip || !wrap) return
+    const cw = wrap.clientWidth, ch = wrap.clientHeight
+    const tw = tip.offsetWidth, th = tip.offsetHeight
+    const margin = 4
+    const cx = hover.x / VIEWBOX_WIDTH * cw
+    const cy = hover.y / height * ch
+    tip.style.left = Math.max(margin, Math.min(cw - tw - margin, cx - tw / 2)) + 'px'
+    // Parked at the top, but dropped below the point when the point sits high enough that
+    // the label would otherwise cover the very value it's reporting.
+    tip.style.top = (cy < th + 14 ? Math.min(ch - th - margin, cy + 14) : margin) + 'px'
+  })
+}
 
 // points: [{ t: ms, y: num, d?: iso, m?: 0..1, note?: str }] sorted by t.
 //   m    marks the point — a second reading carried by the same dot (bigger and more solid =
@@ -16,118 +133,64 @@ export default function LineChart({ points, h = 150, unit = '', color = 'var(--a
   const svgRef = useRef(null)
   const wrapRef = useRef(null)
   const tipRef = useRef(null)
-  const [hover, setHover] = useState(null)   // { x, y, iso, v }
+  const [hover, setHover] = useState(null)
 
-  // The tooltip is placed after layout, from its measured size, because the chart
-  // lives in an overflow-clipped box: a fixed half-width offset (what this used to
-  // do) hangs the label off the edge on the first and last point, and the clip then
-  // eats it. Reading offsetWidth here also covers translated labels, which are not
-  // all the same length. Writing straight to the node's style keeps this off the
-  // render path — hover fires on every mouse move.
-  useLayoutEffect(() => {
-    const tip = tipRef.current, wrap = wrapRef.current
-    if (!hover || !tip || !wrap) return
-    const cw = wrap.clientWidth, ch = wrap.clientHeight
-    const tw = tip.offsetWidth, th = tip.offsetHeight
-    const M = 4                                   // breathing room against the clip
-    const cx = hover.x / W * cw, cy = hover.y / h * ch
-    tip.style.left = Math.max(M, Math.min(cw - tw - M, cx - tw / 2)) + 'px'
-    // Parked at the top, but dropped below the point when the point sits high
-    // enough that the label would cover the very value it is reporting.
-    tip.style.top = (cy < th + 14 ? Math.min(ch - th - M, cy + 14) : M) + 'px'
-  })
+  usePositionedTooltip(hover, h, wrapRef, tipRef)
 
   if (!points || points.length === 0) return <div className="empty small">{t('No data yet')}</div>
-  const H = h
-  const P = { l: axes ? 34 : 8, r: 12, t: 10, b: axes ? 22 : 8 }
-  const single = points.length === 1
-  const pts = single ? [points[0], points[0]] : points
-  const ys = pts.map(p => p.y)
-  let ymin = Math.min(...ys), ymax = Math.max(...ys)
-  if (goal != null && isFinite(goal)) { ymin = Math.min(ymin, goal); ymax = Math.max(ymax, goal) }
-  if (ymin === ymax) { ymin -= 1; ymax += 1 }
-  const pad = (ymax - ymin) * 0.12; ymin -= pad; ymax += pad
-  const t0 = pts[0].t, t1 = pts[pts.length - 1].t || t0 + 1
-  const X = t => (t1 === t0 ? (P.l + W - P.r) / 2 : P.l + (t - t0) / (t1 - t0) * (W - P.l - P.r))
-  const Y = y => {
-    const f = (y - ymin) / (ymax - ymin)
-    return P.t + (invert ? f : 1 - f) * (H - P.t - P.b)
-  }
 
-  const gridlines = []
-  if (axes) {
-    const range = ymax - ymin, raw = range / 3
-    const pow = Math.pow(10, Math.floor(Math.log10(raw)))
-    let step = 10 * pow
-    for (const m of [1, 2, 2.5, 5, 10]) if (raw <= m * pow) { step = m * pow; break }
-    for (let v = Math.ceil(ymin / step) * step; v <= ymax + 1e-9; v += step) {
-      const y = Y(v)
-      gridlines.push(<g key={'y' + v}>
-        <line x1={P.l} y1={y} x2={W - P.r} y2={y} stroke="var(--sep-op)" strokeWidth="1" strokeDasharray="2 4" />
-        <text x={P.l - 5} y={y + 3.5} textAnchor="end" fontSize="9.5" fill="var(--label-2)">{fmtNum(v)}</text>
-      </g>)
-    }
-    const d0 = new Date(t0), d1 = new Date(t1)
-    const ticks = []
-    let m = new Date(d0.getFullYear(), d0.getMonth() + 1, 1)
-    while (m <= d1) { ticks.push({ t: +m, txt: t(MONTHS[m.getMonth()]) }); m = new Date(m.getFullYear(), m.getMonth() + 1, 1) }
-    if (ticks.length === 0 && !single) {
-      for (let i = 0; i <= 2; i++) {
-        const tv = t0 + (t1 - t0) * i / 2, dd = new Date(tv)
-        ticks.push({ t: tv, txt: dd.getDate() + ' ' + t(MONTHS[dd.getMonth()]), anchor: i === 0 ? 'start' : i === 2 ? 'end' : 'middle' })
-      }
-    }
-    const every = Math.max(1, Math.ceil(ticks.length / 7))
-    ticks.forEach((tk, i) => {
-      if (i % every) return
-      const x = X(tk.t)
-      gridlines.push(<g key={'x' + i}>
-        <line x1={x} y1={P.t} x2={x} y2={H - P.b} stroke="var(--sep-op)" strokeWidth="1" strokeDasharray="2 4" />
-        <text x={x} y={H - 7} textAnchor={tk.anchor || 'middle'} fontSize="9.5" fill="var(--label-2)">{tk.txt}</text>
-      </g>)
-    })
-  }
+  const isSinglePoint = points.length === 1
+  const plotted = isSinglePoint ? [points[0], points[0]] : points
+  const padding = { l: axes ? 34 : 8, r: 12, t: 10, b: axes ? 22 : 8 }
+  const scale = buildScale(plotted, { height: h, padding, goal, invert })
 
-  const poly = pts.map(p => X(p.t).toFixed(1) + ',' + Y(p.y).toFixed(1)).join(' ')
-  const last = pts[pts.length - 1]
-  const gid = 'g' + Math.round(t0 % 1e7) + '_' + H
-  const hoverPts = (single ? [points[0]] : points).map(p => ({ x: X(p.t), y: Y(p.y), iso: p.d || isoOf(new Date(p.t)), v: p.y, note: p.note }))
-  const marked = points.some(p => p.m != null)
+  const gridlines = axes
+    ? [...buildYGridlines(scale, padding, VIEWBOX_WIDTH), ...buildXGridlines(scale, padding, h, isSinglePoint)]
+    : []
 
-  const onMove = e => {
-    const c = e.touches ? e.touches[0] : e
-    if (!c || c.clientX === undefined) return
-    const r = svgRef.current.getBoundingClientRect()
-    const w = r.width || W
-    const vx = (c.clientX - r.left) / w * W
-    let best = hoverPts[0]
-    hoverPts.forEach(p => { if (Math.abs(p.x - vx) < Math.abs(best.x - vx)) best = p })
-    setHover(best)
+  const linePoints = plotted.map(p => `${scale.X(p.t).toFixed(1)},${scale.Y(p.y).toFixed(1)}`).join(' ')
+  const lastPoint = plotted[plotted.length - 1]
+  const gradientId = 'g' + Math.round(scale.t0 % 1e7) + '_' + h
+  const hasMarks = points.some(p => p.m != null)
+
+  const hoverCandidates = (isSinglePoint ? [points[0]] : points).map(p => ({
+    x: scale.X(p.t), y: scale.Y(p.y), iso: p.d || isoOf(new Date(p.t)), v: p.y, note: p.note,
+  }))
+
+  const updateHoverFromEvent = e => {
+    const pointerEvent = e.touches ? e.touches[0] : e
+    if (!pointerEvent || pointerEvent.clientX === undefined) return
+    const rect = svgRef.current.getBoundingClientRect()
+    const viewX = (pointerEvent.clientX - rect.left) / (rect.width || VIEWBOX_WIDTH) * VIEWBOX_WIDTH
+    setHover(nearestPoint(hoverCandidates, viewX))
   }
 
   return (
     <div className="chart-i" ref={wrapRef}
-      onMouseMove={onMove} onMouseDown={onMove}
+      onMouseMove={updateHoverFromEvent} onMouseDown={updateHoverFromEvent}
       onMouseLeave={() => setHover(null)}
-      onTouchStart={onMove} onTouchMove={onMove}>
-      <svg ref={svgRef} viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" style={{ aspectRatio: `${W}/${H}` }}>
-        <defs><linearGradient id={gid} x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0" stopColor={color} stopOpacity=".28" />
-          <stop offset="1" stopColor={color} stopOpacity="0" />
-        </linearGradient></defs>
+      onTouchStart={updateHoverFromEvent} onTouchMove={updateHoverFromEvent}>
+      <svg ref={svgRef} viewBox={`0 0 ${VIEWBOX_WIDTH} ${h}`} preserveAspectRatio="none" style={{ aspectRatio: `${VIEWBOX_WIDTH}/${h}` }}>
+        <defs>
+          <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0" stopColor={color} stopOpacity=".28" />
+            <stop offset="1" stopColor={color} stopOpacity="0" />
+          </linearGradient>
+        </defs>
         {gridlines}
         {goal != null && isFinite(goal) && <>
-          <line x1={P.l} y1={Y(goal)} x2={W - P.r} y2={Y(goal)} stroke="var(--yellow)" strokeWidth="1.6" strokeDasharray="7 4" />
-          <text x={W - P.r - 2} y={Y(goal) - 5} textAnchor="end" fontSize="9.5" fontWeight="700" fill="var(--yellow)">{fmtNum(goal)}</text>
+          <line x1={padding.l} y1={scale.Y(goal)} x2={VIEWBOX_WIDTH - padding.r} y2={scale.Y(goal)} stroke="var(--yellow)" strokeWidth="1.6" strokeDasharray="7 4" />
+          <text x={VIEWBOX_WIDTH - padding.r - 2} y={scale.Y(goal) - 5} textAnchor="end" fontSize="9.5" fontWeight="700" fill="var(--yellow)">{fmtNum(goal)}</text>
         </>}
-        <polygon points={`${P.l},${H - P.b} ${poly} ${X(last.t).toFixed(1)},${H - P.b}`} fill={`url(#${gid})`} />
-        <polyline points={poly} fill="none" stroke={color} strokeWidth="2.5" strokeLinejoin="round" strokeLinecap="round" />
-        {marked && pts.map((p, i) => (p.m == null ? null :
-          <circle key={'m' + i} cx={X(p.t)} cy={Y(p.y)} r={2.4 + p.m * 3} fill={color} opacity={0.3 + p.m * 0.7} />))}
-        <circle cx={X(last.t)} cy={Y(last.y)} r="4" fill={color} />
+        <polygon points={`${padding.l},${h - padding.b} ${linePoints} ${scale.X(lastPoint.t).toFixed(1)},${h - padding.b}`} fill={`url(#${gradientId})`} />
+        <polyline points={linePoints} fill="none" stroke={color} strokeWidth="2.5" strokeLinejoin="round" strokeLinecap="round" />
+        {hasMarks && plotted.map((p, i) => p.m == null ? null : (
+          <circle key={'m' + i} cx={scale.X(p.t)} cy={scale.Y(p.y)} r={2.4 + p.m * 3} fill={color} opacity={0.3 + p.m * 0.7} />
+        ))}
+        <circle cx={scale.X(lastPoint.t)} cy={scale.Y(lastPoint.y)} r="4" fill={color} />
         {hover && <g>
-          <line className="cvl" x1={hover.x} y1={P.t} x2={hover.x} y2={H - P.b} stroke="var(--label-3)" strokeWidth="1" strokeDasharray="3 3" />
-          <line className="chl" x1={P.l} y1={hover.y} x2={W - P.r} y2={hover.y} stroke="var(--label-3)" strokeWidth="1" strokeDasharray="3 3" />
+          <line className="cvl" x1={hover.x} y1={padding.t} x2={hover.x} y2={h - padding.b} stroke="var(--label-3)" strokeWidth="1" strokeDasharray="3 3" />
+          <line className="chl" x1={padding.l} y1={hover.y} x2={VIEWBOX_WIDTH - padding.r} y2={hover.y} stroke="var(--label-3)" strokeWidth="1" strokeDasharray="3 3" />
           <circle cx={hover.x} cy={hover.y} r="5" fill={color} stroke="var(--bg)" strokeWidth="2" />
         </g>}
       </svg>

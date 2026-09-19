@@ -13,13 +13,27 @@ import { Button } from './ui.jsx'
  * so switching tabs re-mounts it and clears the error by itself.
  */
 export default class ErrorBoundary extends Component {
-  constructor(props) { super(props); this.state = { failed: false } }
-  static getDerivedStateFromError() { return { failed: true } }
-  componentDidCatch(err) { console.error('Forvia render error:', err) }
+  state = { crashed: false }
 
-  render() {
-    if (!this.state.failed) return this.props.children
-    const active = useStore.getState().S.active
+  static getDerivedStateFromError() {
+    return { crashed: true }
+  }
+
+  componentDidCatch(error) {
+    console.error('Forvia render error:', error)
+  }
+
+  reloadApp = () => {
+    location.reload()
+  }
+
+  discardWorkoutAndReload = () => {
+    useStore.getState().update(state => { state.active = null })
+    location.reload()
+  }
+
+  renderCrashScreen() {
+    const hasActiveWorkout = !!useStore.getState().S.active
     return (
       <div className="narrow">
         <div className="empty" style={{ marginTop: '18vh' }}>
@@ -27,15 +41,20 @@ export default class ErrorBoundary extends Component {
           <div style={{ fontWeight: 600, marginBottom: 6 }}>{t('Something went wrong')}</div>
           {t('This screen could not be drawn. Your data is safe on this device.')}
         </div>
-        <Button variant="primary" icon="reset" onClick={() => location.reload()}>{t('Reload Forvia')}</Button>
-        {active && <>
+        <Button variant="primary" icon="reset" onClick={this.reloadApp}>
+          {t('Reload Forvia')}
+        </Button>
+        {hasActiveWorkout && <>
           <div style={{ height: 8 }} />
-          <Button variant="danger" icon="trash" onClick={() => {
-            useStore.getState().update(s => { s.active = null })
-            location.reload()
-          }}>{t('Discard the running workout')}</Button>
+          <Button variant="danger" icon="trash" onClick={this.discardWorkoutAndReload}>
+            {t('Discard the running workout')}
+          </Button>
         </>}
       </div>
     )
+  }
+
+  render() {
+    return this.state.crashed ? this.renderCrashScreen() : this.props.children
   }
 }

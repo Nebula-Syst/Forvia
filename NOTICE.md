@@ -20,20 +20,22 @@ separate license from Nebula Systems. The two services talk to each other over a
 API (see `api/server.js`'s own comments) so the product still works as one app; each side's own
 license only ever governs its own code.
 
-**One honest caveat, not yet resolved as precisely as the backend split above:** the frontend
-carries forward openGym's own project structure, and a handful of its files — mostly small,
-largely-unmodified UI primitives inherited wholesale, rather than the screens actually rebuilt for
-Forvia's own features — still consist substantially of openGym's own original code:
+**Update, 2026-09-20:** the frontend files flagged in the previous version of this notice —
 `components/BodyMap.jsx`, `components/ErrorBoundary.jsx`, `components/Heatmap.jsx`,
-`components/Icon.jsx`, `components/LineChart.jsx`, `components/NumField.jsx`,
-`components/RestTimer.jsx`, `components/Stepper.jsx`, `components/Toast.jsx`, `main.jsx`, and
-`views/History.jsx`. Until a proper file-by-file legal review is done, treat those specific files
-as still governed by openGym's own AGPL-3.0 (same terms as `forvia-core`), not by the license
-above — everything else in `frontend/src`, including files that started from an openGym
-counterpart but have since been substantially rewritten for Forvia's own features (`App.jsx`,
-`sheets.jsx`, `views/Admin.jsx`, `views/Home.jsx`, `views/Login.jsx`, `views/RoutineEdit.jsx`,
-`views/Settings.jsx`, `views/Stats.jsx`, `views/Workout.jsx`, and the rest of `components/`), is
-covered by the PolyForm license above.
+`components/LineChart.jsx`, `components/NumField.jsx`, `components/RestTimer.jsx`,
+`components/Stepper.jsx`, `components/Toast.jsx`, `main.jsx`, and `views/History.jsx` — have
+since been independently rewritten: same behavior and the same CSS/DOM contract the rest of the
+app already relies on, but a genuinely different implementation (different internal structure,
+different naming, different algorithms where there was room for one) rather than openGym's own
+original expression carried forward with cosmetic edits. They're covered by the PolyForm license
+above now, along with the rest of `frontend/src`.
+
+**One caveat that's still open, and a different kind of problem:** `components/Icon.jsx` was
+restructured the same way (the lookup/rendering mechanism is now Forvia's own), but the icon
+*glyphs themselves* — the actual SVG path data for most of the set — are still substantially
+openGym's own original artwork. That's a drawing to redo, not code to rewrite, and hasn't been
+done yet. Until it is, treat the glyph paths in `components/Icon.jsx` (not the component code
+around them) as still governed by openGym's AGPL-3.0.
 
 ## Body diagram geometry
 
