@@ -1,19 +1,28 @@
-/* forvia-api — PostgreSQL persistence.
-   Everything the app touches at request time is an in-memory mirror (the `db` object and
-   `stateCache` Map in server.js), for the same reason db.json used to be loaded whole into
-   memory: every route's business logic (rankFor, xpFor, feedItemsFor, anti-cheat, task
-   grading...) is a synchronous pure function over that mirror. Postgres is the durable,
-   externally-queryable backing store underneath it — one JSONB row per item, same shape
-   db.json's arrays always had, so the mapping is lossless and nothing about those pure
-   functions had to change to make room for a real database. */
+/* Forvia (Nebula service) — PostgreSQL persistence.
+   Same shape/reasoning as forvia-core's own db.js (this is the other half of that same split):
+   one JSONB row per item, everything mirrored into memory at request time. This service owns a
+   strict SUBSET of the original collections — everything gamification/social/coach-box. `users`
+   and `subs`, and the user_state table, live in the SAME Postgres instance but are owned and
+   migrated by forvia-core, not this service — this file never touches either.
+
+   The one thing this service's audit log has to get right that forvia-core's doesn't: both
+   services log to the SAME Postgres instance, so this can't reuse the table name `audit_log` —
+   two independent auditSeq counters both starting from their own in-memory count would collide
+   on the same `id BIGINT PRIMARY KEY` (and, worse, silently merge each service's events into the
+   other's admin audit view). `nebula_audit_log` keeps the two logs as separate as the services
+   that write them. */
 import pg from 'pg';
 
 const DATABASE_URL = process.env.DATABASE_URL || 'postgres://forvia:forvia@db:5432/forvia';
 export const pool = new pg.Pool({ connectionString: DATABASE_URL });
 
-// One table per top-level db.json array. No natural-key columns — a full replace on every
-// save (see saveAll) means nothing needs a stable primary key to upsert against.
-const COLLECTIONS = ['users', 'subs', 'invites', 'follows', 'reactions', 'comments', 'tasks', 'taskCompletions', 'cheatPenalties', 'importLevelCaps', 'alphaRequests', 'bugReports', 'exerciseOverrides', 'muscleGroups', 'streakTiers', 'coachRequests', 'boxes', 'boxMemberships', 'boxInvites', 'routineAssignments', 'wods', 'wodResults', 'boxRequests', 'boxStaff', 'classTypes', 'dayTemplates', 'weekTemplates', 'wodTemplates', 'classSessions', 'classBookings', 'classPenalties', 'liveClasses', 'publicFoods', 'boxPlans'];
+const COLLECTIONS = [
+  'follows', 'reactions', 'comments', 'tasks', 'taskCompletions', 'cheatPenalties',
+  'importLevelCaps', 'streakTiers', 'coachRequests', 'boxes', 'boxMemberships', 'boxInvites',
+  'routineAssignments', 'wods', 'wodResults', 'boxRequests', 'boxStaff', 'classTypes',
+  'dayTemplates', 'weekTemplates', 'wodTemplates', 'classSessions', 'classBookings',
+  'classPenalties', 'liveClasses', 'publicFoods', 'boxPlans',
+];
 const tableFor = name => 'kv_' + name.replace(/[A-Z]/g, c => '_' + c.toLowerCase());
 
 export async function ensureSchema() {
@@ -22,12 +31,10 @@ export async function ensureSchema() {
     for (const name of COLLECTIONS) {
       await client.query(`CREATE TABLE IF NOT EXISTS ${tableFor(name)} (row_id SERIAL PRIMARY KEY, data JSONB NOT NULL)`);
     }
-    await client.query('CREATE TABLE IF NOT EXISTS user_state (user_id TEXT PRIMARY KEY, data JSONB NOT NULL, updated TIMESTAMPTZ NOT NULL DEFAULT now())');
-    await client.query('CREATE TABLE IF NOT EXISTS audit_log (id BIGINT PRIMARY KEY, data JSONB NOT NULL)');
+    await client.query('CREATE TABLE IF NOT EXISTS nebula_audit_log (id BIGINT PRIMARY KEY, data JSONB NOT NULL)');
   } finally { client.release(); }
 }
 
-// Loads every collection into the exact shape server.js's in-memory `db` object expects.
 export async function loadAll() {
   const out = {};
   for (const name of COLLECTIONS) {
@@ -37,9 +44,6 @@ export async function loadAll() {
   return out;
 }
 
-// Full replace of every collection in one transaction — same "rewrite everything" semantics
-// db.json's atomicWrite always had. At self-hosted scale this costs nothing, and it means
-// saveDb() never has to know which collection actually changed.
 export async function saveAll(db) {
   const client = await pool.connect();
   try {
@@ -59,33 +63,17 @@ export async function saveAll(db) {
   finally { client.release(); }
 }
 
-export async function loadAllStates() {
-  const { rows } = await pool.query('SELECT user_id, data FROM user_state');
-  const map = new Map();
-  for (const r of rows) map.set(r.user_id, r.data);
-  return map;
-}
-export async function saveState(uid, state) {
-  await pool.query(
-    'INSERT INTO user_state (user_id, data, updated) VALUES ($1, $2, now()) ON CONFLICT (user_id) DO UPDATE SET data = $2, updated = now()',
-    [uid, JSON.stringify(state)]
-  );
-}
-export async function deleteState(uid) {
-  await pool.query('DELETE FROM user_state WHERE user_id = $1', [uid]);
-}
-
 export async function appendAudit(rec) {
-  await pool.query('INSERT INTO audit_log (id, data) VALUES ($1, $2)', [rec.id, JSON.stringify(rec)]);
+  await pool.query('INSERT INTO nebula_audit_log (id, data) VALUES ($1, $2)', [rec.id, JSON.stringify(rec)]);
 }
 export async function auditAll() {
-  const { rows } = await pool.query('SELECT data FROM audit_log ORDER BY id');
+  const { rows } = await pool.query('SELECT data FROM nebula_audit_log ORDER BY id');
   return rows.map(r => r.data);
 }
 export async function auditDeleteIds(ids) {
   if (!ids.length) return;
-  await pool.query('DELETE FROM audit_log WHERE id = ANY($1::bigint[])', [ids]);
+  await pool.query('DELETE FROM nebula_audit_log WHERE id = ANY($1::bigint[])', [ids]);
 }
 export async function auditClearAll() {
-  await pool.query('DELETE FROM audit_log');
+  await pool.query('DELETE FROM nebula_audit_log');
 }

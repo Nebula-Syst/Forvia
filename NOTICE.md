@@ -1,15 +1,33 @@
 # Third-party notices
 
-Forvia — Copyright (C) 2026 Duarte Santos.
-Forvia's own code is licensed under the **GNU AGPL v3.0** (see [LICENSE](LICENSE)).
+## A note on this repository's own license (2026-09-19 split)
 
-## App store exception
+Forvia is a continuation of [**openGym**](https://gitlab.com/DuarteSantos8/opengym) by Duarte
+Santos, AGPL-3.0 — auth, sessions, account management, workout/routine/bodyweight/nutrition-diary
+sync, the base admin panel, and the exercise catalog are still substantially that codebase's own
+history, carried forward. That part has been split into its own repository and service,
+[**forvia-core**](https://github.com/Nebula-Syst/forvia-core), which stays AGPL-3.0 (its own
+NOTICE.md explains why in full).
 
-As an additional permission under section 7 of the AGPL v3.0, the copyright holder permits
-distribution of the Forvia mobile application through app store platforms (such as the
+Everything else in THIS repository — the frontend, and the backend in `api/` (level/XP/prestige,
+streaks, anti-cheat, daily tasks, the social feed, and the whole coach/box system) — is Nebula
+Systems' own original work, genuinely separable from openGym's contribution (confirmed by diffing
+directly against the real upstream repository, not by assumption). The two services talk to each
+other over a small internal API (see `api/server.js`'s own comments) so the product still works as
+one app; each side's own license only ever governs its own code.
+
+**The AGPL-3.0 LICENSE file in this repository's root is being replaced** — Nebula Systems'
+own license text for its share of this codebase is still being finalized. Until that lands, treat
+this repository's non-openGym-derived code (as scoped above) as "all rights reserved, license
+pending" rather than AGPL, since AGPL is no longer an accurate description of what's here.
+
+## App store exception (forvia-core only)
+
+As an additional permission under section 7 of the AGPL v3.0, forvia-core's copyright holder
+permits distribution of the Forvia mobile application through app store platforms (such as the
 Apple App Store and Google Play) whose terms of service would otherwise be incompatible
 with the AGPL, provided the corresponding source code remains available under the AGPL at
-the project repository. This permission applies to the distribution channel only and does
+that project's own repository. This permission applies to the distribution channel only and does
 not otherwise limit the license.
 
 ## Body diagram geometry
