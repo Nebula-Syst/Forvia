@@ -1022,27 +1022,46 @@ function streakXpMultiplier(uid) {
 // same reasoning as statsFor/feedItemsFor: nothing to desync, nothing to migrate.
 // Only task completions and cheat penalties are their own stored fact, since those are real
 // one-time server-side actions (a claim; a ruling), not re-derivable from workout history.
+//
+// The streak multiplier only ever scales this part (workouts + their PRs) — not the goal
+// bonus, task points, or an admin's manual XP adjust, none of which are "keep training
+// consistently" in the way a workout or a PR is.
+function rawTrainingXp(uid) {
+  const workouts = readState(uid)?.workouts || [];
+  return workouts.reduce((n, w) => n + workoutXp(w), 0) + workouts.reduce((n, w) => n + (w.prs?.length || 0), 0) * PR_XP;
+}
 // Raw, un-docked total — anti-cheat penalties are applied in rankFor below, against the
 // level actually on screen, not against a number nobody's account is ever measured by.
-//
-// The streak multiplier only scales the training-derived part (workouts + their PRs) — not
-// the goal bonus, task points, or an admin's manual XP adjust, none of which are "keep training
-// consistently" in the way a workout or a PR is. Recomputed fresh every call just like the
-// multiplier itself, so losing a streak (or Pro) is reflected on the very next read, same as
-// everything else in this function.
 function xpFor(uid) {
   const S = readState(uid);
-  const workouts = S?.workouts || [];
-  const mult = streakXpMultiplier(uid);
-  let xp = Math.round(workouts.reduce((n, w) => n + workoutXp(w), 0) * mult);
-  xp += Math.round(workouts.reduce((n, w) => n + (w.prs?.length || 0), 0) * PR_XP * mult);
+  const user = db.users.find(u => u.id === uid);
+  // The streak multiplier only ever applies to training XP earned AFTER it started applying —
+  // never live-multiplies the whole historical total, which used to mean going Pro (or simply
+  // crossing into a higher streak tier) instantly multiplied someone's entire career total and
+  // jumped their level ~20 places in one request (real incident, 2026-09-19). Instead this
+  // banks the *delta* since the last time this ran, at whatever multiplier is current right
+  // now, into streakXpBankedXp — so only newly-earned XP ever gets bonused, and losing the
+  // streak (or Pro) later never claws back what was already banked. streakXpBaselineRaw is the
+  // raw (un-bonused) training XP as of that last bank; backfillStreakXpBaselines() seeds both
+  // to the account's existing raw total (zero bonus banked yet) the first time this ships for
+  // an account, so no one's existing history retroactively gets multiplied either.
+  const raw = rawTrainingXp(uid);
+  const baseline = user?.streakXpBaselineRaw ?? 0;
+  if (user && raw > baseline) {
+    user.streakXpBankedXp = (user.streakXpBankedXp || 0) + (raw - baseline) * streakXpMultiplier(uid);
+    user.streakXpBaselineRaw = raw;
+    saveDb();
+  } else if (user && raw < baseline) {
+    user.streakXpBaselineRaw = raw;   // a workout was edited/deleted — resync down, keep the banked bonus as-is
+    saveDb();
+  }
+  let xp = Math.round(user?.streakXpBankedXp ?? raw);
   const bw = S?.bodyweight?.length ? S.bodyweight[S.bodyweight.length - 1] : null;
   if (S?.targetW && bw && Math.abs(S.targetW - bw.w) < 0.05) xp += GOAL_XP;
   xp += db.taskCompletions.filter(c => c.userId === uid).reduce((n, c) => n + c.points, 0);
   // The one thing here that isn't derived from something the user actually did — an admin
   // nudge (POST /api/admin/user/level), on top of everything earned normally rather than
   // replacing it. Can go negative (docking XP), same as a cheat penalty already can.
-  const user = db.users.find(u => u.id === uid);
   xp += user?.adminXpAdjust || 0;
   return Math.max(0, xp);
 }
@@ -1125,6 +1144,23 @@ function backfillCheatPenaltySnapshots() {
   db.cheatPenalties = original;
   saveDb();
   console.log(`[anticheat] backfilled beforeLevel snapshot for ${missing.length} legacy penalt${missing.length === 1 ? 'y' : 'ies'}`);
+}
+// One-time migration for accounts that predate the streak-XP-bonus feature (xpFor above):
+// seeds streakXpBaselineRaw/streakXpBankedXp to the account's current raw (un-bonused)
+// training XP, banking zero bonus so far — the point being that existing history is never
+// retroactively multiplied the first time this ships for an account, only XP earned from here
+// on is. Same "run once after loadAll(), called from main()" shape as
+// backfillCheatPenaltySnapshots above.
+function backfillStreakXpBaselines() {
+  const missing = db.users.filter(u => u.streakXpBaselineRaw === undefined);
+  if (!missing.length) return;
+  for (const u of missing) {
+    const raw = rawTrainingXp(u.id);
+    u.streakXpBaselineRaw = raw;
+    u.streakXpBankedXp = raw;
+  }
+  saveDb();
+  console.log(`[streak-xp] backfilled baseline for ${missing.length} account${missing.length === 1 ? '' : 's'}`);
 }
 // Perks per rank tier / prestige level — computed fresh from rankFor, same "nothing to
 // desync" reasoning as the rest of this section. Rank perks use `level` directly, so
@@ -4597,6 +4633,7 @@ async function main() {
     setInterval(pruneAudit, 3600000).unref();    // honour AUDIT_DAYS on an idle instance too
   }
   backfillCheatPenaltySnapshots();
+  backfillStreakXpBaselines();
   setInterval(reminderTick, 10000).unref();
   setInterval(waitlistOfferTick, 30000).unref();
 
