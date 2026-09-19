@@ -958,6 +958,11 @@ const routes = {
     json(res, 200, { user: nebulaMe(user) });
   },
 
+  // This service's own Docker healthcheck target — GET /api/health moved to forvia-core along
+  // with everything else generic-infra, so this service needs its own (unauthenticated, same as
+  // forvia-core's own) rather than reporting unhealthy forever.
+  'GET /api/health': async (req, res) => json(res, 200, { ok: true }),
+
   'GET /api/streak-tiers': async (req, res) => {
     const sorted = [...db.streakTiers].sort((a, b) => a.days - b.days);
     json(res, 200, { tiers: sorted });
