@@ -944,6 +944,94 @@ const CLASS_ICONS = new Set([
   'pullup', 'machine', 'plate', 'figureStrength', 'legs', 'abs', 'arm', 'flame', 'target',
   'trophy', 'medal', 'heart', 'timer', 'sparkles',
 ]);
+const HEX_COLOR_RE = /^#[0-9a-fA-F]{6}$/;
+// Photon's `lang` param only accepts exactly these four values — anything else (a Spanish
+// browser sending "es", which real testing missed since curl sends no Accept-Language at all
+// and defaults past this) gets a flat 400 from Photon, which silently became "no results" and
+// "auto-detect never works" once caught by this file's own try/catch. Omitting the param
+// entirely (Photon's own default) still returns each place's local-language name — confirmed
+// fine — so anything unsupported just skips the param rather than guessing a mapping.
+const PHOTON_LANGS = new Set(['de', 'en', 'fr']);
+const photonLang = req => { const l = (req.headers['accept-language'] || '').slice(0, 2).toLowerCase(); return PHOTON_LANGS.has(l) ? l : null; };
+
+// Google Geocoding API — opt-in, self-hosted-admin-provided key (see .env.example). Photon runs
+// on OpenStreetMap data alone, which has real, unfixable gaps for exact house numbers on
+// ordinary residential streets, especially in small towns — confirmed by hand, an address that
+// Google Maps resolves fine can come back with nothing usable from Photon because the house was
+// simply never mapped in OSM. Only worth the (paid, metered) API call for a "precise" search —
+// a box's real street address — never for a general "what city are you in" one, so this is
+// gated per-request by the `precise` flag, not turned on globally just because a key exists.
+const GOOGLE_MAPS_API_KEY = process.env.GOOGLE_MAPS_API_KEY || '';
+async function googleGeocode(q, bias) {
+  const params = { address: q, key: GOOGLE_MAPS_API_KEY };
+  // Geocoding API's only real relevance lever is a viewport to bias toward — a generous ~1°
+  // box (roughly 100km) centered on the caller's known point, not a hard filter (Google can
+  // still return matches outside it, just ranks inside-the-box ones first).
+  if (bias) {
+    const { lat, lon } = bias;
+    params.bounds = `${lat - 0.5},${lon - 0.5}|${lat + 0.5},${lon + 0.5}`;
+  }
+  const url = 'https://maps.googleapis.com/maps/api/geocode/json?' + new URLSearchParams(params);
+  const r = await fetch(url, { signal: AbortSignal.timeout(8000) });
+  const data = await r.json();
+  if (data.status !== 'OK' && data.status !== 'ZERO_RESULTS') {
+    throw new Error('google geocode: ' + data.status + (data.error_message ? ' - ' + data.error_message : ''));
+  }
+  return (data.results || [])
+    .map(r => ({ label: r.formatted_address, lat: r.geometry?.location?.lat, lon: r.geometry?.location?.lng }))
+    .filter(p => p.label && isFinite(p.lat) && isFinite(p.lon));
+}
+
+// Shared by every "real place, never free text" field (a coach's own location, a box's
+// location): must be {label, lat, lon} shaped exactly like a GET /api/geo/search or /reverse
+// result. Returns null for an absent/falsy raw value; throws a string error message for a
+// present-but-malformed one, which callers turn into a 400.
+function parseLocation(raw) {
+  if (!raw) return null;
+  const label = String(raw.label || '').trim().slice(0, 120);
+  const lat = Number(raw.lat), lon = Number(raw.lon);
+  if (!label || !isFinite(lat) || !isFinite(lon) || lat < -90 || lat > 90 || lon < -180 || lon > 180) {
+    throw new Error('invalid location');
+  }
+  return { label, lat, lon };
+}
+
+// Shared by the class-occurrence WOD route and the WOD template routes just below it — see
+// the frontend's lib/wod.js for why this is free text plus a small set of line->exercise
+// links rather than a structured sets/reps object. A link's `line` is an index into
+// `text.split('\n')`; a stale index (the coach deleted lines client-side before the request
+// landed) is dropped rather than stored, so a viewer never sees a link pointing at nothing.
+// A WOD is { lines: [{ segments: [{t:'text', v} | {t:'ex', id, label}] }] } — see
+// frontend/src/lib/wod.js. `budget` caps total text+label characters across the whole WOD
+// (same 4000-char ceiling the old flat-text shape had), not just each field in isolation.
+function sanitizeWod(raw) {
+  let budget = 4000;
+  const lines = (Array.isArray(raw?.lines) ? raw.lines : []).slice(0, 200).map(line => {
+    const type = ['title', 'subtitle', 'note', 'divider'].includes(line?.type) ? line.type : 'text';
+    // A divider is a bare rule — nothing to link an exercise to, so it never carries segments.
+    if (type === 'divider') return { type, segments: [] };
+    return {
+      type,
+      segments: (Array.isArray(line?.segments) ? line.segments : []).slice(0, 100).map(seg => {
+        if (budget <= 0) return null;
+        if (seg?.t === 'ex') {
+          const id = String(seg?.id || '').slice(0, 60);
+          if (!id) return null;
+          const label = String(seg?.label || '').slice(0, budget);
+          budget -= label.length;
+          return { t: 'ex', id, label };
+        }
+        const v = String(seg?.v || '').slice(0, budget);
+        budget -= v.length;
+        return v ? { t: 'text', v } : null;
+      }).filter(Boolean),
+    };
+  });
+  return { lines };
+}
+
+const wodExerciseCount = wod => (wod?.lines || []).reduce((n, l) => n + (l.segments || []).filter(s => s.t === 'ex').length, 0);
+const wodIsEmpty = wod => !(wod?.lines || []).some(l => (l.segments || []).some(s => (s.t === 'ex' ? s.label : s.v || '').trim()));
 
 const routes = {
   // This service's half of "who am I" — GET /api/me itself is forvia-core's now (identity,
