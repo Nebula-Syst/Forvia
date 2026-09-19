@@ -106,21 +106,26 @@ jobs:
         working-directory: /home/josemgl/Proyectos/forvia-prod
         run: |
           sed -i "s/^FORVIA_VERSION=.*/FORVIA_VERSION=${{ github.ref_name }}/" .env
-          docker compose pull api web
+          # core-api (github.com/Nebula-Syst/forvia-core) is a separate product with its own
+          # release cadence — CORE_VERSION in .env pins it independently of FORVIA_VERSION,
+          # untouched by this sed. Always pulled here regardless, so a plain Forvia release
+          # also picks up whatever CORE_VERSION already points at.
+          docker compose pull api web core-api
           docker compose up -d
 
       # The runner container has its own network namespace, so "localhost:$WEB_PORT" from
       # inside it is not the host — check container health straight off the socket instead
       # of trying to reach the published port over the network.
-      - name: Wait for api + web to report healthy
+      - name: Wait for api + web + core-api to report healthy
         working-directory: /home/josemgl/Proyectos/forvia-prod
         run: |
           for i in $(seq 1 20); do
             api=$(docker inspect -f '{{.State.Health.Status}}' forvia-prod-api-1 2>/dev/null)
             web=$(docker inspect -f '{{.State.Health.Status}}' forvia-prod-web-1 2>/dev/null)
-            echo "api=$api web=$web"
-            [ "$api" = "healthy" ] && [ "$web" = "healthy" ] && exit 0
+            core=$(docker inspect -f '{{.State.Health.Status}}' forvia-prod-core-api-1 2>/dev/null)
+            echo "api=$api web=$web core=$core"
+            [ "$api" = "healthy" ] && [ "$web" = "healthy" ] && [ "$core" = "healthy" ] && exit 0
             sleep 2
           done
-          echo "::error::api/web never became healthy after redeploy"
+          echo "::error::api/web/core-api never became healthy after redeploy"
           exit 1

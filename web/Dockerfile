@@ -38,6 +38,10 @@ COPY --from=build /app/dist /usr/share/nginx/html
 ENV NGINX_PORT=80
 ENV BACKEND=api
 ENV PORT=3000
+# forvia-core — the sibling backend service (see nginx.conf.template's own comment for which
+# routes go where).
+ENV CORE_BACKEND=core-api
+ENV CORE_PORT=3000
 
 # Probe the port nginx was actually told to listen on (NGINX_PORT is configurable, so a
 # hardcoded http://localhost/ breaks on any instance that changed it), and address it as

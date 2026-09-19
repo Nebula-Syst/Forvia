@@ -2,11 +2,33 @@
 export const IS_APPLE = /iPhone|iPad|iPod|Macintosh/.test(navigator.userAgent)
 export const IS_ANDROID = /Android/.test(navigator.userAgent)
 
-export async function api(path, opts) {
+async function fetchJson(path, opts) {
   const r = await fetch(path, Object.assign({ headers: { 'Content-Type': 'application/json' } }, opts))
   const data = await r.json().catch(() => ({}))
   if (!r.ok) { const e = new Error(data.error || ('HTTP ' + r.status)); e.status = r.status; throw e }
   return data
+}
+
+// Two backend services answer "who am I" now — forvia-core owns identity/auth-only fields at
+// this exact path, Nebula's own half (rank/perks/pro/coach/social/badges — see
+// api/server.js's GET /api/me/nebula) lives at a second path only this function knows about.
+// Merged here, once, so every OTHER call site in the app keeps calling api('/api/me') exactly
+// like before the split and gets the same combined shape useStore has always expected. If
+// forvia-core's own call fails (not signed in, or genuinely down) this throws same as always;
+// if only Nebula's half is unreachable, this still resolves — with everything BUT the fields
+// that side owns, the same "degrade rather than block" posture the two services already use
+// talking to each other server-side.
+async function fetchMe(opts) {
+  const [core, nebula] = await Promise.all([
+    fetchJson('/api/me', opts),
+    fetchJson('/api/me/nebula', opts).catch(() => ({ user: null })),
+  ])
+  return { user: core.user ? Object.assign({}, core.user, nebula.user || {}) : core.user }
+}
+
+export async function api(path, opts) {
+  if (path === '/api/me' && (!opts || !opts.method || opts.method === 'GET')) return fetchMe(opts)
+  return fetchJson(path, opts)
 }
 
 export async function passwordLogin(email, password) {

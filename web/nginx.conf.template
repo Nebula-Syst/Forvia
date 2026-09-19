@@ -1,22 +1,71 @@
-# Forvia — standalone web server: serves the static app AND proxies /api to the backend,
+# Forvia — standalone web server: serves the static app AND proxies /api to the backend(s),
 # so the whole app lives on ONE origin (required for WebAuthn / passkeys).
+#
+# Two backend containers share /api now: forvia-core (auth, sessions, account, workout/routine/
+# bodyweight/nutrition sync, base admin, exercise catalog, push, uploads — the openGym-derived
+# half, AGPL) and this one, ${BACKEND} (level/XP/prestige/streaks, anti-cheat, tasks, social,
+# coach/box — Nebula's own). The blocks below list forvia-core's routes explicitly; everything
+# NOT listed here still falls through to the general /api/ catch-all at the bottom, unchanged.
+# A handful of paths share a PREFIX across the two services (POST /api/account/badges lives on
+# ${BACKEND}, everything else under /api/account/ is forvia-core's; the four POST /api/admin/
+# user/{level,prestige,pro,streak} nudges live on ${BACKEND}, GET /api/admin/user(s) and POST
+# .../create|disable|employee-types are forvia-core's) — nginx's exact-match (`=`) locations for
+# those four+one paths are what carve the minority back out to ${BACKEND}; without them the
+# broader forvia-core prefix below would silently swallow them.
 server {
     listen ${NGINX_PORT};
     root /usr/share/nginx/html;
     index index.html;
 
-    # API → backend container
+    # Set once here rather than repeated in every /api/* location below: nginx only skips
+    # inheriting these into a location that declares a proxy_set_header of its OWN — none of the
+    # per-route blocks below do (they only set proxy_pass, some also client_max_body_size), so
+    # every one of them picks these up automatically. /ws still redeclares all of these itself
+    # (plus Upgrade/Connection), since it needs headers on top of this set, not instead of it.
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+
+    # forvia-core's own routes — see the comment above for the two prefix families that need an
+    # exact-match carve-out back to ${BACKEND}.
+    location = /api/account/badges { proxy_pass http://${BACKEND}:${PORT}; }
+    location = /api/admin/user/level { proxy_pass http://${BACKEND}:${PORT}; }
+    location = /api/admin/user/prestige { proxy_pass http://${BACKEND}:${PORT}; }
+    location = /api/admin/user/pro { proxy_pass http://${BACKEND}:${PORT}; }
+    location = /api/admin/user/streak { proxy_pass http://${BACKEND}:${PORT}; }
+
+    location /api/login { client_max_body_size 9m; proxy_pass http://${CORE_BACKEND}:${CORE_PORT}; }
+    location /api/register { client_max_body_size 9m; proxy_pass http://${CORE_BACKEND}:${CORE_PORT}; }
+    location /api/logout { proxy_pass http://${CORE_BACKEND}:${CORE_PORT}; }
+    location = /api/me { proxy_pass http://${CORE_BACKEND}:${CORE_PORT}; }
+    location = /api/data { client_max_body_size 9m; proxy_pass http://${CORE_BACKEND}:${CORE_PORT}; }
+    location = /api/config { proxy_pass http://${CORE_BACKEND}:${CORE_PORT}; }
+    location = /api/health { proxy_pass http://${CORE_BACKEND}:${CORE_PORT}; }
+    location = /api/uploads { proxy_pass http://${CORE_BACKEND}:${CORE_PORT}; }
+    location = /api/bugs { proxy_pass http://${CORE_BACKEND}:${CORE_PORT}; }
+    location = /api/activity { proxy_pass http://${CORE_BACKEND}:${CORE_PORT}; }
+    location /api/push/ { proxy_pass http://${CORE_BACKEND}:${CORE_PORT}; }
+    location /api/exercises/ { proxy_pass http://${CORE_BACKEND}:${CORE_PORT}; }
+    location /api/alpha/ { client_max_body_size 9m; proxy_pass http://${CORE_BACKEND}:${CORE_PORT}; }
+    location /api/admin/alpha { proxy_pass http://${CORE_BACKEND}:${CORE_PORT}; }
+    location /api/admin/audit { proxy_pass http://${CORE_BACKEND}:${CORE_PORT}; }
+    location /api/admin/bugs { proxy_pass http://${CORE_BACKEND}:${CORE_PORT}; }
+    location /api/admin/muscle-groups { proxy_pass http://${CORE_BACKEND}:${CORE_PORT}; }
+    location /api/admin/exercises/ { proxy_pass http://${CORE_BACKEND}:${CORE_PORT}; }
+    location /api/admin/invites { proxy_pass http://${CORE_BACKEND}:${CORE_PORT}; }
+    location /api/admin/user { proxy_pass http://${CORE_BACKEND}:${CORE_PORT}; }
+    location /api/account/ { client_max_body_size 9m; proxy_pass http://${CORE_BACKEND}:${CORE_PORT}; }
+
+    # ${BACKEND} — everything else (level/XP/social/coach-box/nutrition's own routes/anti-cheat/
+    # tasks), unchanged from before the split.
     location /api/ {
         # nginx's own default (1m) is well under a base64-encoded photo — every upload past
         # roughly 700KB was hitting nginx's 413 (an HTML page, not JSON) before ever reaching
         # the backend's own, friendlier size check. Match the backend's MAX_BODY headroom.
         client_max_body_size 9m;
         proxy_pass http://${BACKEND}:${PORT};
-        proxy_http_version 1.1;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
     }
 
     # Real-time push to an already-open app (api/server.js's WebSocket server) — its own
