@@ -3544,17 +3544,36 @@ async function main() {
   // upgrade if it doesn't resolve to a real account.
   const wss = new WebSocketServer({ noServer: true });
   server.on('upgrade', async (req, socket, head) => {
+    const { pathname } = new URL(req.url, 'http://x');
+    if (pathname !== '/ws') { socket.destroy(); return; }
     const uid = await resolveSession(req);
     if (!uid) { socket.destroy(); return; }
     wss.handleUpgrade(req, socket, head, ws => {
       if (!wsByUser.has(uid)) wsByUser.set(uid, new Set());
       wsByUser.get(uid).add(ws);
+      ws.isAlive = true;
+      ws.on('pong', () => { ws.isAlive = true; });
       ws.on('close', () => {
         const set = wsByUser.get(uid);
         if (set) { set.delete(ws); if (!set.size) wsByUser.delete(uid); }
       });
+      ws.on('error', () => {});   // 'close' always follows; nothing extra to do here
     });
   });
+  // A dead connection (network dropped, laptop closed) never fires 'close' on its own — nothing
+  // tells the server, so it would just sit in wsByUser forever. Pinged every 25s instead: no pong
+  // since the last ping means it's actually gone, so it's torn down; short enough that a reverse
+  // proxy in front of this (a Cloudflare tunnel, in this project's own case) never sees the
+  // connection idle long enough to kill it for us first.
+  setInterval(() => {
+    for (const set of wsByUser.values()) {
+      for (const ws of set) {
+        if (ws.isAlive === false) { ws.terminate(); continue; }
+        ws.isAlive = false;
+        ws.ping();
+      }
+    }
+  }, 25000).unref();
 
   server.listen(PORT, () => console.log(`forvia (Nebula) on :${PORT}`));
 }
