@@ -19,11 +19,12 @@ export default function SettingsLegal() {
       <Row icon="clipboard" iconTint="var(--grey)" title={t('Terms of service')} onClick={() => nav('/legal/terms')} />
       <Row icon="clipboard" iconTint="var(--grey)" title={t('Privacy policy')} onClick={() => nav('/legal/privacy')} />
     </Section>
-    {/* Required by the AGPLv3 Forvia's own code is under (it's a continuation of openGym,
-        see NOTICE.md) — anyone using a hosted copy over the network has to be able to reach
-        its Corresponding Source from inside the app itself, not just from a README. */}
+    {/* Forvia's own code is PolyForm Noncommercial now (see NOTICE.md); forvia-core, the part
+        that's still genuinely openGym's own code, stays AGPLv3 — its network-use clause requires
+        that anyone using a hosted copy over the network can reach its Corresponding Source from
+        inside the app itself, not just from a README. This is that link, for both. */}
     <Section title={t('Licenses')}>
-      <Row icon="clipboard" iconTint="var(--grey)" title={t('Licenses & credits')} subtitle={t('AGPLv3, openGym and other third-party code')} accessory="chevron" onClick={() => nav('/legal/licenses')} />
+      <Row icon="clipboard" iconTint="var(--grey)" title={t('Licenses & credits')} subtitle={t('PolyForm Noncommercial, openGym (AGPL) and other third-party code')} accessory="chevron" onClick={() => nav('/legal/licenses')} />
       <Row icon="link" iconTint="var(--grey)" title={t('Source code')} accessory="chevron" onClick={() => window.open(REPO, '_blank', 'noopener')} />
     </Section>
   </div>

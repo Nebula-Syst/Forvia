@@ -536,7 +536,7 @@ export default {
   'to install Forvia as a full-screen app.': 'para instalar Forvia como app a pantalla completa.',
   'Your data syncs with your profile — sign in anywhere to see it.': 'Tus datos se sincronizan con tu perfil — inicia sesión donde sea para verlos.',
   'Guest data stays on this device — export a backup now and then!': 'Los datos de invitado se quedan en este dispositivo — ¡exporta una copia de vez en cuando!',
-  'free & open source (AGPL v3)': 'gratis y de código abierto (AGPL v3)',
+  'free & open source (AGPL v3)': 'gratis para uso no comercial (PolyForm Noncommercial)',
   'Notifications': 'Notificaciones',
   'Not supported in this browser.': 'No compatible con este navegador.',
   'Push notifications': 'Notificaciones push',
@@ -1146,7 +1146,7 @@ export default {
   "By creating an account you accept the": "Al crear una cuenta aceptas los",
   "Documents": "Documentos",
   "Licenses": "Licencias", "Licenses & credits": "Licencias y créditos",
-  "AGPLv3, openGym and other third-party code": "AGPLv3, openGym y otro código de terceros",
+  "PolyForm Noncommercial, openGym (AGPL) and other third-party code": "PolyForm Noncommercial, openGym (AGPL) y otro código de terceros",
   "Source code": "Código fuente",
   "Terms of service, privacy": "Términos de servicio, privacidad",
 

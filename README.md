@@ -12,7 +12,7 @@ No account on someone else's server, no subscription, no ads. Just `docker compo
 
 <br>
 
-[![License: AGPL v3](https://img.shields.io/badge/license-AGPL--3.0-a3e635?style=flat-square)](LICENSE)
+[![License: PolyForm Noncommercial 1.0.0](https://img.shields.io/badge/license-PolyForm--Noncommercial-a3e635?style=flat-square)](LICENSE)
 ![Self-hosted](https://img.shields.io/badge/self--hosted-%F0%9F%8F%A0-60a5fa?style=flat-square)
 ![PWA](https://img.shields.io/badge/PWA-installable-a78bfa?style=flat-square)
 ![React](https://img.shields.io/badge/React-19-38bdf8?style=flat-square&logo=react&logoColor=white)
@@ -107,7 +107,7 @@ the exercise media (~140 MB) once.
 > [hasaneyldrm/exercises-dataset](https://github.com/hasaneyldrm/exercises-dataset), which
 > redistributes [ExerciseDB v1](https://exercisedb.dev/) — its metadata and instruction text are
 > MIT, but the images and animations are third-party content under *neither* that MIT license nor
-> Forvia's AGPL, and their ownership is currently disputed between Gym visual and ExerciseDB.
+> Forvia's own license, and their ownership is currently disputed between Gym visual and ExerciseDB.
 > Forvia ships none of it: your instance downloads it from upstream. Reusing it yourself,
 > commercially or not, means clearing it with the rights holder — see [NOTICE.md](NOTICE.md).
  Prefer building the images yourself instead of pulling from
@@ -213,20 +213,24 @@ React, the router and Zustand.
   [CONTRIBUTING.md](CONTRIBUTING.md).
 
 > **About this fork:** this repository is Nebula Systems' update of
-> [openGym](https://gitlab.com/DuarteSantos8/opengym) by Duarte Santos, kept under the same
-> AGPL-3.0 license (see [NOTICE.md](NOTICE.md)). The history and design lineage are shared:
-> openGym is the original project this repo builds on, while this fork carries the Nebula
-> Systems branding, docs and packaging. Issue and PR numbers in [CHANGELOG.md](CHANGELOG.md)
-> predating this fork refer to the upstream tracker, not this one.
+> [openGym](https://gitlab.com/DuarteSantos8/opengym) by Duarte Santos. The part of it that's
+> still genuinely openGym's own code (auth, sessions, account management, data sync, base admin,
+> the exercise catalog) moved to its own service and repository,
+> [forvia-core](https://github.com/Nebula-Syst/forvia-core), which stays AGPL-3.0 — everything
+> else here, including this frontend, is Nebula Systems' own original work under its own license
+> (see [NOTICE.md](NOTICE.md) for the exact split, and the one still-pending caveat). Issue and
+> PR numbers in [CHANGELOG.md](CHANGELOG.md) predating this fork refer to the upstream tracker,
+> not this one.
 
 ## Contributing
 
 Issues and PRs welcome — see [CONTRIBUTING.md](CONTRIBUTING.md). Good first issues: more starter
 plans, exercise-data languages, import from other trackers. **A ⭐ helps more people find it.**
 
-Forvia is free and stays free: AGPL, no subscription, no paid tier, nothing held back for
-sponsors. If it replaced a paid tracker for you and you want to chip in, there's a coffee button
-below (and a badge at the top) — a star, a bug report or a merge request is worth just as much.
+Forvia is free to self-host and use for any noncommercial purpose — no subscription, no paid
+tier, nothing held back for sponsors. If it replaced a paid tracker for you and you want to chip
+in, there's a coffee button below (and a badge at the top) — a star, a bug report or a merge
+request is worth just as much.
 
 <!-- GitLab has no Sponsor button the way GitHub's FUNDING.yml gave one, so the link has to
      stand on its own here. .github/FUNDING.yml stays put for the day that account returns. -->
@@ -239,20 +243,33 @@ below (and a badge at the top) — a star, a bug report or a merge request is wo
 
 ## License
 
-**Forvia's own code** is [GNU AGPL v3.0](LICENSE) — free and open source. You can self-host,
-use, modify and share it; if you run a modified version as a network service, you must offer that
-version's source under the same license. Nobody can turn Forvia into a closed, proprietary
-product.
+**Forvia's own code** (this repository — the frontend and the `api/` backend) is licensed under
+the **[PolyForm Noncommercial License 1.0.0](LICENSE)**: free to self-host, run, study, modify and
+share for **any noncommercial purpose** — personal use, a gym's own private instance, a nonprofit,
+research, and so on. Commercial use (running it as part of a paid product or service, or for a
+for-profit business) needs a separate license from Nebula Systems — reach out via
+[nebulasyst.com](https://nebulasyst.com) or an issue here. Unlike a copyleft license, PolyForm
+doesn't require you to share source for your own modifications — it only restricts *commercial*
+use, not modification or redistribution itself.
+
+**The part of this project that's still genuinely [openGym](https://gitlab.com/DuarteSantos8/opengym)'s
+own code** — auth, sessions, account management, data sync, the base admin panel, the exercise
+catalog — lives in its own service and repository now,
+**[forvia-core](https://github.com/Nebula-Syst/forvia-core)**, and stays under openGym's original
+**AGPL v3.0**: free to self-host and modify, but a modified version run as a network service must
+offer its own source under the same license. A handful of frontend files in *this* repository are
+also still substantially openGym's own code, pending a proper file-by-file legal review — see
+[NOTICE.md](NOTICE.md) for exactly which ones, and why they're called out separately.
 
 **Third-party content is not, and Forvia cannot sublicense it.** The exercise metadata and
 instruction text originate from [ExerciseDB v1](https://exercisedb.dev/) and reach Forvia through
 [hasaneyldrm/exercises-dataset](https://github.com/hasaneyldrm/exercises-dataset) under the
 **MIT** license. The exercise images and animations are third-party content covered by neither
-that license nor the AGPL, and their ownership is **currently unresolved** — the upstream dataset
-attributes them to [Gym visual](https://gymvisual.com/) under a non-transferable permission, while
-[ExerciseDB/AscendAPI](https://exercisedb.io/faq) claims to be their creator and owner. A
-clarification has been requested. Forvia does not redistribute them (your instance fetches them
-at first run) and does not relicense them. To reuse that media yourself, clear it with the rights
-holder first.
+that license nor Forvia's own, and their ownership is **currently unresolved** — the upstream
+dataset attributes them to [Gym visual](https://gymvisual.com/) under a non-transferable
+permission, while [ExerciseDB/AscendAPI](https://exercisedb.io/faq) claims to be their creator and
+owner. A clarification has been requested. Forvia does not redistribute them (your instance
+fetches them at first run) and does not relicense them. To reuse that media yourself, clear it
+with the rights holder first.
 
 Full third-party notices, including the body-diagram geometry: **[NOTICE.md](NOTICE.md)**.

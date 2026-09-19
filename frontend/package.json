@@ -11,7 +11,7 @@
     "test:watch": "vitest",
     "test:fatigue-probe": "node scripts/fatigue-monotonic-probe.mjs"
   },
-  "license": "AGPL-3.0-or-later",
+  "license": "LicenseRef-PolyForm-Noncommercial-1.0.0",
   "dependencies": {
     "@capacitor/app": "^7.1.2",
     "@capacitor/core": "^7.6.9",
