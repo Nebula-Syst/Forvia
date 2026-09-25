@@ -1145,6 +1145,8 @@ export default {
   "Cookies": "Cookies",
   "Legal": "Legal",
   "By creating an account you accept the": "Al crear una cuenta aceptas los",
+  ", the": ", la",
+  "Cookies policy": "política de cookies",
   "Documents": "Documentos",
   "Licenses": "Licencias", "Licenses & credits": "Licencias y créditos",
   "PolyForm Noncommercial, openGym (AGPL) and other third-party code": "PolyForm Noncommercial, openGym (AGPL) y otro código de terceros",

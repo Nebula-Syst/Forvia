@@ -7,6 +7,7 @@ import { ACCENTS } from './lib/format.js'
 import { setLang, useLang, t } from './lib/i18n.js'
 import { setNav } from './lib/nav.js'
 import { wsOn } from './lib/ws.js'
+import { initAnalytics, trackPageView } from './lib/analytics.js'
 import { initBackButton } from './lib/back.js'
 import { useWakeLock } from './lib/wakelock.js'
 import Icon from './components/Icon.jsx'
@@ -99,6 +100,11 @@ function Shell() {
   const loc = useLocation()
   const { S, user, ready } = useStore()
   const isGuest = useStore(s => s.isGuest())
+  const gaId = useStore(s => s.config?.google_analytics_id)
+  // Only once there's an account signed in — see lib/analytics.js's own comment on why consent
+  // at account creation is the gate, not the signed-out login screen or a guest session.
+  useEffect(() => { if (user && gaId) initAnalytics(gaId) }, [user?.id, gaId])
+  useEffect(() => { trackPageView(loc.pathname) }, [loc.pathname])
   const langV = useLang()   // re-renders the whole shell when the language (pack) changes
   useEffect(() => { setNav(navigate) }, [navigate])
   useEffect(() => { applyPrefs(S.theme, S.accent, S.reduceMotion) }, [S.theme, S.accent, S.reduceMotion])

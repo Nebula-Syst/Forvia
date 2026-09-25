@@ -32,10 +32,7 @@ export default function Terms() {
 
     <h4 className="sec">2. Tu cuenta</h4>
     <p className="muted small" style={{ lineHeight: 1.5 }}>
-      Para usar la mayoría de las funciones necesitas crear una cuenta con un nombre, un correo electrónico y una contraseña. Eres responsable de mantener tu contraseña en secreto y de todo lo que ocurra en tu cuenta. Si crees que alguien más tiene acceso a ella, cámbiala cuanto antes desde Ajustes o contacta con nosotros.
-    </p>
-    <p className="muted small" style={{ lineHeight: 1.5 }}>
-      También existe un modo invitado, sin cuenta: en ese caso tus datos se quedan únicamente en tu propio dispositivo y no llegan a nuestros servidores en ningún momento.
+      Necesitas una cuenta para usar Forvia — no existe un modo sin cuenta. Al crearla das un nombre, un correo electrónico y una contraseña. Eres responsable de mantener tu contraseña en secreto y de todo lo que ocurra en tu cuenta. Si crees que alguien más tiene acceso a ella, cámbiala cuanto antes desde Ajustes o contacta con nosotros.
     </p>
     <p className="muted small" style={{ lineHeight: 1.5 }}>
       Puedes eliminar tu cuenta cuando quieras desde Ajustes → Cuenta. Al hacerlo se borran tus datos personales y tu historial de entrenamientos de nuestros servidores.

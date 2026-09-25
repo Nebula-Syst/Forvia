@@ -77,7 +77,7 @@ export default function Login() {
       )}
       <div className="dim small" style={{ marginTop: 26, lineHeight: 1.5 }}>{t('Each profile keeps its own plan, workouts & body weight.')}</div>
       <div className="dim small" style={{ marginTop: 14, lineHeight: 1.5 }}>
-        {t('By continuing you accept the')} <LinkBtn onClick={() => nav('/legal/terms')}>{t('Terms of service')}</LinkBtn> {t('and the')} <LinkBtn onClick={() => nav('/legal/privacy')}>{t('Privacy policy')}</LinkBtn>.
+        {t('By continuing you accept the')} <LinkBtn onClick={() => nav('/legal/terms')}>{t('Terms of service')}</LinkBtn>{t(', the')} <LinkBtn onClick={() => nav('/legal/privacy')}>{t('Privacy policy')}</LinkBtn> {t('and the')} <LinkBtn onClick={() => nav('/legal/cookies')}>{t('Cookies policy')}</LinkBtn>.
       </div>
     </div>
   )
