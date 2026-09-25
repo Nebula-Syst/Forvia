@@ -26,7 +26,12 @@ export default function Licenses() {
 
     <h4 className="sec">Origen: openGym y forvia-core</h4>
     <p className="muted small" style={{ lineHeight: 1.5 }}>
-      Forvia es una continuación de <a href="https://gitlab.com/DuarteSantos8/opengym" target="_blank" rel="noopener">openGym</a>, de Duarte Santos. La parte que sigue siendo genuinamente el código original de openGym — autenticación, sesiones, cuentas, sincronización de datos, panel de administración base y el catálogo de ejercicios — vive ahora en su propio servicio y repositorio, <a href="https://github.com/Nebula-Syst/forvia-core" target="_blank" rel="noopener">forvia-core</a>, distribuido bajo esa misma AGPLv3 (que exige ejecutar, estudiar, modificar y redistribuir con el código fuente siempre disponible, incluso ofrecido solo como servicio por red). Dentro de este mismo repositorio queda un caso pendiente: el propio dibujo de los iconos de la app todavía es en gran parte obra original de openGym — el componente que los usa ya es código propio, pero rediseñar los iconos es un trabajo de diseño, no de código, y aún no se ha hecho. Detalle exacto en el <a href={REPO + '/blob/main/NOTICE.md'} target="_blank" rel="noopener">NOTICE.md</a>.
+      Forvia es una continuación de <a href="https://gitlab.com/DuarteSantos8/opengym" target="_blank" rel="noopener">openGym</a>, de Duarte Santos. La parte que sigue siendo genuinamente el código original de openGym — autenticación, sesiones, cuentas, sincronización de datos, panel de administración base y el catálogo de ejercicios — vive ahora en su propio servicio y repositorio, <a href="https://github.com/Nebula-Syst/forvia-core" target="_blank" rel="noopener">forvia-core</a>, distribuido bajo esa misma AGPLv3 (que exige ejecutar, estudiar, modificar y redistribuir con el código fuente siempre disponible, incluso ofrecido solo como servicio por red). En este mismo repositorio ya no queda código original de openGym.
+    </p>
+
+    <h4 className="sec">Iconos de la app</h4>
+    <p className="muted small" style={{ lineHeight: 1.5 }}>
+      La mayoría de los iconos de Forvia son de <a href="https://github.com/tabler/tabler-icons" target="_blank" rel="noopener">Tabler Icons</a>, de Paweł Kuna, bajo licencia MIT. Un puñado de iconos específicos de gimnasio que Tabler no cubre (los distintivos de brazo/abdomen/piernas/dominadas, el disco de peso, la máquina de cable, el guante de boxeo y los dos iconos pequeños de presets de agua) son dibujos propios de Forvia.
     </p>
 
     <h4 className="sec">Diagramas corporales</h4>

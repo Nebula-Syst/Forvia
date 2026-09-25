@@ -30,12 +30,48 @@ different naming, different algorithms where there was room for one) rather than
 original expression carried forward with cosmetic edits. They're covered by the PolyForm license
 above now, along with the rest of `frontend/src`.
 
-**One caveat that's still open, and a different kind of problem:** `components/Icon.jsx` was
-restructured the same way (the lookup/rendering mechanism is now Forvia's own), but the icon
-*glyphs themselves* — the actual SVG path data for most of the set — are still substantially
-openGym's own original artwork. That's a drawing to redo, not code to rewrite, and hasn't been
-done yet. Until it is, treat the glyph paths in `components/Icon.jsx` (not the component code
-around them) as still governed by openGym's AGPL-3.0.
+**Update, 2026-09-25 — the last caveat is closed.** `components/Icon.jsx`'s glyphs are no longer
+openGym's own artwork: the whole set is now [**Tabler Icons**](https://github.com/tabler/tabler-icons)
+(MIT license) — chosen because Tabler's own convention (24×24 grid, 2px stroke, round caps/joins)
+already matches this file's existing CSS contract, so nothing about how `<Icon>` is called
+anywhere else in the app changed. A handful of genuinely gym-specific glyphs Tabler doesn't carry
+(the arm/abs/legs/pullup routine badges, a weight plate, a cable machine, a boxing glove, and the
+two small water-preset icons) are this project's own new drawings instead. Nothing in this
+repository is openGym's own original expression any more.
+
+## App icon set
+
+Most of the icon glyphs in `frontend/src/components/Icon.jsx` (navigation, actions, achievements,
+food, and most training icons) are from [**Tabler Icons**](https://github.com/tabler/tabler-icons)
+by Paweł Kuna, used under the **MIT License** and reproduced below, unmodified apart from being
+inlined as bare `<path>`/`<circle>`/`<rect>` elements (Tabler's own per-icon stroke/fill attributes
+are dropped, since this app already applies them once via CSS). The arm/abs/legs/pullup routine
+badges, the weight plate, the cable machine, the boxing glove, and the two small water-preset
+icons are Forvia's own original drawings, not from Tabler.
+
+```
+MIT License
+
+Copyright (c) 2020-2026 Paweł Kuna
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
 
 ## Body diagram geometry
 
