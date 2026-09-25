@@ -18,6 +18,7 @@ export default function SettingsLegal() {
     <Section title={t('Documents')}>
       <Row icon="clipboard" iconTint="var(--grey)" title={t('Terms of service')} onClick={() => nav('/legal/terms')} />
       <Row icon="clipboard" iconTint="var(--grey)" title={t('Privacy policy')} onClick={() => nav('/legal/privacy')} />
+      <Row icon="clipboard" iconTint="var(--grey)" title={t('Cookies')} onClick={() => nav('/legal/cookies')} />
     </Section>
     {/* Forvia's own code is PolyForm Noncommercial now (see NOTICE.md); forvia-core, the part
         that's still genuinely openGym's own code, stays AGPLv3 — its network-use clause requires

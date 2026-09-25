@@ -1142,6 +1142,7 @@ export default {
   "and the": "y la",
   "Terms of service": "Términos de servicio",
   "Privacy policy": "Política de privacidad",
+  "Cookies": "Cookies",
   "Legal": "Legal",
   "By creating an account you accept the": "Al crear una cuenta aceptas los",
   "Documents": "Documentos",

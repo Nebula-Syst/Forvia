@@ -71,12 +71,17 @@ export default function Privacy() {
       Las contraseñas se cifran con scrypt (nunca se guardan en claro). La sesión se identifica con una cookie firmada, de solo servidor (HttpOnly) y restringida a este sitio (SameSite). Como en cualquier fase alpha, seguimos reforzando la seguridad del servicio de forma continua.
     </p>
 
-    <h4 className="sec">9. Menores</h4>
+    <h4 className="sec">9. Cookies</h4>
+    <p className="muted small" style={{ lineHeight: 1.5 }}>
+      Forvia usa una sola cookie, estrictamente necesaria para mantener tu sesión iniciada — ninguna de analítica, publicidad o rastreo de terceros. Detalle completo, incluido qué guardamos en el almacenamiento local de tu navegador (<code>localStorage</code>) y cómo borrarlo: <a onClick={e => { e.preventDefault(); nav('/legal/cookies') }} href="/legal/cookies">política de cookies</a>.
+    </p>
+
+    <h4 className="sec">10. Menores</h4>
     <p className="muted small" style={{ lineHeight: 1.5 }}>
       Forvia no está dirigida a menores de 16 años. [Pendiente: confirmar la edad mínima exacta según a quién se abra el acceso.]
     </p>
 
-    <h4 className="sec">10. Cambios</h4>
+    <h4 className="sec">11. Cambios</h4>
     <p className="muted small" style={{ lineHeight: 1.5, marginBottom: 4 }}>
       Podemos actualizar esta política mientras el producto evolucione. Si el cambio es relevante, avisaremos dentro de la propia app.
     </p>

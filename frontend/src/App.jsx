@@ -21,6 +21,7 @@ import LevelUpRevealTrigger from './components/LevelUpReveal.jsx'
 import Login from './views/Login.jsx'
 import Terms from './views/legal/Terms.jsx'
 import Privacy from './views/legal/Privacy.jsx'
+import Cookies from './views/legal/Cookies.jsx'
 import Licenses from './views/legal/Licenses.jsx'
 import Home from './views/Home.jsx'
 import Nutrition from './views/Nutrition.jsx'
@@ -147,7 +148,7 @@ function Shell() {
           just the safe-area inset on this one screen; every other page keeps the normal padding. */}
       <div id="app" className={'vfade' + (loc.pathname === '/workout' && S.active ? ' notop' : '')} key={loc.pathname}>
         <ErrorBoundary>
-          {loc.pathname === '/legal/terms' ? <Terms /> : loc.pathname === '/legal/privacy' ? <Privacy /> : loc.pathname === '/legal/licenses' ? <Licenses /> : !authed ? <Login /> : (
+          {loc.pathname === '/legal/terms' ? <Terms /> : loc.pathname === '/legal/privacy' ? <Privacy /> : loc.pathname === '/legal/cookies' ? <Cookies /> : loc.pathname === '/legal/licenses' ? <Licenses /> : !authed ? <Login /> : (
             <Routes>
               <Route path="/home" element={<Home />} />
               <Route path="/nutrition" element={<Nutrition />} />
