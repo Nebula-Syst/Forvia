@@ -27,7 +27,7 @@ export default function Terms() {
       Forvia es una aplicación de seguimiento de entrenamientos, operada por Nebula Systems. Te permite registrar tus sesiones de entrenamiento, tu peso corporal, tu progreso a lo largo del tiempo, y de forma opcional compartir parte de esa actividad con otras personas dentro de la propia app.
     </p>
     <p className="muted small" style={{ lineHeight: 1.5 }}>
-      Forvia se encuentra actualmente en fase de <strong>acceso anticipado (alpha)</strong>. Esto significa que el servicio está en desarrollo activo: pueden aparecer errores, cambiar funciones sin previo aviso, o interrumpirse temporalmente. El acceso, mientras dure esta fase, es solo por invitación o cuenta creada por un administrador.
+      Forvia se encuentra actualmente en fase de <strong>acceso anticipado (alpha)</strong>. Esto significa que el servicio está en desarrollo activo: pueden aparecer errores, cambiar funciones sin previo aviso, o interrumpirse temporalmente. El registro es público — cualquiera puede crear su propia cuenta.
     </p>
 
     <h4 className="sec">2. Tu cuenta</h4>
