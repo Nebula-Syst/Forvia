@@ -147,7 +147,7 @@ function Shell() {
   }, [authed])
   // Boot screen — plays for the brief window before we know whether there's a session (or,
   // offline, however long that check takes). EntranceHeader's mark constructs itself once
-  // (~2.4s draw+resolve, index.css) instead of a static generic icon, since this is the very
+  // (~1.7s draw+resolve, index.css) instead of a static generic icon, since this is the very
   // first thing anyone sees, every time the app cold-starts. `className="vfade"` gives this its
   // own fade-in (same as every other screen's #app) instead of popping in unanimated — a hard
   // pop-in here, followed by Login's own vfade a moment later, was reading as a jump at the
@@ -161,7 +161,7 @@ function Shell() {
   const [minBootDone, setMinBootDone] = useState(false)
   useEffect(() => {
     if (!bootNeededRef.current) return
-    const id = setTimeout(() => setMinBootDone(true), 2500)
+    const id = setTimeout(() => setMinBootDone(true), 1800)
     return () => clearTimeout(id)
   }, [])
   if (bootNeededRef.current && !minBootDone) return (
