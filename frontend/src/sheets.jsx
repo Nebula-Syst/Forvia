@@ -1672,7 +1672,20 @@ const MAX_IMAGE_MB = 6
 // as buildCompletedWorkout() made it, same as before this existed.
 function FinishSummary({ w, prs, e1prs = [], xp = 0, close }) {
   const st = useStore(s => s.S)
-  const maxImages = useStore(s => s.user?.perks?.maxPhotos) || DEFAULT_MAX_WORKOUT_IMAGES
+  const user = useStore(s => s.user)
+  const maxImages = user?.perks?.maxPhotos || DEFAULT_MAX_WORKOUT_IMAGES
+  // xp is the raw, un-bonused amount this workout earned (workoutXp(w) + PRs — see
+  // finishWorkout below); the streak-bonus multiplier itself only exists server-side
+  // (streakXpMultiplier() in api/server.js) and gets applied there, lazily, the next time
+  // xpFor() runs for this account — which refreshUser() above triggers a moment after this
+  // sheet opens. Recomputing the boosted figure here from user.perks.streakXpBonusPct (rather
+  // than waiting on a round trip) is what actually earns the "+X XP" people see matches what
+  // their rank/streak page shows afterward — before this, the sheet only ever showed the raw
+  // number, which quietly undersold every bonused workout and was the actual root of "feels
+  // like it's not adding up right": nothing was wrong with the math, the bonus just never
+  // rendered anywhere in the one place people check it first.
+  const bonusPct = user?.pro ? (user.perks?.streakXpBonusPct || 0) : 0
+  const boostedXp = bonusPct > 0 ? Math.round(xp * (1 + bonusPct / 100)) : xp
   const [title, setTitle] = useState(w.name || '')
   const [desc, setDesc] = useState(w.desc || '')
   const [images, setImages] = useState(w.images || [])
@@ -1703,9 +1716,17 @@ function FinishSummary({ w, prs, e1prs = [], xp = 0, close }) {
     <div style={{ textAlign: 'center' }}>
       <div style={{ fontSize: 44, display: 'flex', justifyContent: 'center', color: 'var(--acc)' }}><Icon name="trophy" /></div>
       <h3 style={{ margin: '8px 0' }}>{t('Workout complete!')}</h3>
-      {xp > 0 && <div className="row" style={{ justifyContent: 'center', gap: 5, marginBottom: 4, color: 'var(--acc)', fontWeight: 700, fontSize: 15 }}>
+      {xp > 0 && (bonusPct > 0 ? <>
+        <div className="row" style={{ justifyContent: 'center', gap: 5, color: 'var(--label-3)', fontSize: 13, textDecoration: 'line-through' }}>
+          <span>{t('+{0} XP', xp)}</span>
+        </div>
+        <div className="row" style={{ justifyContent: 'center', gap: 5, marginTop: 2, marginBottom: 4, color: 'var(--acc)', fontWeight: 700, fontSize: 15 }}>
+          <Icon name="bolt" /><span>{t('+{0} XP', boostedXp)}</span>
+        </div>
+        <div className="small" style={{ color: 'var(--acc)', fontWeight: 600, marginBottom: 4 }}>{t('+{0}% XP from your streak', bonusPct)}</div>
+      </> : <div className="row" style={{ justifyContent: 'center', gap: 5, marginBottom: 4, color: 'var(--acc)', fontWeight: 700, fontSize: 15 }}>
         <Icon name="bolt" /><span>{t('+{0} XP', xp)}</span>
-      </div>}
+      </div>)}
     </div>
     <div className="tiles" style={{ textAlign: 'left' }}>
       <div className="tile"><div className="l">{t('Duration')}</div><div className="v" style={{ fontSize: '1.1rem' }}>{fmtDur(w.end - w.start)}</div></div>

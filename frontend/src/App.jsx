@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { HashRouter, Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom'
 import { useStore } from './store/useStore.js'
 import { useUI } from './store/useUI.js'
@@ -10,7 +10,7 @@ import { wsOn } from './lib/ws.js'
 import { initAnalytics, trackPageView } from './lib/analytics.js'
 import { initBackButton } from './lib/back.js'
 import { useWakeLock } from './lib/wakelock.js'
-import Icon from './components/Icon.jsx'
+import EntranceHeader from './components/EntranceHeader.jsx'
 import TabBar from './components/TabBar.jsx'
 import ActiveWorkoutPill from './components/ActiveWorkoutPill.jsx'
 import ErrorBoundary from './components/ErrorBoundary.jsx'
@@ -20,6 +20,8 @@ import RestTimer from './components/RestTimer.jsx'
 import CheatRevealTrigger from './components/CheatCaughtReveal.jsx'
 import LevelUpRevealTrigger from './components/LevelUpReveal.jsx'
 import Login from './views/Login.jsx'
+import SignIn from './views/SignIn.jsx'
+import CreateAccount from './views/CreateAccount.jsx'
 import Terms from './views/legal/Terms.jsx'
 import Privacy from './views/legal/Privacy.jsx'
 import Cookies from './views/legal/Cookies.jsx'
@@ -136,10 +138,36 @@ function Shell() {
   useWakeLock(!!S.active && S.keepAwake !== false)
 
   const authed = user || isGuest
-  if (!ready && !authed) return (
-    <div id="app">
-      <div style={{ paddingTop: '44vh', display: 'flex', justifyContent: 'center', fontSize: 34, color: 'var(--label-3)' }}>
-        <Icon name="dumbbell" />
+  // #sidenav (TabBar.jsx) only renders once authed — this is what index.css's desktop
+  // breakpoint (body.authed{padding-left:...}) keys off of to reserve its gutter, instead
+  // of doing it unconditionally and leaving a blank strip on the signed-out entrance screen.
+  useEffect(() => {
+    document.body.classList.toggle('authed', !!authed)
+    return () => document.body.classList.remove('authed')
+  }, [authed])
+  // Boot screen — plays for the brief window before we know whether there's a session (or,
+  // offline, however long that check takes). EntranceHeader's mark constructs itself once
+  // (~2.4s draw+resolve, index.css) instead of a static generic icon, since this is the very
+  // first thing anyone sees, every time the app cold-starts. `className="vfade"` gives this its
+  // own fade-in (same as every other screen's #app) instead of popping in unanimated — a hard
+  // pop-in here, followed by Login's own vfade a moment later, was reading as a jump at the
+  // handoff. `ready` on a fast/local network can flip true well before the draw finishes —
+  // bootNeededRef is captured once at mount (not recomputed as ready/authed change), so once
+  // this screen starts it holds for the full animation rather than getting cut off mid-draw. An
+  // already-authed reload (user hydrated straight from localStorage — see useStore.js) never
+  // sets it at all, so a returning, already-signed-in visitor still skips the splash entirely,
+  // same as before.
+  const bootNeededRef = useRef(!ready && !authed)
+  const [minBootDone, setMinBootDone] = useState(false)
+  useEffect(() => {
+    if (!bootNeededRef.current) return
+    const id = setTimeout(() => setMinBootDone(true), 2500)
+    return () => clearTimeout(id)
+  }, [])
+  if (bootNeededRef.current && !minBootDone) return (
+    <div id="app" className="vfade">
+      <div className="narrow">
+        <EntranceHeader />
       </div>
     </div>
   )
@@ -154,7 +182,9 @@ function Shell() {
           just the safe-area inset on this one screen; every other page keeps the normal padding. */}
       <div id="app" className={'vfade' + (loc.pathname === '/workout' && S.active ? ' notop' : '')} key={loc.pathname}>
         <ErrorBoundary>
-          {loc.pathname === '/legal/terms' ? <Terms /> : loc.pathname === '/legal/privacy' ? <Privacy /> : loc.pathname === '/legal/cookies' ? <Cookies /> : loc.pathname === '/legal/licenses' ? <Licenses /> : !authed ? <Login /> : (
+          {loc.pathname === '/legal/terms' ? <Terms /> : loc.pathname === '/legal/privacy' ? <Privacy /> : loc.pathname === '/legal/cookies' ? <Cookies /> : loc.pathname === '/legal/licenses' ? <Licenses /> : !authed ? (
+            loc.pathname === '/login/signin' ? <SignIn /> : loc.pathname === '/login/register' ? <CreateAccount /> : <Login />
+          ) : (
             <Routes>
               <Route path="/home" element={<Home />} />
               <Route path="/nutrition" element={<Nutrition />} />

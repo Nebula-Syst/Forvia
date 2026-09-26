@@ -128,15 +128,90 @@
   --glow-1:22%; --glow-2:15%; --glow-3:14%; --glow-4:9%;
 }
 
-/* Login's brand mark (Login.jsx) — a transparent crop of the real logo (assets/brand/) in
-   two ink colors, since the flat PNG itself can't adapt: white for the default dark theme
-   and the dark-family "prestige" theme, black for the light theme, swapped the same way
-   every other themed value here is (an explicit light override, dark left as the default). */
-.login-mark{display:flex;justify-content:center;height:64px;margin-bottom:2px}
-.login-mark img{height:100%;width:auto}
-.login-mark .light{display:none}
-:root[data-theme="light"] .login-mark .dark{display:none}
-:root[data-theme="light"] .login-mark .light{display:block}
+/* Shared top block for every pre-auth screen (App.jsx's boot flash, Login.jsx, SignIn.jsx,
+   CreateAccount.jsx — components/EntranceHeader.jsx) — one fixed offset from the top rather
+   than vertically centred in whatever's left of the screen, so the mark lands at the exact same
+   Y every time regardless of how much content follows it below (a boot flash has none, Login
+   has a tagline and two buttons, the forms have a card) — nothing to line up by hand, and
+   nothing that jumps when one of these swaps for another via HashRouter (#app's own
+   key={loc.pathname} in App.jsx already remounts this fresh each time, which is also what
+   makes the mark's draw-in replay on every button press with no extra wiring). */
+.entrance-hdr{position:relative;text-align:center;padding-top:34px;margin-bottom:22px}
+.entrance-hdr-back{position:absolute;top:20px;left:0}
+.entrance-hdr-title{font-size:28px;font-weight:700;letter-spacing:-.024em;margin-top:10px}
+/* Login.jsx's own splash treatment ("FORVIA") — bigger and shouting on purpose, since it's a
+   brand wordmark, not a page title; SignIn/CreateAccount keep the plain style above for
+   "Iniciar sesión"/"Crear cuenta", where all-caps would read as an alert, not a name. */
+.entrance-hdr-title.brand{font-size:32px;font-weight:800;letter-spacing:-.02em;text-transform:uppercase}
+
+/* Diagonal beam behind the mark — the logo's own parallelogram accent, blown up into a
+   background gesture, instead of a generic radial glow borrowed from every other dark app
+   (picked from the 3-way mockup, design canvas "B — Athletic"). Negative z-index keeps it
+   behind the mark/title despite coming first in DOM order (an absolutely-positioned box
+   otherwise paints above static in-flow siblings, not below); left/right (not a fixed width)
+   so it always spans this screen's own content column, whatever that resolves to at any
+   breakpoint — html/body's own overflow-x:clip (base reset, above) is what keeps its overhang
+   from ever becoming a horizontal scrollbar. */
+.entrance-beam{
+  position:absolute;top:2px;left:-40px;right:-40px;height:88px;z-index:-1;pointer-events:none;
+  background:linear-gradient(100deg,transparent 28%,color-mix(in srgb, var(--acc) 24%, transparent) 45%,color-mix(in srgb, var(--acc) 46%, transparent) 52%,color-mix(in srgb, var(--acc) 24%, transparent) 59%,transparent 76%);
+  transform:skewY(-8deg);
+}
+:root[data-reduce-motion] .entrance-beam,:root[data-theme="light"] .entrance-beam{opacity:.6}
+
+/* The mark itself (components/LogoMark.jsx) — inline SVG vectorized from the real logo, not a
+   raster asset: the "ink" shapes use currentColor, so they pick up whatever --label already
+   resolves to per theme (white on dark/prestige, near-black on light) the same way any other
+   icon in this file does, no separate light/dark crop needed. A soft glow rides directly on the
+   mark (same "B — Athletic" pick) rather than a separate blurred blob behind it. */
+.login-mark{position:relative;display:flex;justify-content:center;height:56px}
+.logo-mark-svg{overflow:visible;display:block;position:relative;filter:drop-shadow(0 0 14px color-mix(in srgb, var(--acc) 45%, transparent))}
+.logo-mark-svg .lm-lime .lm-shape{fill:var(--acc);stroke:var(--acc)}
+.logo-mark-svg .lm-ink .lm-shape{fill:currentColor;stroke:currentColor}
+/* Still (LogoMark's default): solid from the first frame, no motion — Login.jsx, right after
+   the boot screen already played the draw-in below; doing it again there read as the animation
+   glitching, not as a flourish. */
+.logo-mark-svg:not(.draw) .lm-shape{fill-opacity:1;stroke:none}
+/* Animated: draws itself as an outline (pathLength="1" makes the dash values
+   resolution-independent, so this ignores the group's own scale/flip transform below it),
+   staggered per shape via --dd (LogoMark.jsx), then all resolve to the solid mark together —
+   App.jsx's boot screen and SignIn/CreateAccount, each reached by an actual button press to a
+   genuinely new screen. */
+.logo-mark-svg.draw .lm-shape{
+  fill-opacity:0;stroke-opacity:1;stroke-width:22px;stroke-linejoin:round;stroke-linecap:round;
+  stroke-dasharray:1;stroke-dashoffset:1;
+  animation:lm-draw 1.05s var(--ease) forwards, lm-fill .5s ease forwards;
+  animation-delay:var(--dd,0ms), 1900ms;
+}
+@keyframes lm-draw{to{stroke-dashoffset:0}}
+@keyframes lm-fill{to{fill-opacity:1;stroke-opacity:0}}
+:root[data-reduce-motion] .logo-mark-svg.draw .lm-shape{animation:none;fill-opacity:1;stroke-opacity:0}
+
+/* Login welcome screen (Login.jsx) — a one-shot staggered entrance instead of everything
+   appearing at once: each child fades/rises in with its own delay via --d, same fade+rise
+   curve as #app's own .vfade above, just slower since this only plays once per app boot
+   rather than on every route change. */
+@keyframes entrance-rise{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+.entrance-in{opacity:0;animation:entrance-rise var(--slow) var(--ease) forwards;animation-delay:var(--d,0ms)}
+
+/* Login.jsx's tagline, restyled for the same "B — Athletic" pick as EntranceHeader's beam —
+   letter-spaced caps in the accent color instead of plain muted body text. */
+.entrance-tagline{font-size:14px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--acc)}
+
+/* Login.jsx's two main actions (Sign in / Create account) — pill-shaped with a glow riding the
+   primary button and an accent-tinted outline on the secondary, instead of this app's normal
+   .btn shapes (var(--r), ~14px — still exactly right everywhere else in the app, just not
+   assertive enough for a splash screen's one real decision point). Scoped to this wrapper
+   rather than changing .btn.primary/.btn.tinted themselves, which are used all over the app. */
+.entrance-actions .btn.primary{border-radius:999px;box-shadow:0 8px 24px -8px color-mix(in srgb, var(--acc) 55%, transparent)}
+.entrance-actions .btn.tinted{border-radius:999px;border-color:var(--acc);color:var(--acc)}
+
+/* Sign in / Create account (SignIn.jsx, CreateAccount.jsx) — the form sits on a glass
+   card instead of loose on the ambient background, same surface as .card elsewhere but
+   roomier, since this is the only thing on the screen rather than one of many stacked. Sits
+   right below EntranceHeader, which already accounts for the top spacing — no extra top
+   margin of its own, or the two would stack. */
+.auth-card{padding:28px 24px;margin:0 auto}
 
 /* Prestige-8 perk (perksFor().appTheme) — a dark-family variant, so it only overrides
    what the light block above also overrides; shadows/glow stay the dark theme's. */
@@ -2529,7 +2604,13 @@ body.resting .active-pill{bottom:calc(210px + var(--sab))}
    they sit centred on the visible content area, not on the sidebar too. */
 .cols{display:block}
 @media (min-width:1000px){
-  body{padding-left:var(--sidenav-w)}
+  /* Only when #sidenav is actually rendered (App.jsx toggles this class — TabBar.jsx
+     itself returns null while signed out, guest or not: `if (!user && !isGuest) return
+     null`). Reserving this gutter unconditionally left a blank strip with no sidebar in
+     it on the signed-out entrance screen, at this same breakpoint — the content next to
+     it (.narrow, centred with margin:auto) was centring itself in the wrong box, shifted
+     right of true-centre by half the gutter's width. */
+  body.authed{padding-left:var(--sidenav-w)}
   #app{max-width:1080px;padding-top:32px}
   .cols{display:grid;grid-template-columns:1fr 1fr;gap:14px;align-items:start}
   .cols>*{min-width:0}
