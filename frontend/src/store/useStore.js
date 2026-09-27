@@ -5,7 +5,7 @@ import { registerCustom } from '../lib/exercises.js'
 import { setOverrides } from '../lib/i18n.js'
 import { DEMO, DEMO_SEEDED } from '../lib/demo.js'
 import { guestAllowed } from '../lib/guest.js'
-import { MOBILE, nativeLoad, nativeSave, syncReminder } from '../lib/mobile.js'
+import { MOBILE, nativeLoad, nativeSave, syncReminder, syncFoodReminder } from '../lib/mobile.js'
 import { DEFAULT_ACCENT, DEFAULT_THEME } from '../lib/palette.js'
 import { checkNowForLevelUp } from '../lib/levelWatch.js'
 import { checkNowForCheatReveal } from '../lib/anticheatWatch.js'
@@ -46,7 +46,10 @@ export const DEF = {
   // that a profile which never chose (loaded state is overlaid on DEF, on every path: local,
   // server pull, backup import) still falls back to the `showRir` boolean this replaced and
   // keeps the column it had. See effortOf.
-  reminder: { on: false, time: '08:00', tz: null }, effort: null,
+  reminder: { on: false, time: '08:00', tz: null },
+  // Same shape as `reminder` above, but for a missed-meal nudge instead of a missed workout —
+  // see lib/mobile.js's syncFoodReminder. Native-only (no server-side web-push counterpart).
+  foodReminder: { on: false, time: '20:00', tz: null }, effort: null,
   // Nutrition. Date-keyed: { [iso]: [{id, meal, name, grams, kcal, carbsG, fatG, proteinG}] }.
   foodDiary: {},
   // Tombstones for explicitly-deleted food entries — same reasoning and shape as
@@ -104,7 +107,7 @@ export const useStore = create((set, get) => {
   // storage eviction) and keep the native reminder schedule in step with the weekly plan.
   const nativePersist = () => {
     clearTimeout(saveTm)
-    saveTm = setTimeout(() => { saveTm = null; nativeSave(get().S); syncReminder(get().S) }, 800)
+    saveTm = setTimeout(() => { saveTm = null; nativeSave(get().S); syncReminder(get().S); syncFoodReminder(get().S) }, 800)
   }
 
   const persist = (S, push = true) => {
@@ -316,11 +319,14 @@ export const useStore = create((set, get) => {
         get().setUser(me.user)
         await get().pullState()
         get().refreshPendingAssignments()
-        // Re-stamp the reminder's timezone on every load — keeps it correct if you're travelling,
-        // without needing to revisit Settings.
+        // Re-stamp both reminders' timezone on every load — keeps them correct if you're
+        // travelling, without needing to revisit Settings.
         const tz = localTZ()
         if (get().S.reminder?.on && get().S.reminder.tz !== tz) {
           get().update(s => { s.reminder = { ...s.reminder, tz } })
+        }
+        if (get().S.foodReminder?.on && get().S.foodReminder.tz !== tz) {
+          get().update(s => { s.foodReminder = { ...s.foodReminder, tz } })
         }
       } catch (e) {
         if (e.status === 401) get().setUser(null)

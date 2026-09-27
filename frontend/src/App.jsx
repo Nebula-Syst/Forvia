@@ -9,7 +9,7 @@ import { setNav } from './lib/nav.js'
 import { wsOn } from './lib/ws.js'
 import { initAnalytics, trackPageView } from './lib/analytics.js'
 import { initBackButton } from './lib/back.js'
-import { syncReminder, initReminderResync } from './lib/mobile.js'
+import { syncReminder, syncFoodReminder, initRemindersResync } from './lib/mobile.js'
 import { useWakeLock } from './lib/wakelock.js'
 import EntranceHeader from './components/EntranceHeader.jsx'
 import TabBar from './components/TabBar.jsx'
@@ -111,8 +111,10 @@ function Shell() {
   // Native app only (lib/mobile.js — a no-op everywhere else): resyncs the on-device workout
   // reminder whenever the toggle, its time, or today's workout count changes — logging a
   // workout while the app is open cancels today's already-scheduled alarm right away, same as
-  // toggling the reminder off would.
+  // toggling the reminder off would. Same idea for the meal reminder, keyed off foodDiary instead.
+  const foodDiaryCount = Object.keys(S.foodDiary || {}).length
   useEffect(() => { if (user) syncReminder(S) }, [user?.id, S.reminder?.on, S.reminder?.time, S.workouts.length])
+  useEffect(() => { if (user) syncFoodReminder(S) }, [user?.id, S.foodReminder?.on, S.foodReminder?.time, foodDiaryCount])
   const langV = useLang()   // re-renders the whole shell when the language (pack) changes
   useEffect(() => { setNav(navigate) }, [navigate])
   useEffect(() => { applyPrefs(S.theme, S.accent, S.reduceMotion) }, [S.theme, S.accent, S.reduceMotion])
@@ -280,12 +282,13 @@ export default function App() {
     initBackButton().then(fn => { if (gone) fn(); else stop = fn })
     return () => { gone = true; stop?.() }
   }, [])
-  // Native app only — resyncs the workout reminder on every foreground resume, so reopening the
-  // app after a workout (not just the Shell-level effect above, which only fires while it's
-  // already open) is what corrects the schedule (see lib/mobile.js's own comment on this limit).
+  // Native app only — resyncs both reminders on every foreground resume, so reopening the
+  // app after a workout or a meal (not just the Shell-level effects above, which only fire
+  // while it's already open) is what corrects the schedule (see lib/mobile.js's own comment
+  // on this limit).
   useEffect(() => {
     let stop = null, gone = false
-    initReminderResync(() => useStore.getState().S).then(fn => { if (gone) fn(); else stop = fn })
+    initRemindersResync(() => useStore.getState().S).then(fn => { if (gone) fn(); else stop = fn })
     return () => { gone = true; stop?.() }
   }, [])
   return <HashRouter><Shell /></HashRouter>

@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { useStore } from '../../store/useStore.js'
 import { useUI } from '../../store/useUI.js'
 import { t } from '../../lib/i18n.js'
-import { MOBILE, syncReminder } from '../../lib/mobile.js'
+import { MOBILE, syncReminder, syncFoodReminder } from '../../lib/mobile.js'
 import { localTZ } from '../../lib/format.js'
 import { pushSupported, pushPermission, enablePush, disablePush, sendTestPush } from '../../lib/push.js'
 import Icon from '../../components/Icon.jsx'
@@ -40,6 +40,35 @@ function NativeReminderSection() {
     {on && <SelectRow icon="clock" iconTint="var(--orange)" title={t('Reminder time')}
       value={S.reminder?.time || '08:00'}
       onChange={v => update(s => { s.reminder = { ...(s.reminder || {}), time: v } })}
+      options={TIMES.map(v => ({ value: v, label: v }))} />}
+  </Section>
+}
+
+// Native-only nudge to log a meal, same on-device mechanism as the workout reminder above but
+// checking foodDiary instead — no server/push counterpart (see lib/mobile.js's syncFoodReminder).
+function NativeFoodReminderSection() {
+  const S = useStore(s => s.S)
+  const { update } = useStore()
+  const toast = useUI(s => s.toast)
+  const on = !!S.foodReminder?.on
+
+  const setOn = async v => {
+    if (v) {
+      const ok = await syncFoodReminder({ ...S, foodReminder: { ...S.foodReminder, on: true } }, true)
+      if (!ok) { toast(t('Could not change notification settings')); return }
+    }
+    update(s => { s.foodReminder = { ...(s.foodReminder || {}), on: v, tz: localTZ() } })
+    toast(v ? t('Notifications on') : t('Notifications off'))
+  }
+
+  return <Section>
+    <Row icon="burger" iconTint="var(--green)" title={t('Meal reminder')}
+      subtitle={t("Sent if you haven't logged any food by this time.")}>
+      <Switch checked={on} onChange={setOn} />
+    </Row>
+    {on && <SelectRow icon="clock" iconTint="var(--orange)" title={t('Reminder time')}
+      value={S.foodReminder?.time || '20:00'}
+      onChange={v => update(s => { s.foodReminder = { ...(s.foodReminder || {}), time: v } })}
       options={TIMES.map(v => ({ value: v, label: v }))} />}
   </Section>
 }
@@ -120,6 +149,6 @@ export default function SettingsNotifications() {
     </div>
     <p className="settings-subtitle">{t('Push alerts and workout-day reminders.')}</p>
 
-    {MOBILE ? <NativeReminderSection /> : <WebNotifications />}
+    {MOBILE ? <><NativeReminderSection /><NativeFoodReminderSection /></> : <WebNotifications />}
   </div>
 }
