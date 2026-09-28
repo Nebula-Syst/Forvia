@@ -11,7 +11,7 @@ import { initAnalytics, trackPageView } from './lib/analytics.js'
 import { initBackButton } from './lib/back.js'
 import { MOBILE, syncReminder, syncFoodReminder, initRemindersResync } from './lib/mobile.js'
 import { useWakeLock } from './lib/wakelock.js'
-import EntranceHeader from './components/EntranceHeader.jsx'
+import LogoMark from './components/LogoMark.jsx'
 import TabBar from './components/TabBar.jsx'
 import ActiveWorkoutPill from './components/ActiveWorkoutPill.jsx'
 import ErrorBoundary from './components/ErrorBoundary.jsx'
@@ -154,9 +154,11 @@ function Shell() {
     return () => document.body.classList.remove('authed')
   }, [authed])
   // Boot screen — plays for the brief window before we know whether there's a session (or,
-  // offline, however long that check takes). EntranceHeader's mark constructs itself once
-  // (~1.7s draw+resolve, index.css) instead of a static generic icon, since this is the very
-  // first thing anyone sees, every time the app cold-starts. `className="vfade"` gives this its
+  // offline, however long that check takes). A real loading screen (.boot-loading, index.css):
+  // the mark dead centre and much bigger than the small top-anchored one every other pre-auth
+  // screen uses via EntranceHeader, since this is the very first thing anyone sees, every time
+  // the app cold-starts, and needs to read as "loading", not as a stray logo. Constructs itself
+  // once (~1.7s draw+resolve) instead of a static generic icon. `className="vfade"` gives this its
   // own fade-in (same as every other screen's #app) instead of popping in unanimated — a hard
   // pop-in here, followed by Login's own vfade a moment later, was reading as a jump at the
   // handoff. `ready` on a fast/local network can flip true well before the draw finishes —
@@ -178,8 +180,13 @@ function Shell() {
   }, [])
   if (bootNeededRef.current && !minBootDone) return (
     <div id="app" className="vfade">
-      <div className="narrow">
-        <EntranceHeader />
+      <div className="boot-loading">
+        <div className="entrance-beam" aria-hidden />
+        {/* still on native: SplashActivity already played this exact draw-in natively a moment
+            ago (forvia-mobile) — replaying it here would read as the animation glitching/
+            restarting (a flash), same reasoning as Login.jsx's own `still` after this same
+            screen. Web (not MOBILE) never saw that, so it keeps the draw-in. */}
+        <LogoMark size={180} still={MOBILE} />
       </div>
     </div>
   )

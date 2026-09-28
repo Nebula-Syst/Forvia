@@ -166,6 +166,14 @@
    mark (same "B — Athletic" pick) rather than a separate blurred blob behind it. */
 .login-mark{position:relative;display:flex;justify-content:center;height:56px}
 .logo-mark-svg{overflow:visible;display:block;position:relative;filter:drop-shadow(0 0 14px color-mix(in srgb, var(--acc) 45%, transparent))}
+
+/* App.jsx's boot screen — a real loading screen (fills the viewport, mark dead centre, much
+   bigger than the small top-anchored mark every other pre-auth screen uses via EntranceHeader)
+   instead of that same small header treatment, which read as a stray logo floating at the top
+   rather than something deliberately "loading". Same beam glow, just centred on the viewport
+   instead of a content column. */
+.boot-loading{position:relative;min-height:100vh;display:flex;align-items:center;justify-content:center;overflow:hidden}
+.boot-loading .entrance-beam{position:absolute;top:50%;left:-40px;right:-40px;height:160px;transform:translateY(-50%) skewY(-8deg)}
 .logo-mark-svg .lm-lime .lm-shape{fill:var(--acc);stroke:var(--acc)}
 .logo-mark-svg .lm-ink .lm-shape{fill:currentColor;stroke:currentColor}
 /* Still (LogoMark's default): solid from the first frame, no motion — Login.jsx, right after
