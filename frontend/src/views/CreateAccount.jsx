@@ -5,6 +5,7 @@ import { useUI } from '../store/useUI.js'
 import { t } from '../lib/i18n.js'
 import { passwordRegister } from '../lib/api.js'
 import EntranceHeader from '../components/EntranceHeader.jsx'
+import LoadingScreen from '../components/LoadingScreen.jsx'
 import { Button } from '../components/ui.jsx'
 
 // "Button styled as inline text" — same pattern as SettingsAccount.jsx's "Resend verification
@@ -41,6 +42,7 @@ export default function CreateAccount() {
   const [pw, setPw] = useState('')
   const [code, setCode] = useState(prefillCode)
   const [busy, setBusy] = useState(false)
+  const [entering, setEntering] = useState(false)
   const ref = useRef(null)
   useEffect(() => { ref.current?.focus() }, [])
   useEffect(() => { useStore.getState().loadConfig() }, [])
@@ -54,12 +56,17 @@ export default function CreateAccount() {
     try {
       const u = await passwordRegister(n, email.trim(), pw, code.trim())
       useStore.getState().setUser(u)
-      if (hasData(useStore.getState().S)) { await useStore.getState().pushState(); toast(t('Profile created — data from this device moved into it')) }
-      else { await useStore.getState().pullState(); toast(t('Welcome, {0}', u.name)) }
+      // Same loading beat as SignIn.jsx, instead of the form snapping straight to Home.
+      setEntering(true)
+      const sync = hasData(useStore.getState().S)
+        ? useStore.getState().pushState().then(() => toast(t('Profile created — data from this device moved into it')))
+        : useStore.getState().pullState().then(() => toast(t('Welcome, {0}', u.name)))
+      await Promise.all([sync.catch(() => {}), new Promise(r => setTimeout(r, 900))])
       nav('/home', { replace: true })
-    } catch (e) { toast(e.message || t('Registration failed')) }
+    } catch (e) { toast(e.message || t('Registration failed')); setEntering(false) }
     finally { setBusy(false) }
   }
+  if (entering) return <LoadingScreen />
   return <div className="narrow" style={{ textAlign: 'center' }}>
     <EntranceHeader title={t('Create account')} onBack={() => nav(-1)} />
     <div className="card auth-card" style={{ maxWidth: 380, textAlign: 'left' }}>

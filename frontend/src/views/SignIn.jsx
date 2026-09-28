@@ -6,6 +6,7 @@ import { t } from '../lib/i18n.js'
 import { registerAllowed } from '../lib/guest.js'
 import { passwordLogin } from '../lib/api.js'
 import EntranceHeader from '../components/EntranceHeader.jsx'
+import LoadingScreen from '../components/LoadingScreen.jsx'
 import { Button } from '../components/ui.jsx'
 
 // A real, routed page (see App.jsx's pre-auth branch) rather than the bottom-sheet form this
@@ -21,6 +22,7 @@ export default function SignIn() {
   const [email, setEmail] = useState('')
   const [pw, setPw] = useState('')
   const [busy, setBusy] = useState(false)
+  const [entering, setEntering] = useState(false)
   const ref = useRef(null)
   useEffect(() => { ref.current?.focus() }, [])
   const go = async () => {
@@ -29,12 +31,19 @@ export default function SignIn() {
     try {
       const u = await passwordLogin(email.trim(), pw)
       useStore.getState().setUser(u)
-      await useStore.getState().pullState()
+      // A real loading beat instead of the form snapping straight to Home — pullState() usually
+      // resolves well under a second on its own, so the fixed minimum is what actually makes this
+      // read as a deliberate transition rather than a flash. A pullState failure here (rare —
+      // network hiccup right after a successful login) shouldn't strand anyone on this screen;
+      // Home re-syncs on its own once the connection's back, same as any other transient failure.
+      setEntering(true)
+      await Promise.all([useStore.getState().pullState().catch(() => {}), new Promise(r => setTimeout(r, 900))])
       toast(t('Welcome back, {0}', u.name))
       nav('/home', { replace: true })
-    } catch (e) { toast(e.message || t('Sign-in failed')) }
+    } catch (e) { toast(e.message || t('Sign-in failed')); setEntering(false) }
     finally { setBusy(false) }
   }
+  if (entering) return <LoadingScreen />
   return <div className="narrow" style={{ textAlign: 'center' }}>
     <EntranceHeader title={t('Sign in')} onBack={() => nav(-1)} />
     <div className="card auth-card" style={{ maxWidth: 380, textAlign: 'left' }}>

@@ -11,7 +11,7 @@ import { initAnalytics, trackPageView } from './lib/analytics.js'
 import { initBackButton } from './lib/back.js'
 import { MOBILE, syncReminder, syncFoodReminder, initRemindersResync } from './lib/mobile.js'
 import { useWakeLock } from './lib/wakelock.js'
-import LogoMark from './components/LogoMark.jsx'
+import LoadingScreen from './components/LoadingScreen.jsx'
 import TabBar from './components/TabBar.jsx'
 import ActiveWorkoutPill from './components/ActiveWorkoutPill.jsx'
 import ErrorBoundary from './components/ErrorBoundary.jsx'
@@ -179,12 +179,7 @@ function Shell() {
     return () => clearTimeout(id)
   }, [])
   if (bootNeededRef.current && !minBootDone) return (
-    <div id="app" className="vfade">
-      <div className="boot-loading">
-        <div className="entrance-beam" aria-hidden />
-        <LogoMark size={180} />
-      </div>
-    </div>
+    <div id="app" className="vfade"><LoadingScreen /></div>
   )
 
   return (
