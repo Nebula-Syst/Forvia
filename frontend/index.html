@@ -1,6 +1,24 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+<!-- Applies the saved theme/accent to <html> before the stylesheet or React ever run — without
+     this, the page paints with :root's own hardcoded defaults (dark/lime) first, then jumps to
+     whatever the user actually picked the instant Shell's applyPrefs effect runs (App.jsx), which
+     on a cold native start (no cached paint to mask it) shows up as a visible colour flash. Same
+     localStorage key/shape and the same theme/accent fallback rules as useStore.js/palette.js —
+     kept in sync by hand since this has to run before any module (and so before either) loads. -->
+<script>
+(function(){
+  try {
+    var s = JSON.parse(localStorage.getItem('gym_state_v1') || 'null');
+    var accents = ['lime','sky','orange','violet','pink','red','teal','gold'];
+    var de = document.documentElement;
+    de.dataset.theme = s && s.theme === 'light' ? 'light' : s && s.theme === 'prestige' ? 'prestige' : 'dark';
+    de.dataset.accent = s && accents.indexOf(s.accent) !== -1 ? s.accent : 'lime';
+    if (s && s.reduceMotion) de.setAttribute('data-reduce-motion', '');
+  } catch (e) {}
+})();
+</script>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
 <title>Forvia</title>

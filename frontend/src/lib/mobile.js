@@ -2,10 +2,27 @@
 // site (no bundled build, no build-time flag — see its README), so whether we're inside it is a
 // runtime check, not a build flag — same reasoning as lib/back.js's own MOBILE check. A plain
 // browser tab or PWA never has window.Capacitor, so every function below stays a no-op there.
+import { registerPlugin } from '@capacitor/core'
 import { MUSCLES, MUSCLE_NAME, loadOfWorkouts } from './muscles.js'
 import { t } from './i18n.js'
 
 export const MOBILE = !!window.Capacitor?.isNativePlatform?.()
+
+// registerPlugin() is what actually wires a name to the native bridge — window.Capacitor.Plugins
+// only gets populated for a plugin that went through this call; a raw window.Capacitor.Plugins
+// .AppReady lookup without it is always undefined (a past bug — see git log — that made
+// notifyNativeReady() below a permanent no-op).
+const AppReady = registerPlugin('AppReady')
+
+// One-way signal to MainActivity (AppReadyPlugin, forvia-mobile) that there's real content on
+// screen — Home or Login, doesn't matter which — so it can stop covering the WebView with its own
+// loading overlay (it enforces its own minimum display time and a timeout independently; this
+// just reports the moment the web side actually has something to show). App.jsx calls this
+// exactly once, right when it would stop rendering its own boot placeholder.
+export function notifyNativeReady() {
+  if (!MOBILE) return
+  AppReady.ready().catch(() => { /* plugin not linked yet — older installed build */ })
+}
 
 // The installed app's own versionName ("1.0.<run>" — see forvia-mobile's build-apk.yml), for
 // SettingsMobileApp's update check. null outside the native app, or if the plugin call fails.
