@@ -24,7 +24,7 @@ export default function Settings() {
   const nav = useNavigate()
   const user = useStore(s => s.user)
 
-  const showProfile = user && !DEMO && !MOBILE
+  const showProfile = user && !DEMO
   const showNotifications = user || MOBILE
   const showProgress = user
 
@@ -37,7 +37,7 @@ export default function Settings() {
     {(user || DEMO) && (
       <div className="settings-grid">
         <Tile icon="personCircle" tint="var(--blue)" title={t('Account')}
-          subtitle={MOBILE ? t('About this app') : DEMO ? t('Demo') : t('Sign-in, email, sessions')}
+          subtitle={DEMO ? t('Demo') : t('Sign-in, email, sessions')}
           onClick={() => nav('/settings/account')} />
         {user && !DEMO && (
           <Tile icon="crown" tint="var(--acc)" title={t('Subscription')} subtitle={t('Plans, coming soon')}
@@ -66,7 +66,7 @@ export default function Settings() {
     <div className="settings-grid">
       {!(user || DEMO) && (
         <Tile icon="personCircle" tint="var(--blue)" title={t('Account')}
-          subtitle={MOBILE ? t('About this app') : t('Sign-in, email, sessions')}
+          subtitle={t('Sign-in, email, sessions')}
           onClick={() => nav('/settings/account')} />
       )}
       <Tile icon="dumbbell" tint="var(--orange)" title={t('Workout')} subtitle={t('Rest timer, sounds, units')}

@@ -4,7 +4,6 @@ import { useStore } from '../../store/useStore.js'
 import { useUI } from '../../store/useUI.js'
 import { t, LANGS, INSTR_LANGS } from '../../lib/i18n.js'
 import { DEMO, REPO } from '../../lib/demo.js'
-import { MOBILE } from '../../lib/mobile.js'
 import { fmtDate } from '../../lib/format.js'
 import { dateLocale } from '../../lib/i18n-core.js'
 import { setPublic, setName, setUsername, setPhone, setEmail, resendEmailVerification, accountSessions, revokeSession } from '../../lib/api.js'
@@ -246,7 +245,11 @@ export default function SettingsAccount() {
     },
   })
 
-  if (MOBILE || DEMO || !user) {
+  // Not a MOBILE-specific case any more — forvia-mobile is a real, authenticated account on the
+  // same server, same as web (see useStore.js's boot(), which used to force guest mode here from
+  // back when "mobile" meant a separate offline build). This block is only ever DEMO or a genuine
+  // guest (no user) now, on any platform.
+  if (DEMO || !user) {
     return <div className="narrow settings-page">
       <div className="hdr">
         <button className="iconbtn" onClick={() => nav('/settings')} aria-label={t('Settings')}><Icon name="chevronLeft" /></button>
@@ -254,12 +257,8 @@ export default function SettingsAccount() {
       </div>
       <p className="settings-subtitle">{t('Your sign-in, contact info, and account security.')}</p>
 
-      <Section title={MOBILE ? t('Your data') : DEMO ? t('Demo') : t('Account')}>
-        {MOBILE ? <>
-          <Row icon="lock" iconTint="var(--acc)" title={t('All data stays on this phone')} subtitle={t('No account, no cloud — back it up anytime with Export below.')} />
-          <Row icon="rocket" iconTint="var(--indigo)" title={t('Self-host Forvia')} subtitle={t('Account sign-in, sync across your devices, your own data.')} accessory="chevron"
-            onClick={() => window.open(REPO, '_blank', 'noopener')} />
-        </> : DEMO ? <>
+      <Section title={DEMO ? t('Demo') : t('Account')}>
+        {DEMO ? <>
           <Row icon="sparkles" iconTint="var(--acc)" title={t('You’re in the demo')} subtitle={t('Example data, stored only in this browser — change anything you like.')} />
           <Row icon="reset" iconTint="var(--blue)" title={t('Reset demo data')} accessory="chevron"
             onClick={() => confirmSheet({ title: t('Reset demo data?'), message: t('Puts the example plan, workouts and weigh-ins back the way they started.'), confirmText: t('Reset'), onConfirm: () => { resetDemo(); nav('/home'); toast(t('Demo data reset')) } })} />
@@ -270,7 +269,7 @@ export default function SettingsAccount() {
           <Row icon="sparkles" iconTint="var(--acc)" title={t('Create account')} subtitle={t('Keeps your data safe and separate per person.')} accessory="chevron" onClick={() => passwordRegisterSheet()} />
         </>}
       </Section>
-      {!user && !DEMO && !MOBILE && <p className="sect-f" style={{ marginTop: -18, marginBottom: 22 }}>{t('Guest mode — data lives only in this browser.')}</p>}
+      {!user && !DEMO && <p className="sect-f" style={{ marginTop: -18, marginBottom: 22 }}>{t('Guest mode — data lives only in this browser.')}</p>}
 
       <Section title={t('General')}>
         <SelectRow

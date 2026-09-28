@@ -5,7 +5,7 @@ import { registerCustom } from '../lib/exercises.js'
 import { setOverrides } from '../lib/i18n.js'
 import { DEMO, DEMO_SEEDED } from '../lib/demo.js'
 import { guestAllowed } from '../lib/guest.js'
-import { MOBILE, nativeLoad, nativeSave, syncReminder, syncFoodReminder } from '../lib/mobile.js'
+import { MOBILE, nativeSave, syncReminder, syncFoodReminder } from '../lib/mobile.js'
 import { DEFAULT_ACCENT, DEFAULT_THEME } from '../lib/palette.js'
 import { checkNowForLevelUp } from '../lib/levelWatch.js'
 import { checkNowForCheatReveal } from '../lib/anticheatWatch.js'
@@ -278,23 +278,13 @@ export const useStore = create((set, get) => {
       persist(Object.assign(clone(DEF), buildDemoState()), false)
     },
 
-    // Boot: ask the server who we are, then pull.
+    // Boot: ask the server who we are, then pull. forvia-mobile is just a WebView on this same
+    // live site (real account, real server, same as any browser) — it used to short-circuit here
+    // into a forced guest mode from when "mobile" meant a separate offline-only build (before
+    // that pivoted — see lib/mobile.js's own header comment), which meant the native app could
+    // never actually sign in: every boot silently discarded any real session and dropped straight
+    // into local-only guest data. Removed; MOBILE now falls through to the exact same path as web.
     async boot() {
-      // Mobile build: no backend either — restore from the file mirror (the durable copy;
-      // localStorage may have been evicted since the last run) and go straight in.
-      if (MOBILE) {
-        const saved = await nativeLoad()
-        const S = get().S
-        if (saved && (!hasData(S) || (saved._ts || 0) >= (S._ts || 0))) {
-          persist(Object.assign(clone(DEF), saved), false)
-        } else if (hasData(S)) {
-          nativeSave(S)   // first run after an update from a file-less version: seed the mirror
-        }
-        get().setGuest(true)
-        syncReminder(get().S)
-        set({ ready: true })
-        return
-      }
       // Demo build (GitHub Pages): no backend at all — seed once, stay in guest mode.
       if (DEMO) {
         if (!localStorage.getItem(DEMO_SEEDED)) {
