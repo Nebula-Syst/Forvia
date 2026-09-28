@@ -182,11 +182,7 @@ function Shell() {
     <div id="app" className="vfade">
       <div className="boot-loading">
         <div className="entrance-beam" aria-hidden />
-        {/* still on native: SplashActivity already played this exact draw-in natively a moment
-            ago (forvia-mobile) — replaying it here would read as the animation glitching/
-            restarting (a flash), same reasoning as Login.jsx's own `still` after this same
-            screen. Web (not MOBILE) never saw that, so it keeps the draw-in. */}
-        <LogoMark size={180} still={MOBILE} />
+        <LogoMark size={180} />
       </div>
     </div>
   )
