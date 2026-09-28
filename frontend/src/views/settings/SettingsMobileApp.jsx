@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { t } from '../../lib/i18n.js'
+import { MOBILE, nativeAppVersion } from '../../lib/mobile.js'
 import Icon from '../../components/Icon.jsx'
 import { Button, Row } from '../../components/ui.jsx'
 
@@ -14,6 +15,7 @@ const RELEASES_PAGE = 'https://github.com/Nebula-Syst/forvia-mobile/releases/lat
 export default function SettingsMobileApp() {
   const nav = useNavigate()
   const [release, setRelease] = useState(undefined)   // undefined = loading, null = failed
+  const [installed, setInstalled] = useState(undefined)   // this device's own versionName, native only
   const [guideOpen, setGuideOpen] = useState(false)
 
   useEffect(() => {
@@ -23,29 +25,51 @@ export default function SettingsMobileApp() {
         url: (d.assets || []).find(a => a.name.endsWith('.apk'))?.browser_download_url || d.html_url,
       }))
       .catch(() => setRelease(null))
+    if (MOBILE) nativeAppVersion().then(setInstalled)
   }, [])
+
+  // v1.0.42 vs "1.0.42" — the release tag always leads with a v the installed versionName doesn't.
+  const upToDate = installed && release && release.version.replace(/^v/, '') === installed
 
   return <div className="narrow settings-page">
     <div className="hdr">
       <button className="iconbtn" onClick={() => nav('/settings')} aria-label={t('Settings')}><Icon name="chevronLeft" /></button>
       <div style={{ flex: 1, marginLeft: 10 }}><h1>{t('Mobile app')}</h1></div>
     </div>
-    <p className="settings-subtitle">{t('Get Forvia on your phone.')}</p>
+    <p className="settings-subtitle">{MOBILE ? t('About this app.') : t('Get Forvia on your phone.')}</p>
 
-    <div className="card">
-      <h2 style={{ margin: '0 0 8px' }}>{t('Android')}</h2>
-      <div className="small muted" style={{ marginBottom: 14 }}>
-        {t('The same app, wrapped for your home screen — same account, same data, nothing extra to set up. Not on the Play Store, so Android will ask you to allow installs from this source the first time.')}
+    {MOBILE ? (
+      <div className="card">
+        <h2 style={{ margin: '0 0 8px' }}>{t('Android')}</h2>
+        <div className="small muted" style={{ marginBottom: 14 }}>
+          {t('This app updates outside the Play Store, so it never checks for one on its own — open this screen whenever you want to know.')}
+        </div>
+        {installed && <Row icon="info" iconTint="var(--grey)" title={t('Installed version')} subtitle={installed} />}
+        {release === undefined || installed === undefined ? <Button disabled>{t('Checking…')}</Button>
+          : upToDate ? <Row icon="checkCircle" iconTint="var(--acc)" title={t('You’re up to date')} />
+          : release ? (
+            <Button variant="primary" icon="download" onClick={() => window.open(release.url, '_blank', 'noopener')}>
+              {t('Update to {0}', release.version)}
+            </Button>
+          ) : <Button icon="download" onClick={() => window.open(RELEASES_PAGE, '_blank', 'noopener')}>{t('Check on GitHub')}</Button>}
       </div>
-      {release === undefined && <Button disabled>{t('Loading…')}</Button>}
-      {release === null && <Button icon="download" onClick={() => window.open(RELEASES_PAGE, '_blank', 'noopener')}>{t('Get it from GitHub')}</Button>}
-      {release && (
-        <Button variant="primary" icon="download" onClick={() => window.open(release.url, '_blank', 'noopener')}>
-          {t('Download {0}', release.version)}
-        </Button>
-      )}
-    </div>
+    ) : (
+      <div className="card">
+        <h2 style={{ margin: '0 0 8px' }}>{t('Android')}</h2>
+        <div className="small muted" style={{ marginBottom: 14 }}>
+          {t('The same app, wrapped for your home screen — same account, same data, nothing extra to set up. Not on the Play Store, so Android will ask you to allow installs from this source the first time.')}
+        </div>
+        {release === undefined && <Button disabled>{t('Loading…')}</Button>}
+        {release === null && <Button icon="download" onClick={() => window.open(RELEASES_PAGE, '_blank', 'noopener')}>{t('Get it from GitHub')}</Button>}
+        {release && (
+          <Button variant="primary" icon="download" onClick={() => window.open(release.url, '_blank', 'noopener')}>
+            {t('Download {0}', release.version)}
+          </Button>
+        )}
+      </div>
+    )}
 
+    {!MOBILE && <>
     <div style={{ height: 14 }} />
     <div className="card">
       <Row icon="warnTriangle" iconTint="var(--orange)" title={t('Android will warn you before installing it')}
@@ -80,5 +104,6 @@ export default function SettingsMobileApp() {
         {t('Apple doesn’t allow installing apps outside the App Store, so there’s no iOS download. Open forvia.fit in Safari and add it to your home screen instead — full-screen, its own icon, works the same.')}
       </div>
     </div>
+    </>}
   </div>
 }

@@ -87,8 +87,9 @@ export default function Settings() {
         onClick={() => nav('/settings/data')} />
       <Tile icon="flag" tint="var(--red)" title={t('Report a bug')} subtitle={t('Alpha — tell us what broke')}
         onClick={() => reportBugSheet()} />
-      {!MOBILE && (
-        <Tile icon="download" tint="var(--green)" title={t('Mobile app')} subtitle={t('Get it for Android')}
+      {(!MOBILE || user?.admin) && (
+        <Tile icon="download" tint="var(--green)" title={t('Mobile app')}
+          subtitle={MOBILE ? t('Version, updates') : t('Get it for Android')}
           onClick={() => nav('/settings/mobile-app')} />
       )}
       {user && (

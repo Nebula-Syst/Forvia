@@ -17,6 +17,16 @@ export function notifyNativeReady() {
   try { window.Capacitor?.Plugins?.AppReady?.ready?.() } catch { /* plugin not linked yet */ }
 }
 
+// The installed app's own versionName ("1.0.<run>" — see forvia-mobile's build-apk.yml), for
+// SettingsMobileApp's update check. null outside the native app, or if the plugin call fails.
+export async function nativeAppVersion() {
+  if (!MOBILE) return null
+  try {
+    const { App } = await import('@capacitor/app')
+    return (await App.getInfo()).version
+  } catch { return null }
+}
+
 export async function nativeLoad() { return null }
 export async function nativeSave(state) { /* no native persistence yet — synced state already covers this */ }
 export async function shareExport(json, filename) { /* no native share sheet yet */ }
