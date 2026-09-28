@@ -9,7 +9,7 @@ import { setNav } from './lib/nav.js'
 import { wsOn } from './lib/ws.js'
 import { initAnalytics, trackPageView } from './lib/analytics.js'
 import { initBackButton } from './lib/back.js'
-import { syncReminder, syncFoodReminder, initRemindersResync } from './lib/mobile.js'
+import { syncReminder, syncFoodReminder, initRemindersResync, notifyNativeReady } from './lib/mobile.js'
 import { useWakeLock } from './lib/wakelock.js'
 import EntranceHeader from './components/EntranceHeader.jsx'
 import TabBar from './components/TabBar.jsx'
@@ -172,6 +172,13 @@ function Shell() {
     const id = setTimeout(() => setMinBootDone(true), 1800)
     return () => clearTimeout(id)
   }, [])
+  // Native app only: tells MainActivity's own looping splash overlay it can stop covering the
+  // WebView, right when this component is about to stop showing its own boot placeholder (or,
+  // for an already-authed reload that skips the placeholder entirely, as soon as this first
+  // commits) — see lib/mobile.js's notifyNativeReady(). Fires exactly once.
+  useEffect(() => {
+    if (!bootNeededRef.current || minBootDone) notifyNativeReady()
+  }, [minBootDone])
   if (bootNeededRef.current && !minBootDone) return (
     <div id="app" className="vfade">
       <div className="narrow">

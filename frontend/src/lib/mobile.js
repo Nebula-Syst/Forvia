@@ -7,6 +7,16 @@ import { t } from './i18n.js'
 
 export const MOBILE = !!window.Capacitor?.isNativePlatform?.()
 
+// One-way signal to MainActivity (AppReadyPlugin, forvia-mobile) that there's real content on
+// screen — Home or Login, doesn't matter which — so it can stop covering the WebView with its
+// own looping native splash overlay (it enforces its own minimum loop count and a timeout
+// independently; this just reports the moment the web side actually has something to show).
+// App.jsx calls this exactly once, right when it would stop rendering its own boot placeholder.
+export function notifyNativeReady() {
+  if (!MOBILE) return
+  try { window.Capacitor?.Plugins?.AppReady?.ready?.() } catch { /* plugin not linked yet */ }
+}
+
 export async function nativeLoad() { return null }
 export async function nativeSave(state) { /* no native persistence yet — synced state already covers this */ }
 export async function shareExport(json, filename) { /* no native share sheet yet */ }
