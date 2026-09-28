@@ -9,7 +9,7 @@ import { setNav } from './lib/nav.js'
 import { wsOn } from './lib/ws.js'
 import { initAnalytics, trackPageView } from './lib/analytics.js'
 import { initBackButton } from './lib/back.js'
-import { syncReminder, syncFoodReminder, initRemindersResync, notifyNativeReady } from './lib/mobile.js'
+import { MOBILE, syncReminder, syncFoodReminder, initRemindersResync } from './lib/mobile.js'
 import { useWakeLock } from './lib/wakelock.js'
 import EntranceHeader from './components/EntranceHeader.jsx'
 import TabBar from './components/TabBar.jsx'
@@ -164,21 +164,18 @@ function Shell() {
   // this screen starts it holds for the full animation rather than getting cut off mid-draw. An
   // already-authed reload (user hydrated straight from localStorage — see useStore.js) never
   // sets it at all, so a returning, already-signed-in visitor still skips the splash entirely,
-  // same as before.
-  const bootNeededRef = useRef(!ready && !authed)
+  // same as before — except on the native app, where a cold start always plays it regardless of
+  // cached auth. That's not cosmetic there: forvia-mobile no longer covers this gap with its own
+  // native overlay (too unreliable to get right blind, no device to debug it on — see
+  // forvia-mobile's own commits), so this screen doing it properly, in the app's real theme
+  // colour, is now the *only* thing standing between a cold start and a blank native WebView.
+  const bootNeededRef = useRef(MOBILE || (!ready && !authed))
   const [minBootDone, setMinBootDone] = useState(false)
   useEffect(() => {
     if (!bootNeededRef.current) return
     const id = setTimeout(() => setMinBootDone(true), 1800)
     return () => clearTimeout(id)
   }, [])
-  // Native app only: tells MainActivity's own looping splash overlay it can stop covering the
-  // WebView, right when this component is about to stop showing its own boot placeholder (or,
-  // for an already-authed reload that skips the placeholder entirely, as soon as this first
-  // commits) — see lib/mobile.js's notifyNativeReady(). Fires exactly once.
-  useEffect(() => {
-    if (!bootNeededRef.current || minBootDone) notifyNativeReady()
-  }, [minBootDone])
   if (bootNeededRef.current && !minBootDone) return (
     <div id="app" className="vfade">
       <div className="narrow">
