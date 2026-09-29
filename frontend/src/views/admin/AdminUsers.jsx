@@ -31,7 +31,15 @@ function UserDetail({ id, onChanged, close }) {
   const [d, setD] = useState(null)
   const [busy, setBusy] = useState(false)
   const toast = useUI(s => s.toast)
-  const load = () => api('/api/admin/user?id=' + encodeURIComponent(id)).then(setD).catch(e => toast(e.message))
+  // Two backend services answer the admin drill-down now — forvia-core owns the identity/
+  // training-data half (GET /api/admin/user), Nebula's own half (rank/perks/badges/pro/
+  // streakBonus) lives at a second path (GET /api/admin/user/nebula). Merged here, same as
+  // lib/api.js's fetchMe() already merges GET /api/me for the signed-in user's own profile — this
+  // was missing entirely, which is why the Rank section used to show "Level undefined".
+  const load = () => Promise.all([
+    api('/api/admin/user?id=' + encodeURIComponent(id)),
+    api('/api/admin/user/nebula?id=' + encodeURIComponent(id)).catch(() => ({ user: {} })),
+  ]).then(([core, nebula]) => setD({ ...core, user: { ...core.user, ...nebula.user } })).catch(e => toast(e.message))
   useEffect(() => { load() }, [id])
   if (!d) return <div className="muted small">{t('Loading…')}</div>
   const u = d.user

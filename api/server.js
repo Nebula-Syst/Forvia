@@ -1046,6 +1046,19 @@ const routes = {
     json(res, 200, { user: nebulaMe(user) });
   },
 
+  // The other half of the admin user drill-down (forvia-core's own GET /api/admin/user has the
+  // identity/training-data half) — merged client-side same as GET /api/me already is. Was missing
+  // entirely: the admin panel's Rank section showed "Level undefined" and the Pro toggle always
+  // read as Free, for every account, since the split moved rank/pro/streakBonus off forvia-core's
+  // own publicUser() and nothing ever added the other call to fetch them back for this screen.
+  'GET /api/admin/user/nebula': async (req, res) => {
+    if (!requireAdmin(req, res)) return;
+    const id = new URL(req.url, 'http://x').searchParams.get('id');
+    const u = db.users.find(x => x.id === id);
+    if (!u) return json(res, 404, { error: 'no such user' });
+    json(res, 200, { user: nebulaMe(u) });
+  },
+
   // This service's own Docker healthcheck target — GET /api/health moved to forvia-core along
   // with everything else generic-infra, so this service needs its own (unauthenticated, same as
   // forvia-core's own) rather than reporting unhealthy forever.
