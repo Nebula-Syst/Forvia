@@ -56,6 +56,7 @@ import Rank from './views/Rank.jsx'
 import Penalties from './views/Penalties.jsx'
 import Admin from './views/Admin.jsx'
 import AdminUsers from './views/admin/AdminUsers.jsx'
+import AdminUserDetail from './views/admin/AdminUserDetail.jsx'
 import AdminTasks from './views/admin/AdminTasks.jsx'
 import AdminExercises from './views/admin/AdminExercises.jsx'
 import AdminMuscleGroups from './views/admin/AdminMuscleGroups.jsx'
@@ -232,6 +233,7 @@ function Shell() {
               <Route path="/penalties" element={<Penalties />} />
               <Route path="/admin" element={user?.admin ? <Admin /> : <Navigate to="/home" replace />} />
               <Route path="/admin/users" element={user?.admin ? <AdminUsers /> : <Navigate to="/home" replace />} />
+              <Route path="/admin/users/:id" element={user?.admin ? <AdminUserDetail /> : <Navigate to="/home" replace />} />
               <Route path="/admin/tasks" element={user?.admin ? <AdminTasks /> : <Navigate to="/home" replace />} />
               <Route path="/admin/exercises" element={user?.admin ? <AdminExercises /> : <Navigate to="/home" replace />} />
               <Route path="/admin/muscle-groups" element={user?.admin ? <AdminMuscleGroups /> : <Navigate to="/home" replace />} />

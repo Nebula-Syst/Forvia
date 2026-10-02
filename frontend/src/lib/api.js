@@ -93,6 +93,10 @@ export const adminUserLevel = (id, delta) => api('/api/admin/user/level', { meth
 export const adminUserPrestige = (id, delta) => api('/api/admin/user/prestige', { method: 'POST', body: JSON.stringify({ id, delta }) }).then(r => r.rank)
 export const adminUserStreak = (id, delta) => api('/api/admin/user/streak', { method: 'POST', body: JSON.stringify({ id, delta }) }).then(r => r.streakBonus)
 export const adminUserPro = id => api('/api/admin/user/pro', { method: 'POST', body: JSON.stringify({ id }) }).then(r => r.pro)
+export const adminUserEdit = (id, patch) => api('/api/admin/user/edit', { method: 'POST', body: JSON.stringify({ id, ...patch }) }).then(r => r.user)
+export const adminUserProfile = (id, patch) => api('/api/admin/user/profile', { method: 'POST', body: JSON.stringify({ id, ...patch }) })
+export const adminUserDelete = id => api('/api/admin/user/delete', { method: 'POST', body: JSON.stringify({ id }) })
+export const adminUserRestore = id => api('/api/admin/user/restore', { method: 'POST', body: JSON.stringify({ id }) })
 
 /* ---------- exercise name overrides ---------- */
 export const exerciseOverrides = () => api('/api/exercises/overrides').then(r => r.overrides)

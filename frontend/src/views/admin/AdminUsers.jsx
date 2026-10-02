@@ -2,18 +2,14 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useStore } from '../../store/useStore.js'
 import { useUI } from '../../store/useUI.js'
-import { api, adminUserCreate, adminSetEmployeeTypes, adminUserLevel, adminUserPrestige, adminUserStreak, adminUserPro } from '../../lib/api.js'
-import { fmtDate, fmtVol, fmtDur } from '../../lib/format.js'
-import { workoutVolume, setsDone, streakDays } from '../../lib/history.js'
-import { confirmSheet } from '../../sheets.jsx'
-import { tierFor } from '../../lib/rank.js'
+import { api, adminUserCreate } from '../../lib/api.js'
+import { fmtDate } from '../../lib/format.js'
 import { t } from '../../lib/i18n.js'
 import Icon from '../../components/Icon.jsx'
-import Avatar from '../../components/Avatar.jsx'
-import RankIcon, { PrestigeIcon } from '../../components/RankIcon.jsx'
 import { Button } from '../../components/ui.jsx'
 
-// Admin-only.
+// Admin-only. The per-user drill-down is its own full page now (AdminUserDetail.jsx) — see
+// openUser below.
 
 const rel = ts => {
   if (!ts) return t('never')
@@ -24,151 +20,6 @@ const rel = ts => {
   return t('{0}d ago', Math.floor(s / 86400))
 }
 const dur = ms => { const m = Math.max(0, Math.floor(ms / 60000)); return m < 60 ? m + 'm' : Math.floor(m / 60) + 'h' + (m % 60) + 'm' }
-
-const EMPLOYEE_TYPES = ['founder', 'admin']
-
-function UserDetail({ id, onChanged, close }) {
-  const [d, setD] = useState(null)
-  const [busy, setBusy] = useState(false)
-  const toast = useUI(s => s.toast)
-  // Two backend services answer the admin drill-down now — forvia-core owns the identity/
-  // training-data half (GET /api/admin/user), Nebula's own half (rank/perks/badges/pro/
-  // streakBonus) lives at a second path (GET /api/admin/user/nebula). Merged here, same as
-  // lib/api.js's fetchMe() already merges GET /api/me for the signed-in user's own profile — this
-  // was missing entirely, which is why the Rank section used to show "Level undefined".
-  const load = () => Promise.all([
-    api('/api/admin/user?id=' + encodeURIComponent(id)),
-    api('/api/admin/user/nebula?id=' + encodeURIComponent(id)).catch(() => ({ user: {} })),
-  ]).then(([core, nebula]) => setD({ ...core, user: { ...core.user, ...nebula.user } })).catch(e => toast(e.message))
-  useEffect(() => { load() }, [id])
-  if (!d) return <div className="muted small">{t('Loading…')}</div>
-  const u = d.user
-  const realStreak = streakDays({ workouts: d.workouts || [] })
-  const setDisabled = disabled => {
-    api('/api/admin/user/disable', { method: 'POST', body: JSON.stringify({ id: u.id, disabled }) })
-      .then(() => { toast(disabled ? t('User disabled') : t('User enabled')); onChanged(); close() })
-      .catch(e => toast(e.message))
-  }
-  const toggleEmployeeType = type => {
-    const cur = u.employeeTypes || []
-    const next = cur.includes(type) ? cur.filter(x => x !== type) : [...cur, type]
-    adminSetEmployeeTypes(u.id, next).then(() => { toast(t('Updated')); load(); onChanged() }).catch(e => toast(e.message))
-  }
-  const nudgeLevel = delta => {
-    setBusy(true)
-    adminUserLevel(u.id, delta).then(() => { load(); onChanged() }).catch(e => toast(e.message)).finally(() => setBusy(false))
-  }
-  // Same bypass relationship to POST /api/prestige that the level nudge above has to earning
-  // XP normally — the real "Upgrade mastery" button only ever fires at level 100, so this is
-  // the direct way to move the count for testing or a correction, same as level already is.
-  const nudgePrestige = delta => {
-    setBusy(true)
-    adminUserPrestige(u.id, delta).then(() => { load(); onChanged() }).catch(e => toast(e.message)).finally(() => setBusy(false))
-  }
-  // Unlike level/prestige there's no real "streak" stored anywhere to nudge — it's always
-  // recomputed client-side from the user's own workout history (lib/history.js streakDays).
-  // This adjusts streakBonus, added to that real day count wherever it's shown (Home,
-  // /rank) — lets an admin add or remove streak days directly, e.g. to test a streak
-  // badge without hand-crafting weeks of workout history.
-  const nudgeStreak = delta => {
-    setBusy(true)
-    adminUserStreak(u.id, delta).then(() => { load(); onChanged() }).catch(e => toast(e.message)).finally(() => setBusy(false))
-  }
-  // No billing yet — this is the only way an account becomes Pro for now (gates coaching,
-  // prestiging, and the photo-slot floor; see api/server.js publicUser's own comment).
-  const togglePro = () => {
-    setBusy(true)
-    adminUserPro(u.id).then(() => { load(); onChanged() }).catch(e => toast(e.message)).finally(() => setBusy(false))
-  }
-  const rank = u.rank || {}
-  const tier = tierFor(rank.level || 1)
-  return <>
-    <div className="row" style={{ gap: 12, marginBottom: 4 }}>
-      <Avatar name={u.name} avatarUrl={u.avatarUrl} size={52} fontSize={19} />
-      <div className="grow">
-        <h3 className="capitalize" style={{ margin: 0 }}>{u.name}</h3>
-        <div className="small muted">{u.email || '—'}</div>
-      </div>
-    </div>
-    {u.bio && <div className="small" style={{ margin: '8px 0', fontStyle: 'italic', color: 'var(--label-2)' }}>“{u.bio}”</div>}
-    <div className="row" style={{ gap: 6, flexWrap: 'wrap', margin: '8px 0 12px' }}>
-      {(u.employeeTypes || []).map(x => <span key={x} className="tag acc">{x}</span>)}
-      {u.disabled && <span className="tag" style={{ color: 'var(--red)' }}>{t('disabled')}</span>}
-      <span className="tag">{u.public ? t('public profile') : t('private profile')}</span>
-      {u.phone && <span className="tag">{u.phone}</span>}
-      {u.invitedBy && <span className="tag">{t('invite {0}', u.invitedBy)}</span>}
-      <span className="tag">{t('joined {0}', u.created ? fmtDate(u.created.slice(0, 10)) : '—')}</span>
-    </div>
-
-    <div className="small muted" style={{ margin: '0 0 6px' }}>{t('Rank')}</div>
-    <div className="row between" style={{ marginBottom: 12, padding: '8px 10px', background: 'var(--surface-2)', borderRadius: 12 }}>
-      <div className="row" style={{ gap: 8 }}>
-        <RankIcon tier={tier.name} size={30} />
-        {rank.prestige > 0 && <PrestigeIcon level={rank.prestige} size={22} />}
-        <div>
-          <div className="small" style={{ fontWeight: 600 }}>{t('Level {0}', rank.level)} · {tier.name}{rank.prestige > 0 ? ` · ${t('Prestige {0}', rank.prestige)}` : ''}</div>
-          <div className="dim" style={{ fontSize: '.72rem' }}>{t('{0}/{1} XP this level · {2} total', rank.xpInLevel, rank.xpForLevel, rank.totalXp)}{u.adminXpAdjust ? ` (${u.adminXpAdjust > 0 ? '+' : ''}${u.adminXpAdjust} ${t('admin adjust')})` : ''}</div>
-        </div>
-      </div>
-      <div className="row" style={{ gap: 4 }}>
-        <button className="iconbtn" style={{ width: 28, height: 28, borderRadius: 7 }} disabled={busy || rank.level <= 1} onClick={() => nudgeLevel(-1)} aria-label={t('level down')}><Icon name="minus" /></button>
-        <button className="iconbtn" style={{ width: 28, height: 28, borderRadius: 7 }} disabled={busy || rank.level >= 100} onClick={() => nudgeLevel(1)} aria-label={t('level up')}><Icon name="plus" /></button>
-      </div>
-    </div>
-    <div className="row between" style={{ marginBottom: 12, padding: '8px 10px', background: 'var(--surface-2)', borderRadius: 12 }}>
-      <div className="small" style={{ fontWeight: 600 }}>{t('Prestige {0}', rank.prestige || 0)}</div>
-      <div className="row" style={{ gap: 4 }}>
-        <button className="iconbtn" style={{ width: 28, height: 28, borderRadius: 7 }} disabled={busy || (rank.prestige || 0) <= 0} onClick={() => nudgePrestige(-1)} aria-label={t('prestige down')}><Icon name="minus" /></button>
-        <button className="iconbtn" style={{ width: 28, height: 28, borderRadius: 7 }} disabled={busy} onClick={() => nudgePrestige(1)} aria-label={t('prestige up')}><Icon name="plus" /></button>
-      </div>
-    </div>
-    <div className="row between" style={{ marginBottom: 12, padding: '8px 10px', background: 'var(--surface-2)', borderRadius: 12 }}>
-      <div>
-        <div className="small" style={{ fontWeight: 600 }}>{t('Streak days: {0}', realStreak + (u.streakBonus || 0))}</div>
-        <div className="dim" style={{ fontSize: '.72rem' }}>{u.streakBonus ? t('{0} from workouts, {1} admin-added', realStreak, u.streakBonus) : t('From their workout history — add or remove days below')}</div>
-      </div>
-      <div className="row" style={{ gap: 4 }}>
-        <button className="iconbtn" style={{ width: 28, height: 28, borderRadius: 7 }} disabled={busy} onClick={() => nudgeStreak(-1)} aria-label={t('streak down')}><Icon name="minus" /></button>
-        <button className="iconbtn" style={{ width: 28, height: 28, borderRadius: 7 }} disabled={busy} onClick={() => nudgeStreak(1)} aria-label={t('streak up')}><Icon name="plus" /></button>
-      </div>
-    </div>
-
-    <div className="row between" style={{ marginBottom: 12, padding: '8px 10px', background: 'var(--surface-2)', borderRadius: 12 }}>
-      <div className="small" style={{ fontWeight: 600 }}>{t('Pro subscription')}</div>
-      <button className={'chip' + (u.pro ? ' on' : '')} disabled={busy} onClick={togglePro}>{u.pro ? t('Pro') : t('Free')}</button>
-    </div>
-    {/* The three Free-tier caps (5 each) — so an admin can see how close someone actually is
-        before flipping their Pro flag, not just the flag itself. */}
-    <div className="tiles" style={{ textAlign: 'left', marginBottom: 12 }}>
-      <div className="tile"><div className="l">{t('Custom foods')}</div><div className="v" style={{ fontSize: '1.1rem' }}>{d.customFoodsCount}{!u.pro ? '/5' : ''}</div></div>
-      <div className="tile"><div className="l">{t('Saved meals')}</div><div className="v" style={{ fontSize: '1.1rem' }}>{d.savedMealsCount}{!u.pro ? '/5' : ''}</div></div>
-      <div className="tile"><div className="l">{t('Custom exercises')}</div><div className="v" style={{ fontSize: '1.1rem' }}>{d.customExCount}{!u.pro ? '/5' : ''}</div></div>
-    </div>
-
-    <div className="small muted" style={{ margin: '0 0 6px' }}>{t('Employee types')}</div>
-    <div className="row" style={{ gap: 6, flexWrap: 'wrap', marginBottom: 12 }}>
-      {EMPLOYEE_TYPES.map(x => <button key={x} className={'chip' + ((u.employeeTypes || []).includes(x) ? ' on' : '')} onClick={() => toggleEmployeeType(x)}>{x}</button>)}
-    </div>
-    <div className="tiles" style={{ textAlign: 'left' }}>
-      <div className="tile"><div className="l">{t('Workouts')}</div><div className="v" style={{ fontSize: '1.1rem' }}>{d.workouts.length}</div></div>
-      <div className="tile"><div className="l">{t('Weigh-ins')}</div><div className="v" style={{ fontSize: '1.1rem' }}>{d.bodyweight.length}</div></div>
-      <div className="tile"><div className="l">{t('Routines')}</div><div className="v" style={{ fontSize: '1.1rem' }}>{d.routines.length}</div></div>
-      <div className="tile"><div className="l">{t('Last sync')}</div><div className="v" style={{ fontSize: '.95rem' }}>{rel(d.lastSync)}</div></div>
-    </div>
-    {!u.admin && <button className={'btn ' + (u.disabled ? 'primary' : 'danger')} style={{ margin: '12px 0 4px' }}
-      onClick={() => u.disabled ? setDisabled(false)
-        : confirmSheet({ title: t('Disable {0}?', u.name), message: t('They are signed out everywhere and can no longer sync or log in until re-enabled.'), confirmText: t('Disable'), danger: true, onConfirm: () => setDisabled(true) })}>
-      {u.disabled ? t('Enable account') : t('Disable account')}</button>}
-    <h4 className="sec">{t('Workout history')}</h4>
-    {d.workouts.length ? <div className="list" style={{ gap: 0 }}>
-      {d.workouts.slice(0, 60).map(w => <div key={w.id} className="row between" style={{ padding: '9px 2px', borderBottom: '1px solid var(--sep)' }}>
-        <div><div className="small" style={{ fontWeight: 600 }}>{w.name}</div>
-          <div className="dim" style={{ fontSize: '.72rem' }}>{fmtDate(w.d, true)} · {fmtDur((w.end || w.start) - w.start)} · {t('{0} sets', setsDone(w))}{w.prs?.length ? ' · ' + t('{0} PR', w.prs.length) : ''}</div></div>
-        <span className="small muted">{fmtVol(w.vol ?? workoutVolume(w), d.unit)}</span>
-      </div>)}
-    </div> : <div className="empty small">{t('No workouts logged.')}</div>}
-  </>
-}
 
 // Shared as a link, not a bare code — the invited person opens it and lands straight in the
 // register form with the code already filled in (Login.jsx's /join/:code handling).
@@ -230,7 +81,6 @@ export default function AdminUsers() {
   const nav = useNavigate()
   const user = useStore(s => s.user)
   const toast = useUI(s => s.toast)
-  const openSheet = useUI(s => s.openSheet)
   const [users, setUsers] = useState(null)
   const [invites, setInvites] = useState(null)
   const [q, setQ] = useState('')
@@ -240,7 +90,7 @@ export default function AdminUsers() {
   useEffect(() => { if (!user?.admin) return; loadUsers(); loadInvites(); const iv = setInterval(loadUsers, 15000); return () => clearInterval(iv) }, [])
   if (!user?.admin) return null
 
-  const openUser = id => openSheet(close => <UserDetail id={id} onChanged={loadUsers} close={close} />)
+  const openUser = id => nav('/admin/users/' + id)
   const liveUsers = (users || []).filter(u => u.live)
   const activeCount = (users || []).filter(u => u.lastSync && Date.now() - u.lastSync < 7 * 86400000).length
   const disabledCount = (users || []).filter(u => u.disabled).length
@@ -287,14 +137,15 @@ export default function AdminUsers() {
         </tr></thead>
         <tbody>
           {shownUsers.map(u => (
-            <tr key={u.id} className="tap" onClick={() => openUser(u.id)} style={u.disabled ? { opacity: .5 } : null}>
+            <tr key={u.id} className="tap" onClick={() => openUser(u.id)} style={(u.disabled || u.deleted) ? { opacity: .5 } : null}>
               <td>{u.live && <Icon name="dot" style={{ fontSize: 8, color: 'var(--green)', marginRight: 5 }} />}{u.name}</td>
               <td className="dim-cell">{u.email || '—'}</td>
               <td>
                 {u.pro && <span className="tag acc" style={{ marginRight: 4 }}>{t('Pro')}</span>}
                 {(u.employeeTypes || []).map(x => <span key={x} className="tag acc" style={{ marginRight: 4 }}>{x}</span>)}
-                {u.disabled && <span className="tag" style={{ color: 'var(--red)' }}>{t('off')}</span>}
-                {!u.pro && !(u.employeeTypes || []).length && !u.disabled && <span className="dim-cell">—</span>}
+                {u.deleted && <span className="tag" style={{ color: 'var(--red)' }}>{t('deleted')}</span>}
+                {u.disabled && !u.deleted && <span className="tag" style={{ color: 'var(--red)' }}>{t('off')}</span>}
+                {!u.pro && !(u.employeeTypes || []).length && !u.disabled && !u.deleted && <span className="dim-cell">—</span>}
               </td>
               <td className="dim-cell">{u.live ? t('training now') : u.workouts}</td>
               <td className="dim-cell">{u.lastWorkout ? fmtDate(u.lastWorkout) : '—'}</td>

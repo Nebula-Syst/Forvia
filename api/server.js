@@ -1557,6 +1557,23 @@ const routes = {
     json(res, 200, { pro });
   },
 
+  // bio/public still live on forvia-core's own users row (see publicUser()/this file's own
+  // notes elsewhere), but they're Nebula's concern to edit — same patchUser() path POST
+  // .../pro already uses, just two different fields.
+  'POST /api/admin/user/profile': async (req, res) => {
+    const admin = requireAdmin(req, res); if (!admin) return;
+    const body = await readBody(req);
+    const u = await findOrFetchUser(body.id);
+    if (!u) return json(res, 404, { error: 'no such user' });
+    const patch = {};
+    if (body.bio != null) patch.bio = String(body.bio).trim().slice(0, 140);
+    if (body.public != null) patch.public = !!body.public;
+    if (!Object.keys(patch).length) return json(res, 400, { error: 'nothing to change' });
+    patchUser(u.id, patch);
+    audit(req, 'admin.user.profile', { user: admin, target: u, msg: Object.keys(patch).join(',') });
+    json(res, 200, { ok: true, ...patch });
+  },
+
 
   'GET /api/admin/coach-requests': async (req, res) => {
     if (!requireAdmin(req, res)) return;
