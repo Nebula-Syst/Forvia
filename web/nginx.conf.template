@@ -8,10 +8,14 @@
 # NOT listed here still falls through to the general /api/ catch-all at the bottom, unchanged.
 # A handful of paths share a PREFIX across the two services (POST /api/account/badges lives on
 # ${BACKEND}, everything else under /api/account/ is forvia-core's; the four POST /api/admin/
-# user/{level,prestige,pro,streak} nudges live on ${BACKEND}, GET /api/admin/user(s) and POST
-# .../create|disable|employee-types are forvia-core's) — nginx's exact-match (`=`) locations for
-# those four+one paths are what carve the minority back out to ${BACKEND}; without them the
-# broader forvia-core prefix below would silently swallow them.
+# user/{level,prestige,pro,streak} nudges plus GET /api/admin/user/nebula live on ${BACKEND},
+# GET /api/admin/user(s) and POST .../create|disable|employee-types are forvia-core's) — nginx's
+# exact-match (`=`) locations for those five+one paths are what carve the minority back out to
+# ${BACKEND}; without them the broader forvia-core prefix below would silently swallow them (this
+# is exactly what happened to /nebula when it first shipped without its own carve-out: nginx's
+# prefix match for /api/admin/user caught /api/admin/user/nebula too, so every request landed on
+# forvia-core, which has no such route, and returned its own generic 404 instead of ever reaching
+# this service).
 server {
     listen ${NGINX_PORT};
     root /usr/share/nginx/html;
@@ -35,6 +39,7 @@ server {
     location = /api/admin/user/prestige { proxy_pass http://${BACKEND}:${PORT}; }
     location = /api/admin/user/pro { proxy_pass http://${BACKEND}:${PORT}; }
     location = /api/admin/user/streak { proxy_pass http://${BACKEND}:${PORT}; }
+    location = /api/admin/user/nebula { proxy_pass http://${BACKEND}:${PORT}; }
 
     location /api/login { client_max_body_size 9m; proxy_pass http://${CORE_BACKEND}:${CORE_PORT}; }
     location /api/register { client_max_body_size 9m; proxy_pass http://${CORE_BACKEND}:${CORE_PORT}; }
