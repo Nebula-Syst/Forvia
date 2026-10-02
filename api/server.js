@@ -148,6 +148,16 @@ async function fetchAndCacheUser(uid) {
     return user || null;
   } catch (e) { console.error('fetchAndCacheUser failed:', uid, e.message); return null; }
 }
+// Same fallback a session lookup already gets (readSession/req.__user, above) — an admin-targeted
+// id that isn't already warm in this service's own mirror (the mirror only grows lazily, from
+// each session owner's own first request since boot, plus the 20s refreshUsersMirror sweep — a
+// fresh restart starts it empty) used to just 404 a real account instead of fetching it. Every
+// admin route that looks up an explicit target id (as opposed to the caller's own session) uses
+// this instead of a bare db.users.find() now — found via GET /api/admin/user/nebula 404ing for a
+// real, existing account right after this service's own process had just restarted.
+async function findOrFetchUser(id) {
+  return db.users.find(x => x.id === id) || await fetchAndCacheUser(id);
+}
 // This service's only write path onto forvia-core's `users` row: updates the local mirror
 // immediately (so the very next line of the SAME request already sees the new value — every
 // existing call site here used to just mutate the object directly and keep going) and pushes the
@@ -1054,7 +1064,7 @@ const routes = {
   'GET /api/admin/user/nebula': async (req, res) => {
     if (!requireAdmin(req, res)) return;
     const id = new URL(req.url, 'http://x').searchParams.get('id');
-    const u = db.users.find(x => x.id === id);
+    const u = await findOrFetchUser(id);
     if (!u) return json(res, 404, { error: 'no such user' });
     json(res, 200, { user: nebulaMe(u) });
   },
@@ -1463,7 +1473,7 @@ const routes = {
   'POST /api/admin/user/level': async (req, res) => {
     const admin = requireAdmin(req, res); if (!admin) return;
     const body = await readBody(req);
-    const u = db.users.find(x => x.id === body.id);
+    const u = await findOrFetchUser(body.id);
     if (!u) return json(res, 404, { error: 'no such user' });
     const delta = body.delta === -1 ? -1 : 1;
     const before = rankFor(u.id);
@@ -1503,7 +1513,7 @@ const routes = {
   'POST /api/admin/user/prestige': async (req, res) => {
     const admin = requireAdmin(req, res); if (!admin) return;
     const body = await readBody(req);
-    const u = db.users.find(x => x.id === body.id);
+    const u = await findOrFetchUser(body.id);
     if (!u) return json(res, 404, { error: 'no such user' });
     const delta = body.delta === -1 ? -1 : 1;
     const current = u.prestigeConfirmed || 0;
@@ -1521,7 +1531,7 @@ const routes = {
   'POST /api/admin/user/streak': async (req, res) => {
     const admin = requireAdmin(req, res); if (!admin) return;
     const body = await readBody(req);
-    const u = db.users.find(x => x.id === body.id);
+    const u = await findOrFetchUser(body.id);
     if (!u) return json(res, 404, { error: 'no such user' });
     const delta = body.delta === -1 ? -1 : 1;
     const streakBonus = (u.streakBonus || 0) + delta;
@@ -1539,7 +1549,7 @@ const routes = {
   'POST /api/admin/user/pro': async (req, res) => {
     const admin = requireAdmin(req, res); if (!admin) return;
     const body = await readBody(req);
-    const u = db.users.find(x => x.id === body.id);
+    const u = await findOrFetchUser(body.id);
     if (!u) return json(res, 404, { error: 'no such user' });
     const pro = !u.pro;
     patchUser(u.id, { pro });
