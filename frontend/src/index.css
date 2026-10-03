@@ -1885,6 +1885,18 @@ button.class-card:active{background:var(--glass-bg-2);transform:translateY(0)}
   -webkit-backdrop-filter:saturate(var(--glass-sat)) blur(var(--glass-blur));
   border-bottom:1px solid var(--glass-border);
 }
+/* `top` above starts this bar's box right at the safe-area line, not at the literal top of the
+   screen — on native (a real status bar, not a browser viewport) that left a visible seam: the
+   plain body background showed through for the sliver from y=0 to y=var(--sat), then this bar's
+   own (different, darker) background began right at the status bar's edge. This pseudo-element
+   is the same background colour, extended upward to actually sit behind the status bar — a flat
+   fill is enough there (skipping the blur/sheen texture), nothing but OS chrome ever shows
+   through that sliver anyway. Same geometry whether .wsticky is stuck or still in normal flow
+   (#app.notop's own padding-top already equals --sat), so this lines up either way. */
+.wsticky::before{
+  content:'';position:absolute;top:calc(-1 * var(--sat));left:0;right:0;height:var(--sat);
+  background:color-mix(in srgb, var(--surface) 88%, transparent);
+}
 .wprog{height:4px;background:var(--surface-2);border-radius:99px;overflow:hidden;margin-bottom:16px}
 .wprog i{display:block;height:100%;background:var(--acc);border-radius:99px;transition:width var(--med) var(--ease)}
 /* Time / Volume / Sets / muscle map — four glance stats for the session so far, the
