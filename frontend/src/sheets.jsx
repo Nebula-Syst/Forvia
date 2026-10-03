@@ -2701,11 +2701,9 @@ function BarcodeScanSheet({ dateIso, mealKey, close }) {
     <div className="fs-view">
       <button className="iconbtn scan-close" aria-label={t('Cancel')} onPointerDown={e => { e.preventDefault(); close() }}><Icon name="xmark" /></button>
       <h3 className="scan-title">{t('Scan barcode')}</h3>
-      {/* The small top-left icon button above has been unreliable on-device for reasons CSS
-          inspection alone hasn't pinned down (likely the camera <video> compositing oddly on
-          some mobile browsers). This is the same plain Button component used for "Cancel"
-          everywhere else in the app — already proven to register taps reliably — as a large,
-          unmissable, definitely-working way out regardless of what's wrong with the icon one. */}
+      {/* Kept as a second, large, unmissable way to back out even now that .scan-title's
+          pointer-events:none (above) fixed the small icon button's real bug (it was being
+          covered by the full-width title sitting on top of it in the DOM/z-index stack). */}
       <Button variant="ghost" className="scan-cancel-btn" onClick={close}>{t('Cancel')}</Button>
       {torchSupported && <button className={'iconbtn scan-torch' + (torch ? ' on' : '')} aria-label={t('Flash')} onClick={toggleTorch}><Icon name="bolt" /></button>}
       {status === 'error' ? (

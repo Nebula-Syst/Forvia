@@ -2132,7 +2132,11 @@ body.resting .active-pill{bottom:calc(210px + var(--sab))}
 .scan-mask{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;z-index:1;pointer-events:none}
 .scan-dim{position:absolute;inset:0;background:rgba(0,0,0,.55);backdrop-filter:blur(6px) brightness(.45);-webkit-backdrop-filter:blur(6px) brightness(.45);transition:opacity .15s}
 .scan-box{flex:0 0 auto;width:min(80vw,360px);aspect-ratio:2.1/1;border:2px solid rgba(255,255,255,.9);border-radius:18px;box-shadow:0 2px 18px rgba(0,0,0,.5)}
-.scan-title{position:absolute;top:calc(var(--sat) + 18px);left:0;right:0;text-align:center;color:#fff;margin:0;font-size:17px;font-weight:600;text-shadow:0 1px 4px rgba(0,0,0,.6);z-index:2}
+/* pointer-events:none — this spans the full width at the same z-index as .scan-close/.scan-torch
+   and sits after .scan-close in the DOM, so without this it wins the paint order across the
+   button's middle band and only its top/bottom slivers stay clickable. Decorative text never
+   needs to catch clicks anyway. */
+.scan-title{position:absolute;top:calc(var(--sat) + 18px);left:0;right:0;text-align:center;color:#fff;margin:0;font-size:17px;font-weight:600;text-shadow:0 1px 4px rgba(0,0,0,.6);z-index:2;pointer-events:none}
 .scan-hint{flex:0 0 auto;text-align:center;color:rgba(255,255,255,.85);font-size:13px;text-shadow:0 1px 4px rgba(0,0,0,.6);z-index:2}
 .scan-close{position:absolute;top:calc(var(--sat) + 12px);left:14px;background:rgba(0,0,0,.4);color:#fff;border-color:rgba(255,255,255,.25);z-index:2}
 .scan-torch{position:absolute;top:calc(var(--sat) + 12px);right:14px;background:rgba(0,0,0,.4);color:#fff;border-color:rgba(255,255,255,.25);z-index:2}
