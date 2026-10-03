@@ -2592,17 +2592,36 @@ export const editFoodSheet = (dateIso, item) => ui().openSheet(close => <EditFoo
 // the lookup after a hit) against running past an unmount or a hit already handled.
 //
 // Full-bleed camera view (see the 'fullscreen' sheet kind in Modals.jsx) with a rectangular
-// viewfinder in the middle — everything outside it is darkened/blurred (.scan-band) purely for
+// viewfinder in the middle — everything outside it is darkened/blurred (.scan-dim) purely for
 // aim, but the crop below is what actually enforces it: each tick draws only the on-screen box's
 // region into an offscreen canvas (mapping it back to source-video pixel coordinates, since the
 // video is object-fit:cover and its displayed size rarely matches its native resolution) and
 // only THAT gets handed to the detector, so a code has to actually sit inside the box to read,
 // not just be visible anywhere in the wider frame.
+const SCAN_BOX_RADIUS = 18   // kept in sync with .scan-box's own border-radius, index.css
 function BarcodeScanSheet({ dateIso, mealKey, close }) {
   const videoRef = useRef(null)
   const boxRef = useRef(null)
   const canvasRef = useRef(null)
+  const trackRef = useRef(null)
   const [status, setStatus] = useState('starting')
+  const [boxRect, setBoxRect] = useState(null)
+  const [torch, setTorch] = useState(false)
+  const [torchSupported, setTorchSupported] = useState(false)
+  // The dim overlay needs the viewfinder box's own on-screen rect to cut a matching rounded hole
+  // (below) — measured once scanning actually starts (that's when .scan-box first exists and has
+  // its final, laid-out size) and kept current across a rotation/resize.
+  useEffect(() => {
+    if (status !== 'scanning') return
+    const measure = () => { if (boxRef.current) { const r = boxRef.current.getBoundingClientRect(); setBoxRect({ x: r.left, y: r.top, w: r.width, h: r.height }) } }
+    measure()
+    window.addEventListener('resize', measure)
+    return () => window.removeEventListener('resize', measure)
+  }, [status])
+  const toggleTorch = () => {
+    const next = !torch
+    trackRef.current?.applyConstraints({ advanced: [{ torch: next }] }).then(() => setTorch(next)).catch(() => {})
+  }
   useEffect(() => {
     let stream = null, timer = null, stopped = false
     const stop = () => { if (stream) stream.getTracks().forEach(tr => tr.stop()) }
@@ -2613,6 +2632,12 @@ function BarcodeScanSheet({ dateIso, mealKey, close }) {
         if (stopped) { stop(); return }
         videoRef.current.srcObject = stream
         await videoRef.current.play()
+        if (stopped) { stop(); return }
+        // Torch (flash) — Android Chrome/WebView exposes it as a track capability; Safari/iOS
+        // doesn't support it at all, so the button only ever renders when this actually says yes.
+        const track = stream.getVideoTracks()[0]
+        trackRef.current = track
+        try { if (track.getCapabilities?.().torch) setTorchSupported(true) } catch { /* no capability API */ }
         setStatus('scanning')
         const canvas = canvasRef.current
         const ctx = canvas.getContext('2d')
@@ -2659,6 +2684,19 @@ function BarcodeScanSheet({ dateIso, mealKey, close }) {
     start()
     return () => { stopped = true; if (timer) clearTimeout(timer); stop() }
   }, [])
+  // The dim/blur overlay is one full-screen layer with a rounded-rect hole cut out via
+  // clip-path(path) at the box's exact live position — not four separate rectangles sandwiched
+  // around the box (the old approach): those were each sharp-cornered, so .scan-box's own rounded
+  // corners sat in a square notch between them, with a sliver of un-dimmed video poking through
+  // as a little "spike" at each corner. A single clip-path path (outer full-screen rect, inner
+  // rounded rect cut out via the even-odd fill rule) can't have that mismatch — it's the same
+  // shape, same radius, one path. -webkit- prefixed too: this is Capacitor's Android WebView and
+  // possibly iOS Safari (if this sheet is ever reached from there), not just desktop Chrome.
+  const dimClip = boxRect && (() => {
+    const { x, y, w, h } = boxRect, r = SCAN_BOX_RADIUS, x2 = x + w, y2 = y + h
+    const vw = window.innerWidth, vh = window.innerHeight
+    return `path(evenodd, "M0,0 H${vw} V${vh} H0 Z M${x + r},${y} H${x2 - r} A${r},${r} 0 0 1 ${x2},${y + r} V${y2 - r} A${r},${r} 0 0 1 ${x2 - r},${y2} H${x + r} A${r},${r} 0 0 1 ${x},${y2 - r} V${y + r} A${r},${r} 0 0 1 ${x + r},${y} Z")`
+  })()
   return (
     <div className="fs-view">
       <button className="iconbtn scan-close" aria-label={t('Cancel')} onPointerDown={e => { e.preventDefault(); close() }}><Icon name="xmark" /></button>
@@ -2669,22 +2707,29 @@ function BarcodeScanSheet({ dateIso, mealKey, close }) {
           everywhere else in the app — already proven to register taps reliably — as a large,
           unmissable, definitely-working way out regardless of what's wrong with the icon one. */}
       <Button variant="ghost" className="scan-cancel-btn" onClick={close}>{t('Cancel')}</Button>
+      {torchSupported && <button className={'iconbtn scan-torch' + (torch ? ' on' : '')} aria-label={t('Flash')} onClick={toggleTorch}><Icon name="bolt" /></button>}
       {status === 'error' ? (
         <div className="empty" style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', padding: '0 24px', textAlign: 'center' }}>
           {t('Could not access the camera.')}
         </div>
       ) : <>
-        <video ref={videoRef} muted playsInline className="scan-video" />
+        {/* Hidden (not unmounted — the ref has to exist for getUserMedia to attach to it) until
+            play() has actually resolved. Rendering it visible from the first paint used to show
+            whatever a mobile browser falls back to for a <video> with no frames decoded yet (a
+            blank/white frame with a native play glyph on some WebViews) for however long the
+            camera takes to actually start — a real, ugly wait either way, just an invisible one
+            now instead of a broken-looking one. */}
+        <video ref={videoRef} muted playsInline className="scan-video" style={{ visibility: status === 'scanning' ? 'visible' : 'hidden' }} />
+        {status === 'starting' && (
+          <div className="scan-loading">
+            <span className="scan-spinner" aria-hidden />
+            <span>{t('Starting camera…')}</span>
+          </div>
+        )}
         <div className="scan-mask">
-          <div className="scan-band" />
-          <div className="scan-mid">
-            <div className="scan-band" />
-            <div className="scan-box" ref={boxRef} />
-            <div className="scan-band" />
-          </div>
-          <div className="scan-band">
-            <div className="scan-hint">{t('Line up the barcode inside the box')}</div>
-          </div>
+          <div className="scan-dim" style={dimClip ? { clipPath: dimClip, WebkitClipPath: dimClip } : { opacity: 0 }} />
+          <div className="scan-box" ref={boxRef} />
+          <div className="scan-hint">{t('Line up the barcode inside the box')}</div>
         </div>
       </>}
       <canvas ref={canvasRef} style={{ display: 'none' }} />

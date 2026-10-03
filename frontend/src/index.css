@@ -2122,20 +2122,28 @@ body.resting .active-pill{bottom:calc(210px + var(--sab))}
 #modal-root.open{display:block}
 .fs-view{position:absolute;inset:0;background:#000;overflow:hidden}
 
-/* Barcode scanner viewfinder — a full-bleed camera feed with a rectangular hole in the middle.
-   The "hole" is just the plain .scan-box sitting in the flex flow with nothing applied to it;
-   the 4 bands around it (top/bottom full-width, left/right only alongside the box) each blur
-   and darken the same live video showing through underneath, which is what actually reads as
-   "everything outside the box is masked off" without touching the box's own content. */
+/* Barcode scanner viewfinder — a full-bleed camera feed with a rounded rectangular hole in the
+   middle. .scan-dim is ONE layer covering the whole screen, with the hole cut via clip-path
+   (computed in JS from .scan-box's own live position/radius) instead of 4 separate rectangles
+   sandwiched around the box — that older approach had sharp-cornered bands meeting a rounded
+   box, leaving a little un-dimmed "spike" of video poking through at each corner. .scan-box
+   itself now only draws the white border/shadow; the dimming is entirely .scan-dim's job. */
 .scan-video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;z-index:0}
-.scan-mask{position:absolute;inset:0;display:flex;flex-direction:column;z-index:1;pointer-events:none}
-.scan-band{position:relative;flex:1 1 auto;background:rgba(0,0,0,.55);backdrop-filter:blur(6px) brightness(.45);-webkit-backdrop-filter:blur(6px) brightness(.45)}
-.scan-mid{flex:0 0 auto;display:flex}
+.scan-mask{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;z-index:1;pointer-events:none}
+.scan-dim{position:absolute;inset:0;background:rgba(0,0,0,.55);backdrop-filter:blur(6px) brightness(.45);-webkit-backdrop-filter:blur(6px) brightness(.45);transition:opacity .15s}
 .scan-box{flex:0 0 auto;width:min(80vw,360px);aspect-ratio:2.1/1;border:2px solid rgba(255,255,255,.9);border-radius:18px;box-shadow:0 2px 18px rgba(0,0,0,.5)}
 .scan-title{position:absolute;top:calc(var(--sat) + 18px);left:0;right:0;text-align:center;color:#fff;margin:0;font-size:17px;font-weight:600;text-shadow:0 1px 4px rgba(0,0,0,.6);z-index:2}
-.scan-hint{position:absolute;top:16px;left:0;right:0;text-align:center;color:rgba(255,255,255,.85);font-size:13px;text-shadow:0 1px 4px rgba(0,0,0,.6)}
+.scan-hint{flex:0 0 auto;text-align:center;color:rgba(255,255,255,.85);font-size:13px;text-shadow:0 1px 4px rgba(0,0,0,.6);z-index:2}
 .scan-close{position:absolute;top:calc(var(--sat) + 12px);left:14px;background:rgba(0,0,0,.4);color:#fff;border-color:rgba(255,255,255,.25);z-index:2}
+.scan-torch{position:absolute;top:calc(var(--sat) + 12px);right:14px;background:rgba(0,0,0,.4);color:#fff;border-color:rgba(255,255,255,.25);z-index:2}
+.scan-torch.on{background:rgba(255,200,60,.85);color:#1c1c1e;border-color:transparent}
 .scan-cancel-btn{position:absolute;left:18px;right:18px;bottom:calc(24px + var(--sab));z-index:2;background:rgba(20,20,20,.7);color:#fff;border-color:rgba(255,255,255,.3)}
+/* Shown in place of the camera feed while getUserMedia()/play() are still resolving — covers
+   the native "blank frame with a play glyph" flash some WebViews show before the first frame
+   decodes; the user explicitly preferred a slightly longer wait over seeing that. */
+.scan-loading{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;color:rgba(255,255,255,.85);font-size:14px;z-index:1}
+.scan-spinner{width:34px;height:34px;border-radius:50%;border:3px solid rgba(255,255,255,.25);border-top-color:#fff;animation:scan-spin .8s linear infinite}
+@keyframes scan-spin{to{transform:rotate(360deg)}}
 .mback{
   position:absolute;inset:0;background:rgba(0,0,0,.4);
   backdrop-filter:blur(2px);-webkit-backdrop-filter:blur(2px);

@@ -6,6 +6,8 @@ export default {
   'Could not access the camera.': 'No se pudo acceder a la cámara.',
   'Product not found — try search instead': 'Producto no encontrado — prueba a buscarlo',
   'Line up the barcode inside the box': 'Encuadra el código de barras dentro del recuadro',
+  'Starting camera…': 'Iniciando cámara…',
+  'Flash': 'Flash',
   'Subscription': 'Suscripción',
   'Plans, coming soon': 'Planes, próximamente',
   'Free today, for everyone. Paid plans and what they unlock are on their way.': 'Gratis hoy, para todos. Los planes de pago y lo que incluirán están en camino.',
