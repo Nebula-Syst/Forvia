@@ -2620,7 +2620,11 @@ function BarcodeScanSheet({ dateIso, mealKey, close }) {
   }, [status])
   const toggleTorch = () => {
     const next = !torch
-    trackRef.current?.applyConstraints({ advanced: [{ torch: next }] }).then(() => setTorch(next)).catch(() => {})
+    // getCapabilities().torch (below) is known to under-report on real Android WebViews — a
+    // device can pass the facingMode-based guess, show the button, and still have the actual
+    // hardware control fail here. When that happens, hide the button rather than leave a
+    // broken toggle on screen for the rest of the scan.
+    trackRef.current?.applyConstraints({ advanced: [{ torch: next }] }).then(() => setTorch(next)).catch(() => setTorchSupported(false))
   }
   useEffect(() => {
     let stream = null, timer = null, stopped = false
@@ -2633,11 +2637,21 @@ function BarcodeScanSheet({ dateIso, mealKey, close }) {
         videoRef.current.srcObject = stream
         await videoRef.current.play()
         if (stopped) { stop(); return }
-        // Torch (flash) — Android Chrome/WebView exposes it as a track capability; Safari/iOS
-        // doesn't support it at all, so the button only ever renders when this actually says yes.
+        // Torch (flash) support detection. getCapabilities().torch is the correct, spec'd way to
+        // ask — but real-world Android WebViews are inconsistent about actually reporting it even
+        // on phones whose flash genuinely works via applyConstraints; relying on it alone meant
+        // the button silently never appeared at all on a real device. Safari/iOS never reports
+        // torch at all (and never actually supports it), so a 'torch' in caps === false there is
+        // trustworthy; it's specifically Android's silent omission (`'torch' in caps` is false,
+        // not "false") this guesses around, using "did we actually get the rear camera" as the
+        // signal instead — toggleTorch's own catch (above) hides the button if that guess is wrong.
         const track = stream.getVideoTracks()[0]
         trackRef.current = track
-        try { if (track.getCapabilities?.().torch) setTorchSupported(true) } catch { /* no capability API */ }
+        try {
+          const caps = track.getCapabilities?.() || {}
+          if ('torch' in caps) setTorchSupported(!!caps.torch)
+          else setTorchSupported(track.getSettings?.().facingMode === 'environment')
+        } catch { /* no capability API at all — leave torchSupported false */ }
         setStatus('scanning')
         const canvas = canvasRef.current
         const ctx = canvas.getContext('2d')
@@ -2701,10 +2715,6 @@ function BarcodeScanSheet({ dateIso, mealKey, close }) {
     <div className="fs-view">
       <button className="iconbtn scan-close" aria-label={t('Cancel')} onPointerDown={e => { e.preventDefault(); close() }}><Icon name="xmark" /></button>
       <h3 className="scan-title">{t('Scan barcode')}</h3>
-      {/* Kept as a second, large, unmissable way to back out even now that .scan-title's
-          pointer-events:none (above) fixed the small icon button's real bug (it was being
-          covered by the full-width title sitting on top of it in the DOM/z-index stack). */}
-      <Button variant="ghost" className="scan-cancel-btn" onClick={close}>{t('Cancel')}</Button>
       {torchSupported && <button className={'iconbtn scan-torch' + (torch ? ' on' : '')} aria-label={t('Flash')} onClick={toggleTorch}><Icon name="bolt" /></button>}
       {status === 'error' ? (
         <div className="empty" style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', padding: '0 24px', textAlign: 'center' }}>

@@ -2141,7 +2141,6 @@ body.resting .active-pill{bottom:calc(210px + var(--sab))}
 .scan-close{position:absolute;top:calc(var(--sat) + 12px);left:14px;background:rgba(0,0,0,.4);color:#fff;border-color:rgba(255,255,255,.25);z-index:2}
 .scan-torch{position:absolute;top:calc(var(--sat) + 12px);right:14px;background:rgba(0,0,0,.4);color:#fff;border-color:rgba(255,255,255,.25);z-index:2}
 .scan-torch.on{background:rgba(255,200,60,.85);color:#1c1c1e;border-color:transparent}
-.scan-cancel-btn{position:absolute;left:18px;right:18px;bottom:calc(24px + var(--sab));z-index:2;background:rgba(20,20,20,.7);color:#fff;border-color:rgba(255,255,255,.3)}
 /* Shown in place of the camera feed while getUserMedia()/play() are still resolving — covers
    the native "blank frame with a play glyph" flash some WebViews show before the first frame
    decodes; the user explicitly preferred a slightly longer wait over seeing that. */
