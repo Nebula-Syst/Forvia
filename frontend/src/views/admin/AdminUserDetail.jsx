@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useUI } from '../../store/useUI.js'
-import { api, adminSetEmployeeTypes, adminUserLevel, adminUserPrestige, adminUserStreak, adminUserPro, adminUserEdit, adminUserProfile, adminUserDelete, adminUserRestore } from '../../lib/api.js'
+import { api, adminSetEmployeeTypes, adminUserLevel, adminUserPrestige, adminUserStreak, adminUserPro, adminUserEdit, adminUserProfile, adminUserDelete, adminUserRestore, adminUserResetPassword } from '../../lib/api.js'
 import { fmtDate, fmtVol, fmtDur } from '../../lib/format.js'
 import { workoutVolume, setsDone, streakDays } from '../../lib/history.js'
 import { confirmSheet } from '../../sheets.jsx'
@@ -114,6 +114,19 @@ export default function AdminUserDetail() {
     onConfirm: () => adminUserDelete(u.id).then(() => { toast(t('Account deleted')); load() }).catch(e => toast(e.message)),
   })
   const doRestore = () => adminUserRestore(u.id).then(() => { toast(t('Account restored')); load() }).catch(e => toast(e.message))
+  // The only account-recovery path on an instance with no SMTP configured (forgot-password
+  // can't email a link there) — reported missing alongside the self-service flow. The new
+  // password is shown exactly once, copied to the clipboard for relaying to the account
+  // holder out of band, and never stored or displayed again after this.
+  const doResetPassword = () => confirmSheet({
+    title: t('Reset {0}’s password?', u.name),
+    message: t('Generates a new password and signs them out everywhere. You’ll see it once here to pass on to them.'),
+    confirmText: t('Reset password'), danger: true,
+    onConfirm: () => adminUserResetPassword(u.id).then(pw => {
+      navigator.clipboard?.writeText(pw).catch(() => {})
+      toast(t('New password (copied): {0}', pw))
+    }).catch(e => toast(e.message)),
+  })
 
   return <div className="narrow">
     <div className="hdr">
@@ -247,6 +260,13 @@ export default function AdminUserDetail() {
           </div>
           <button className="btn danger sm" onClick={() => u.disabled ? setDisabled(false) : doSuspend()}>{u.disabled ? t('Re-enable') : t('Suspend')}</button>
         </div>
+        {!u.deleted && <div className="row between" style={{ gap: 14, flexWrap: 'wrap', paddingBottom: 14, borderBottom: '1px solid color-mix(in srgb,var(--red) 22%,transparent)', marginBottom: 14 }}>
+          <div style={{ maxWidth: 440 }}>
+            <div className="small" style={{ fontWeight: 600 }}>{t('Reset password')}</div>
+            <div className="dim small">{t("For when they can't get back in on their own — generates a new password and signs them out everywhere.")}</div>
+          </div>
+          <button className="btn danger sm" onClick={doResetPassword}>{t('Reset password')}</button>
+        </div>}
         <div className="row between" style={{ gap: 14, flexWrap: 'wrap' }}>
           <div style={{ maxWidth: 440 }}>
             <div className="small" style={{ fontWeight: 600 }}>{u.deleted ? t('Restore account') : t('Delete account')}</div>

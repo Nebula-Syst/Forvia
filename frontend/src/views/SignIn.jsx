@@ -56,6 +56,12 @@ export default function SignIn() {
         <input className="input" type="password" autoComplete="current-password" placeholder={t('Password')} value={pw}
           onChange={e => setPw(e.target.value)} onKeyDown={e => e.key === 'Enter' && go()} />
       </div>
+      <div className="entrance-in" style={{ '--d': '75ms', textAlign: 'right', marginTop: 8 }}>
+        <button onClick={() => nav('/login/forgot-password')}
+          style={{ background: 'none', border: 'none', padding: 0, color: 'var(--label-2)', textDecoration: 'underline', font: 'inherit', fontSize: 13, cursor: 'pointer' }}>
+          {t('Forgot password?')}
+        </button>
+      </div>
       <div style={{ height: 18 }} />
       <div className="entrance-actions entrance-in" style={{ '--d': '100ms' }}>
         <Button variant="primary" onClick={go} disabled={busy}>{t('Sign in')}</Button>

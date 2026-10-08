@@ -23,6 +23,8 @@ import LevelUpRevealTrigger from './components/LevelUpReveal.jsx'
 import Login from './views/Login.jsx'
 import SignIn from './views/SignIn.jsx'
 import CreateAccount from './views/CreateAccount.jsx'
+import ForgotPassword from './views/ForgotPassword.jsx'
+import ResetPassword from './views/ResetPassword.jsx'
 import Terms from './views/legal/Terms.jsx'
 import Privacy from './views/legal/Privacy.jsx'
 import Cookies from './views/legal/Cookies.jsx'
@@ -200,7 +202,9 @@ function Shell() {
       <div id="app" className={'vfade' + (loc.pathname === '/workout' && S.active ? ' notop' : '')} key={loc.pathname}>
         <ErrorBoundary>
           {loc.pathname === '/legal/terms' ? <Terms /> : loc.pathname === '/legal/privacy' ? <Privacy /> : loc.pathname === '/legal/cookies' ? <Cookies /> : loc.pathname === '/legal/licenses' ? <Licenses /> : !authed ? (
-            loc.pathname === '/login/signin' ? <SignIn /> : loc.pathname === '/login/register' ? <CreateAccount /> : <Login />
+            loc.pathname === '/login/signin' ? <SignIn /> : loc.pathname === '/login/register' ? <CreateAccount />
+              : loc.pathname === '/login/forgot-password' ? <ForgotPassword /> : loc.pathname === '/login/reset-password' ? <ResetPassword />
+              : <Login />
           ) : (
             <Routes>
               <Route path="/home" element={<Home />} />

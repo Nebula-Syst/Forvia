@@ -394,13 +394,18 @@ export function streakDays(S) {
 
 /**
  * Cascade a weight change forward: following sets of the same warm-up flag that are still
- * undone take the new value (null deletes the key). Done sets are never rewritten.
+ * undone take the new value (null deletes the key). Done sets are never rewritten, and
+ * neither is a set the user has directly typed a weight into themselves (wManual) — without
+ * that, editing set 1 after already setting set 3 to a different number (a drop set, a
+ * pyramid) silently stomped set 3 back to set 1's value on every keystroke, with no way to
+ * make it stick (reported by a tester). Only a *direct* edit sets wManual — see setField in
+ * views/Workout.jsx, the cascade's own writes never do.
  */
 export function cascadeWeight(rows, from, value) {
   const warm = isWarmupRow(rows[from])
   const next = rows.slice()
   for (let j = from + 1; j < next.length; j++) {
-    if (isWarmupRow(next[j]) === warm && !next[j].done) {
+    if (isWarmupRow(next[j]) === warm && !next[j].done && !next[j].wManual) {
       if (value == null) delete next[j].w
       else next[j].w = value
     }

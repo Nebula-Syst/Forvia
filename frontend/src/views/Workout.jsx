@@ -479,8 +479,13 @@ function ActiveWorkout() {
   const setField = (idx, i, field, v) => mutEntry(idx, e => {
     if (v == null) delete e.sets[i][field]; else e.sets[i][field] = v
     // Changing a weight cascades to the following sets of the same phase, so a
-    // heavier bar carries through the set instead of retyping every row.
+    // heavier bar carries through the set instead of retyping every row — but a set the
+    // user has typed into directly (wManual) is excluded from that cascade (see
+    // cascadeWeight in lib/history.js), so a drop set or pyramid sticks once set instead of
+    // getting stomped back by the next edit to an earlier row. Clearing the field (v == null)
+    // drops wManual too, same as the field itself, so it goes back to inheriting cascades.
     if (field === 'w') {
+      if (v == null) delete e.sets[i].wManual; else e.sets[i].wManual = true
       e.sets = cascadeWeight(e.sets, i, v)
     }
   })

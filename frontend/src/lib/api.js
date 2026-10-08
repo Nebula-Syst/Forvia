@@ -39,6 +39,13 @@ export async function passwordRegister(name, email, password, code) {
   const res = await api('/api/register', { method: 'POST', body: JSON.stringify({ name, email, password, code: code || '' }) })
   return res.user
 }
+// Always resolves — the backend answers the same way whether or not the email matches an
+// account, on purpose, so this can't be used to check who has one.
+export const forgotPassword = email => api('/api/account/forgot-password', { method: 'POST', body: JSON.stringify({ email }) })
+export async function resetPassword(token, password) {
+  const res = await api('/api/account/reset-password', { method: 'POST', body: JSON.stringify({ token, password }) })
+  return res.user
+}
 /* ---------- account ---------- */
 // Takes {firstName, lastName} — see api/server.js POST /api/account/name for why (name
 // alone can't be un-split from a compound given name, so the two parts are the real payload).
@@ -97,6 +104,9 @@ export const adminUserEdit = (id, patch) => api('/api/admin/user/edit', { method
 export const adminUserProfile = (id, patch) => api('/api/admin/user/profile', { method: 'POST', body: JSON.stringify({ id, ...patch }) })
 export const adminUserDelete = id => api('/api/admin/user/delete', { method: 'POST', body: JSON.stringify({ id }) })
 export const adminUserRestore = id => api('/api/admin/user/restore', { method: 'POST', body: JSON.stringify({ id }) })
+// Returns the new password exactly once — the admin relays it to the account holder out of
+// band, it's never stored or shown again.
+export const adminUserResetPassword = id => api('/api/admin/user/reset-password', { method: 'POST', body: JSON.stringify({ id }) }).then(r => r.password)
 
 /* ---------- exercise name overrides ---------- */
 export const exerciseOverrides = () => api('/api/exercises/overrides').then(r => r.overrides)

@@ -314,6 +314,10 @@ function EffortCard({ S }) {
 export default function Stats() {
   const S = useStore(s => s.S)
   const [range, setRange] = useState(90)
+  // Its own state, not a reuse of `range` above — Body weight and Body measurements are two
+  // separate charts with two separate Segmented controls; sharing one variable meant moving
+  // either one's time-range filter silently moved the other's too (reported by a tester).
+  const [measureRange, setMeasureRange] = useState(90)
   const [measureZone, setMeasureZone] = useState(MEASURE_ZONES[0])
   const [exId, setExId] = useState(null)
   const [exMetric, setExMetric] = useState('top')
@@ -331,7 +335,7 @@ export default function Stats() {
   // defaulting to the most-trained exercise rather than an arbitrary first entry.
   const measuredZones = MEASURE_ZONES.filter(z => (S.measurements || []).some(m => m.values?.[z] != null))
   const curZone = measuredZones.includes(measureZone) ? measureZone : (measuredZones[0] || measureZone)
-  const measurePts = pointsFor(S, curZone, range === 0 ? 0 : now - range * 86400000)
+  const measurePts = pointsFor(S, curZone, measureRange === 0 ? 0 : now - measureRange * 86400000)
   const measureLoad = bestZonesLoad(S)
   const workouts = S.workouts
   const monthW = workouts.filter(w => String(w.d || '').slice(0, 7) === todayISO().slice(0, 7)).length
@@ -478,7 +482,7 @@ export default function Stats() {
           <SelectRow title={zoneLabel(curZone)} sheetTitle={t('Body measurements')} value={curZone} onChange={setMeasureZone} hideValue
             options={MEASURE_ZONES.map(z => ({ value: z, label: zoneLabel(z) }))} />
         </div>
-        <Segmented className="seg-range" value={range} onChange={setRange}
+        <Segmented className="seg-range" value={measureRange} onChange={setMeasureRange}
           options={[{ value: 30, label: '1M' }, { value: 90, label: '3M' }, { value: 365, label: '1Y' }, { value: 0, label: t('All') }]} />
         <div className="chart"><LineChart points={measurePts} h={160} unit="cm" /></div>
 
