@@ -1610,6 +1610,7 @@ export default {
   "Copy": "Copiar",
   "Assign": "Asignar",
   "Assign to": "Asignar a",
+  "Assign to {0}": "Asignar a {0}",
   "Whole box": "Todo el box",
   "Pick a routine": "Elige una rutina",
   "Routine assigned": "Rutina asignada",

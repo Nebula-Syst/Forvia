@@ -47,25 +47,26 @@ export default function CoachClients() {
       <h1 className="hdr-sub" style={{ margin: 0 }}>{t('Clients')}</h1>
     </div>
 
-    <Section title={t('Requests')} footer={requests?.length ? t('{0} awaiting review', requests.length) : null}>
-      {!requests?.length ? (
-        <div className="muted small">{t('No pending requests.')}</div>
-      ) : (
+    {/* Only ever rendered when there's something to review — an empty Section here was just a
+        bare one-line pill with nothing to anchor it, unlike CoachBoxes.jsx's own box-requests
+        Section (which always has its "Request a box" button to give the card real height). */}
+    {!!requests?.length && (
+      <Section title={t('Requests')} footer={t('{0} awaiting review', requests.length)}>
         <div className="lrow-list">
           {requests.map(r => (
             <div key={r.id} className="lrow">
               <Avatar name={r.athlete.name} avatarUrl={r.athlete.avatarUrl} size={34} />
               <span className="lrow-m">
                 <span className="lrow-t">{r.athlete.name}</span>
-                <span className="lrow-s">@{r.athlete.username}</span>
+                {r.athlete.username && <span className="lrow-s">@{r.athlete.username}</span>}
               </span>
               <Button size="sm" variant="primary" onClick={() => approve(r)}>{t('Approve')}</Button>
               <button className="iconbtn" style={{ width: 28, height: 28, borderRadius: 7, fontSize: 13, color: 'var(--red)', marginLeft: 4 }} onClick={() => dismiss(r)} aria-label={t('dismiss')}><Icon name="xmark" /></button>
             </div>
           ))}
         </div>
-      )}
-    </Section>
+      </Section>
+    )}
 
     {!clients ? <div className="muted small">{t('Loading…')}</div> : !clients.length ? (
       <div className="empty"><div className="ico"><Icon name="person" /></div>{t('No clients yet — approve a request above, or wait for one from the marketplace.')}</div>
@@ -92,10 +93,12 @@ export default function CoachClients() {
                 <Avatar name={m.name} avatarUrl={m.avatarUrl} size={34} />
                 <span className="lrow-m">
                   <span className="lrow-t"><span className={'roster-dot' + (m.thisWeek > 0 ? ' on' : '')} />{m.name}</span>
-                  <span className="lrow-s">@{m.username}{m.streakDays > 0 ? ` · ${t('{0} day streak', m.streakDays)}` : ''}</span>
+                  {(m.username || m.streakDays > 0) && <span className="lrow-s">
+                    {m.username ? '@' + m.username : ''}{m.username && m.streakDays > 0 ? ' · ' : ''}{m.streakDays > 0 ? t('{0} day streak', m.streakDays) : ''}
+                  </span>}
                 </span>
               </button>
-              <button className="iconbtn" style={{ color: 'var(--red)' }} onClick={() => remove(m)} aria-label={t('Remove')}><Icon name="xmark" /></button>
+              <button className="iconbtn" style={{ width: 28, height: 28, borderRadius: 7, fontSize: 13, color: 'var(--red)' }} onClick={() => remove(m)} aria-label={t('Remove')}><Icon name="xmark" /></button>
             </div>
           ))}
         </div>
