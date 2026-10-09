@@ -1,6 +1,10 @@
 /* Forvia's own override layer on top of the vendored shared/style.css — not part of upstream
-   OpenGames (see NOTICE.md). Loaded after it on every game page. Three jobs:
-   1. Dark palette matching Forvia's own default theme instead of the games' light cream default.
+   OpenGames (see NOTICE.md). Loaded after it on every game page. Jobs:
+   1. Dark palette + the SAME glowing-gradient background and glass-card surfaces the rest of
+      Forvia uses (index.css's own `body` background and `.card`/`.iconbtn` recipes, reproduced
+      here since this is a separate document an iframe can't inherit CSS custom properties from)
+      — a flat dark color read as "a different, cheaper-looking product bolted on", not the same
+      app, even once it stopped being white.
    2. Bigger touch targets for the D-pad / toolbar buttons.
    3. Hide the in-game fullscreen toggle — every game page is already forced into its own
       `is-focused` immersive layout (body class set directly in each index.html), which is what
@@ -18,23 +22,52 @@
   --orange: #a3e635; /* focus ring */
   --accent: #a3e635;
   --tint: #11140c;
+  /* Forvia's own glass tokens (index.css) — a flat subset, this file has no theme switching. */
+  --glass-bg: rgba(28, 28, 30, .56);
+  --glass-bg-2: rgba(44, 44, 46, .62);
+  --glass-border: rgba(255, 255, 255, .2);
+  --glass-sheen: linear-gradient(155deg, rgba(255, 255, 255, .16), transparent 45%);
+  --shadow-sm: 0 2px 8px -2px rgba(0, 0, 0, .25), inset 0 1px 0 rgba(255, 255, 255, .05);
+  --shadow-md: 0 10px 30px -8px rgba(0, 0, 0, .4), inset 0 1px 0 rgba(255, 255, 255, .05);
 }
 /* Every game individually re-pins --accent/--tint (shared/style.css's own
    [data-game="…"] rules) — override all of them to the same brand green instead of each
    game's own distinct accent, so the app reads as one consistent product, not four. */
 .game-page[data-game] { --accent: #a3e635; --tint: #11140c; }
 
+/* The actual painted background — shared/style.css's `.is-focused` rule puts this flat --tint
+   fill directly on <body>, covering everything underneath it (including :root's own background
+   below), so this is the one declaration that has to carry the glow, not :root. Same four-glow
+   recipe as index.css's own `body`, same lime accent, same pure-black base — not an approximation. */
+.game-page.is-focused {
+  background:
+    radial-gradient(1400px 1000px at 8% -5%, rgba(163, 230, 53, .38), transparent 62%),
+    radial-gradient(1300px 950px at 96% 14%, rgba(163, 230, 53, .26), transparent 64%),
+    radial-gradient(1500px 1100px at 40% 105%, rgba(163, 230, 53, .24), transparent 60%),
+    radial-gradient(1200px 900px at 100% 100%, rgba(163, 230, 53, .16), transparent 60%),
+    #000000;
+}
+
 button, .button { background: transparent; }
 button:hover, .button:hover { background: rgba(255, 255, 255, .08); }
 button.primary, .button.primary { background: var(--accent); color: #0a0d06; border-color: var(--accent); }
 button.primary:hover, .button.primary:hover { background: #b6f24a; }
-.icon-button:hover { background: rgba(255, 255, 255, .08); }
 .difficulty { background: rgba(255, 255, 255, .06); }
 .difficulty button[aria-pressed="true"] { background: #1c1f14; box-shadow: none; }
-.dpad button { background: rgba(255, 255, 255, .08); }
-.overlay { background: rgba(0, 0, 0, .88); }
-.settings-content { box-shadow: 0 8px 30px rgba(0, 0, 0, .5); }
-.play-area { border-color: rgba(255, 255, 255, .12); }
+.overlay { background: rgba(0, 0, 0, .78); backdrop-filter: blur(8px); }
+
+/* Glass surfaces — same recipe as Forvia's own .card/.iconbtn: translucent + blurred + a soft
+   diagonal sheen + a hairline border + a gentle shadow, instead of a flat solid fill. */
+.play-area, .settings-content, .is-focused .stats, .is-focused .game-toolbar button, .is-focused summary, .is-focused .dpad button {
+  background: var(--glass-bg);
+  background-image: var(--glass-sheen);
+  backdrop-filter: saturate(180%) blur(20px);
+  -webkit-backdrop-filter: saturate(180%) blur(20px);
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--shadow-sm);
+}
+.play-area { box-shadow: var(--shadow-md); }
+.icon-button:hover, .dpad button:hover { background: var(--glass-bg-2); }
 
 /* Bigger touch targets — the vendored default is 44px throughout; this project asked for
    noticeably larger. Keeps the same grid math (3 columns × fixed size) the D-pad relies on. */
