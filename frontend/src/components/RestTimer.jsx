@@ -2,6 +2,8 @@ import { useEffect } from 'react'
 import { useUI } from '../store/useUI.js'
 import { t } from '../lib/i18n.js'
 import { Button } from './ui.jsx'
+import GamesPicker from './GamesPicker.jsx'
+import { playGame } from '../sheets.jsx'
 
 function formatClock(totalSeconds) {
   const minutes = Math.floor(totalSeconds / 60)
@@ -62,6 +64,9 @@ export default function RestTimer() {
         <Button size="sm" icon="plus" onClick={() => addRest(15)}>15s</Button>
         <Button size="sm" variant="primary" className="skip" onClick={stopRest}>{t('Skip')}</Button>
       </div>
+      {/* The moment rest starts, the option to play is already right here — no extra tap to
+          "find" it (confirmed design: inline, not a discreet prompt button). */}
+      <GamesPicker compact onPick={playGame} />
     </div>
   )
 }

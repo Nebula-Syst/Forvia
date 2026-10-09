@@ -39,6 +39,7 @@ import Workout, { WorkoutStartActions } from './views/Workout.jsx'
 import Stats from './views/Stats.jsx'
 import History from './views/History.jsx'
 import Library from './views/Library.jsx'
+import GamesCatalog from './views/GamesCatalog.jsx'
 import Settings from './views/Settings.jsx'
 import SettingsAccount from './views/settings/SettingsAccount.jsx'
 import SettingsProfile from './views/settings/SettingsProfile.jsx'
@@ -218,6 +219,7 @@ function Shell() {
               <Route path="/stats" element={<Stats />} />
               <Route path="/history" element={<History />} />
               <Route path="/library" element={<Library />} />
+              <Route path="/games" element={<GamesCatalog />} />
               <Route path="/settings" element={<Settings />} />
               <Route path="/settings/account" element={<SettingsAccount />} />
               <Route path="/settings/profile" element={<SettingsProfile />} />

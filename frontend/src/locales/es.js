@@ -1842,4 +1842,16 @@ export default {
   "{0} lines": "{0} líneas",
   "No schedule yet — add a class straight to a date in the Schedule tab.": "Aún no hay horario — añade una clase directamente a una fecha en la pestaña Horario.",
   "Save the whole week, or apply a saved one to any week you pick — replaces that week entirely.": "Guarda la semana entera, o aplica una plantilla guardada a la semana que elijas — sustituye esa semana entera.",
+
+  // --- Mini-games (2026-10-09) --- game names are Forvia's own chrome around the vendored
+  // games (NOTICE.md) — the games' own in-game text stays English, untranslated.
+  "Mini-games": "Minijuegos",
+  "Short games, just for fun": "Partidas cortas, solo por diversión",
+  "Random": "Aleatorio",
+  "{0} played so far": "{0} jugados en total",
+  "Rest games this week": "Minijuegos en descansos esta semana",
+  "Snake": "Snake",
+  "Labyrinth": "Laberinto",
+  "Memory": "Memoria",
+  "Whac-a-mole": "Topos",
 }

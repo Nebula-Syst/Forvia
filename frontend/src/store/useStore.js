@@ -42,6 +42,12 @@ export const DEF = {
   // these exist (a stale second device merging workouts by id must be able to tell "never saw
   // this one yet" apart from "deleted this one on purpose").
   deletedWorkoutIds: [],
+  // Running total of time spent on the mini-games catalog (GamesCatalog.jsx) outside any
+  // workout — a fixed-size counter, not a growing log, so it doesn't add to this blob's existing
+  // unbounded-array growth (workouts/foodDiary/etc.). Time played DURING a workout's rest is
+  // tracked separately, per-session, on that workout's own `gameBreaks` (see logGameTime below
+  // and lib/finish-workout.js) — this total is only ever the standalone, no-workout case.
+  gameStats: { totalMs: 0, bySlug: {} },
   // effort: which per-set effort scale is logged — 'none' | 'rir' | 'rpe'. null, not 'none', so
   // that a profile which never chose (loaded state is overlaid on DEF, on every path: local,
   // server pull, backup import) still falls back to the `showRir` boolean this replaced and
@@ -212,6 +218,20 @@ export const useStore = create((set, get) => {
       await athleteApplyAssignment(assignment.id)
       get().update(s => { s.routines.push({ ...assignment.routine, id: uid(), assignedBy: assignment.coachName || null }) })
       set({ pendingAssignments: get().pendingAssignments.filter(a => a.id !== assignment.id) })
+    },
+
+    // Called by GamePlayer.jsx on close with how long a mini-game session lasted. Mid-workout
+    // play rides on the active session itself (merges server-side as part of that workout, once
+    // finished, via lib/finish-workout.js) — not the always-on total below, which exists purely
+    // so Settings → Mini-games can show "time played" even when nothing was ever attached to a
+    // workout.
+    logGameTime(slug, ms) {
+      get().update(s => {
+        if (s.active) (s.active.gameBreaks ||= []).push({ game: slug, ms, at: new Date().toISOString() })
+        s.gameStats = s.gameStats || { totalMs: 0, bySlug: {} }
+        s.gameStats.totalMs += ms
+        s.gameStats.bySlug[slug] = (s.gameStats.bySlug[slug] || 0) + ms
+      })
     },
 
     async pushState() {

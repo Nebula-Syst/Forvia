@@ -10,8 +10,9 @@ import { t, nameFor } from '../lib/i18n.js'
 import { api } from '../lib/api.js'
 import { setProgressHighWater, supersetFlowStep } from '../lib/supersetFlow.js'
 import { Thumb } from '../components/Media.jsx'
-import { startFlow, exercisePicker, exerciseDetailSheet, topWeightSheet, finishWorkout, workoutCompleteSheet, confirmSheet, deleteRoutine } from '../sheets.jsx'
+import { startFlow, exercisePicker, exerciseDetailSheet, topWeightSheet, finishWorkout, workoutCompleteSheet, confirmSheet, deleteRoutine, playGame } from '../sheets.jsx'
 import Icon from '../components/Icon.jsx'
+import GamesPicker from '../components/GamesPicker.jsx'
 import { Button, Check, NumberField, Segmented, Stepper } from '../components/ui.jsx'
 import { glyphOf, DEFAULT_GLYPH } from '../lib/glyphs.js'
 import { isWarmupRow } from '../lib/workout-model.js'
@@ -294,6 +295,9 @@ function ClockSheet() {
   </>
 }
 const openClockSheet = () => useUI.getState().openSheet(() => <ClockSheet />)
+// Only ever reachable from here, which only ever renders for a personal/routine session — box
+// classes run through LiveClass.jsx entirely, a different screen that never imports this one.
+const openGamesSheet = () => useUI.getState().openSheet(close => <GamesPicker onPick={slug => { close(); playGame(slug) }} />)
 
 function ExerciseBlock({ entryIdx, onToggle, onField, onAddSet, onRemoveSetAt, onStartTimed, onNotes, onSetType, onMenu }) {
   const S = useStore(s => s.S)
@@ -724,6 +728,7 @@ function ActiveWorkout() {
             center instead to actually land level with the round buttons either side. */}
         <div style={{ flex: 1, marginLeft: 10, fontWeight: 600 }}>{A.name}</div>
         <button className="iconbtn" aria-label={t('Clock')} onClick={openClockSheet}><Icon name="clock" /></button>
+        <button className="iconbtn" aria-label={t('Mini-games')} onClick={openGamesSheet}><Icon name="gamepad" /></button>
         <button className="iconbtn" aria-label={paused ? t('Resume workout') : t('Pause workout')} onClick={togglePause}><Icon name={paused ? 'play' : 'pause'} /></button>
         <button className="iconbtn" style={{ color: 'var(--acc)' }} aria-label={t('Finish')} onClick={finishWorkout}><Icon name="check" /></button>
       </div>

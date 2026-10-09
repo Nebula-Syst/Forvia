@@ -16,6 +16,7 @@ import Icon from './components/Icon.jsx'
 import { Button, Slider, Switch, Segmented, SelectRow, Row, NumberField, TextField } from './components/ui.jsx'
 import { glyphOf, GLYPH_GROUPS, DEFAULT_GLYPH } from './lib/glyphs.js'
 import BodyMap from './components/BodyMap.jsx'
+import GamePlayer from './components/GamePlayer.jsx'
 import { exerciseMuscleSnapshot, loadOfWorkouts } from './lib/muscles.js'
 import { parseImport, mergeImport, preloadTranslatedNames, applyMatchOverride } from './lib/import-csv.js'
 import { buildPlanBundle, parsePlan, mergePlan, printPlan } from './lib/plan-share.js'
@@ -2759,6 +2760,12 @@ function BarcodeScanSheet({ dateIso, mealKey, close }) {
 // small close button as the only way out. If that button is ever slow to register a tap (a busy
 // main thread, a mis-tap), back/Escape still get you out instead of trapping you on camera.
 export const barcodeScanSheet = (dateIso, mealKey) => ui().openSheet(close => <BarcodeScanSheet dateIso={dateIso} mealKey={mealKey} close={close} />, { kind: 'fullscreen' })
+
+// Opens a mini-game (GamePlayer.jsx) full-screen over whatever's currently on screen — a
+// workout, its rest timer, or the standalone catalog page. Same reasoning as barcodeScanSheet
+// just above: not locked, so Android back/Escape are always a working way out even if the
+// close button is ever slow to register a tap.
+export const playGame = slug => ui().openSheet(close => <GamePlayer slug={slug} close={close} />, { kind: 'fullscreen' })
 
 function FoodSearchSheet({ dateIso, mealKey, close }) {
   const [q, setQ] = useState('')

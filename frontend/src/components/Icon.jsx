@@ -37,6 +37,11 @@ const TRAINING = {
   clock: <><path d="M3 12a9 9 0 1 0 18 0a9 9 0 0 0 -18 0" /><path d="M12 7v5l3 3" /></>,
 }
 
+const FUN = {
+  gamepad: <><path d="M12 5h3.5a5 5 0 0 1 0 10h-5.5l-4.015 4.227a2.3 2.3 0 0 1 -3.923 -2.035l1.634 -8.173a5 5 0 0 1 4.904 -4.019h3.4" /><path d="M14 15l4.07 4.284a2.3 2.3 0 0 0 3.925 -2.023l-1.6 -8.232" /><path d="M8 9v2" /><path d="M7 10h2" /><path d="M14 10h2" /></>,
+  dice: <><path d="M3 5a2 2 0 0 1 2 -2h14a2 2 0 0 1 2 2v14a2 2 0 0 1 -2 2h-14a2 2 0 0 1 -2 -2v-14" /><path d="M8 8.5a.5 .5 0 1 0 1 0a.5 .5 0 1 0 -1 0" fill="currentColor" /><path d="M15 8.5a.5 .5 0 1 0 1 0a.5 .5 0 1 0 -1 0" fill="currentColor" /><path d="M15 15.5a.5 .5 0 1 0 1 0a.5 .5 0 1 0 -1 0" fill="currentColor" /><path d="M8 15.5a.5 .5 0 1 0 1 0a.5 .5 0 1 0 -1 0" fill="currentColor" /><path d="M11.5 12a.5 .5 0 1 0 1 0a.5 .5 0 1 0 -1 0" fill="currentColor" /></>,
+}
+
 const ACHIEVEMENT = {
   trophy: <><path d="M8 21l8 0" /><path d="M12 17l0 4" /><path d="M7 4l10 0" /><path d="M17 4v8a5 5 0 0 1 -10 0v-8" /><path d="M3 9a2 2 0 1 0 4 0a2 2 0 1 0 -4 0" /><path d="M17 9a2 2 0 1 0 4 0a2 2 0 1 0 -4 0" /></>,
   medal: <><path d="M12 4v3m-4 -3v6m8 -6v6" /><path d="M12 18.5l-3 1.5l.5 -3.5l-2 -2l3 -.5l1.5 -3l1.5 3l3 .5l-2 2l.5 3.5l-3 -1.5" /></>,
@@ -155,7 +160,7 @@ const ALIASES = {
 // One flat lookup, assembled from the groups above — the grouping is purely for editing,
 // call sites just want a name → path lookup and don't care which group it came from.
 const GLYPHS = new Map(Object.entries({
-  ...NAVIGATION, ...TRAINING, ...ACHIEVEMENT, ...ROUTINE_GLYPHS, ...FOOD, ...ACTIONS, ...OBJECTS,
+  ...NAVIGATION, ...TRAINING, ...FUN, ...ACHIEVEMENT, ...ROUTINE_GLYPHS, ...FOOD, ...ACTIONS, ...OBJECTS,
 }))
 for (const [alias, target] of Object.entries(ALIASES)) GLYPHS.set(alias, GLYPHS.get(target))
 

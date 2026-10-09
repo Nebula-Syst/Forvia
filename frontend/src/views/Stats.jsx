@@ -3,7 +3,7 @@ import { useStore } from '../store/useStore.js'
 import { useUI } from '../store/useUI.js'
 import { EXIDX } from '../lib/exercises.js'
 import { lastBW, streakWeeks, setLabel, modeOf, effortOf, metricModeForEntry, metricRowsForEntry, bestWeightForEntry } from '../lib/history.js'
-import { fmtNum, fmtDate, fmtVol, todayISO, weekKey, isoOf } from '../lib/format.js'
+import { fmtNum, fmtDate, fmtVol, fmtDur, todayISO, weekKey, isoOf } from '../lib/format.js'
 import { waterGoalForDate } from '../lib/nutrition-goals.js'
 import { t, nameFor } from '../lib/i18n.js'
 import { bwSheet, goalSheet, calendarSheet, workoutDetailSheet, WorkoutRow, bwDeltaColor, measurementSheet } from '../sheets.jsx'
@@ -339,6 +339,11 @@ export default function Stats() {
   const measureLoad = bestZonesLoad(S)
   const workouts = S.workouts
   const monthW = workouts.filter(w => String(w.d || '').slice(0, 7) === todayISO().slice(0, 7)).length
+  // How much of this week's training time actually went to rest-timer mini-games — informational
+  // support for "am I resting too long between sets", not a hard judgment call either way.
+  const weekAgoIso = isoOf(new Date(Date.now() - 7 * 86400000))
+  const weekGameMs = workouts.filter(w => (w.d || '') >= weekAgoIso)
+    .reduce((n, w) => n + (w.gameBreaks || []).reduce((m, b) => m + (b.ms || 0), 0), 0)
 
   const nameOf = id => { const ex = EXIDX[id]; return ex ? nameFor(ex) : (workouts.flatMap(w => w.entries).find(e => e.id === id)?.n || id) }
   const currentOf = id => {
@@ -448,6 +453,7 @@ export default function Stats() {
       <div className="tile"><div className="l"><Icon name="calendar" />{t('This month')}</div><div className="v">{monthW}</div></div>
       <div className="tile"><div className="l"><Icon name="flame" />{t('Week streak')}</div><div className="v">{streakWeeks(S)}</div></div>
       <div className="tile"><div className="l"><Icon name="scale" />{t('Weight 30d')}</div><div className="v" style={{ fontSize: 22, color: bwDelta30 === null ? 'inherit' : bwDeltaColor(bwDelta30, (lastBW(S) || {}).w || 0) }}>{bwDelta30 === null ? '—' : (bwDelta30 > 0 ? '+' : '') + fmtNum(bwDelta30) + ' ' + S.unit}</div></div>
+      <div className="tile"><div className="l"><Icon name="gamepad" />{t('Rest games this week')}</div><div className="v" style={{ fontSize: 22 }}>{weekGameMs > 0 ? fmtDur(weekGameMs) : '—'}</div></div>
 
     </div>
 

@@ -2081,7 +2081,9 @@ button.wstat:active{transform:scale(.95)}
   border:1px solid var(--glass-border);box-shadow:var(--shadow-lg);
   animation:slideup var(--med) var(--ease);
 }
-body.resting .active-pill{bottom:calc(210px + var(--sab))}
+/* 254px, not 210px: the rest bar grew one row taller once it started showing the mini-games
+   strip (RestTimer.jsx) alongside −15/+15/Skip. */
+body.resting .active-pill{bottom:calc(254px + var(--sab))}
 .active-pill:active{filter:brightness(.95)}
 .active-pill-ico{
   width:50px;height:50px;border-radius:9px;flex:none;
@@ -2107,6 +2109,10 @@ body.resting .active-pill{bottom:calc(210px + var(--sab))}
 #timer.rest .acts{display:flex;align-items:center;gap:8px}
 #timer.rest .acts .btn{padding-top:11px;padding-bottom:11px}   /* sweaty hands, mid-set */
 #timer.rest .acts .skip{margin-left:auto;min-width:84px}
+/* The mini-games row (GamesPicker.jsx compact=true) that shows up with the rest bar — one more
+   row under .acts, icon-only and small so it doesn't push the bar's height up much further. */
+.games-row{display:flex;align-items:center;gap:8px}
+.games-row .iconbtn{width:32px;height:32px;font-size:15px}
 /* work timer (issue #16): the same bar doing the opposite job — outlined and tinted so a
    glance tells "you are holding this" apart from "you are recovering". */
 #timer.working{border:var(--hair) solid var(--acc)}

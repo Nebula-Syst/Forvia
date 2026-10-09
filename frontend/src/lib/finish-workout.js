@@ -31,5 +31,9 @@ export function buildCompletedWorkout(active, { end = Date.now(), prs = [], snap
     bw: active.bw,
     entries,
     prs,
+    // Mini-games played during this session's rest periods (useStore.js's logGameTime) — see
+    // GamesPicker.jsx/RestTimer.jsx. Always an array, even empty, so Stats.jsx never has to
+    // special-case an older workout that predates this feature.
+    gameBreaks: active.gameBreaks || [],
   }
 }

@@ -1,0 +1,10 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Close</title></head>
+<body>
+<script>
+  if (window.parent !== window) window.parent.postMessage({ type: 'og:close' }, location.origin)
+  else history.back()
+</script>
+</body>
+</html>

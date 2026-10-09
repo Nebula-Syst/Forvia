@@ -75,6 +75,8 @@ export default function Settings() {
         onClick={() => nav('/settings/nutrition')} />
       <Tile icon="moon" tint="var(--indigo)" title={t('Appearance')} subtitle={t('Theme, accent color')}
         onClick={() => nav('/settings/appearance')} />
+      <Tile icon="gamepad" tint="var(--teal)" title={t('Mini-games')} subtitle={t('Short games, just for fun')}
+        onClick={() => nav('/games')} />
       {showNotifications && (
         <Tile icon="bell" tint="var(--red)" title={t('Notifications')} subtitle={t('Push alerts, reminders')}
           onClick={() => nav('/settings/notifications')} />
