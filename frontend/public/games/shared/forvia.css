@@ -79,3 +79,12 @@ button.primary:hover, .button.primary:hover { background: #b6f24a; }
 }
 
 #fullscreen { display: none; }
+
+/* The scoreboard pill sat right against the top edge (shared/style.css's own 12px-or-safe-area
+   minimum) — too close to whatever's above it on a phone (the installed app's own status bar,
+   or a mobile browser's own address bar, which env(safe-area-inset-top) doesn't know about).
+   Lower it with real headroom on narrow/portrait screens; desktop and landscape already have
+   enough clearance and are left alone. */
+@media (max-width: 699px) {
+  .is-focused .stats { top: max(56px, calc(env(safe-area-inset-top, 0px) + 44px)); }
+}
