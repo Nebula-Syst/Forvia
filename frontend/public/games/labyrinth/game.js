@@ -35,7 +35,7 @@
       won = true;
       displayed = { ...player };
       OGAudio.play('success');
-      ui.showOverlay('Maze complete', `${moves} moves · ${OG.formatTime(elapsed)}`, 'Another maze', restart);
+      ui.showOverlay(FT('Maze complete'), `${moves} ${FT('moves')} · ${OG.formatTime(elapsed)}`, FT('Another maze'), restart);
     }
     view.draw();
     wake();
@@ -45,7 +45,7 @@
     paused = !paused;
     if (paused) { cancelAnimationFrame(frame); frame = 0; }
     ui.setPaused(paused);
-    if (paused) ui.showOverlay('Paused', '', 'Resume', togglePause);
+    if (paused) ui.showOverlay(FT('Paused'), '', FT('Resume'), togglePause);
     else { ui.hideOverlay(); wake(); }
   }
   function draw(ctx, size) {

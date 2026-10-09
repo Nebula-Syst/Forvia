@@ -1,6 +1,10 @@
-title = "FOOT LASER";
+const __es = new URLSearchParams(location.search).get('lang') === 'es';
+title = __es ? "LÁSER DE PIE" : "FOOT LASER";
 
-description = `
+description = __es ? `
+[Toca]
+ Salta / Doble salto / Baja
+` : `
 [Tap]
  Jump / Double jump / Descent
 `;

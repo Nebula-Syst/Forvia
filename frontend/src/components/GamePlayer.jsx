@@ -2,7 +2,7 @@ import { useEffect, useRef } from 'react'
 import { useStore } from '../store/useStore.js'
 import { useUI } from '../store/useUI.js'
 import { GAMES } from '../lib/games.js'
-import { t } from '../lib/i18n.js'
+import { t, getLang } from '../lib/i18n.js'
 import Icon from './Icon.jsx'
 
 // The actual play surface for a vendored mini-game (frontend/public/games/, see NOTICE.md).
@@ -45,7 +45,7 @@ export default function GamePlayer({ slug, close }) {
     <div className="fs-view">
       <button className="iconbtn scan-close" aria-label={t('Close')} onPointerDown={e => { e.preventDefault(); close() }}><Icon name="xmark" /></button>
       <iframe
-        src={'/games/' + (game?.path || slug) + '/index.html'}
+        src={'/games/' + (game?.path || slug) + '/index.html?lang=' + getLang()}
         title={game ? t(game.label) : 'Mini-game'}
         allow="fullscreen"
         style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', border: 0 }}

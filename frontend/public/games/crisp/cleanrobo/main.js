@@ -1,6 +1,9 @@
-title = "CLEAN ROBO";
+const __es = new URLSearchParams(location.search).get('lang') === 'es';
+title = __es ? "ROBOT LIMPIADOR" : "CLEAN ROBO";
 
-description = `
+description = __es ? `
+[Mantén] Acelera
+` : `
 [Hold] Speed up
 `;
 

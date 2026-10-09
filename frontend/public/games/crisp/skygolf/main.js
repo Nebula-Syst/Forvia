@@ -1,6 +1,9 @@
-title = "";
+const __es = new URLSearchParams(location.search).get('lang') === 'es';
+title = __es ? "GOLF CELESTE" : "";
 
-description = `
+description = __es ? `
+[Desliza] Golpea
+` : `
 `;
 
 characters = [

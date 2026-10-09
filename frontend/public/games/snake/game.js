@@ -15,7 +15,7 @@
     bestLabel.textContent = String(best);
     scoreLabel.textContent = '0';
     ui.setPaused(false);
-    ui.showOverlay('Ready', '', 'Play', start, false);
+    ui.showOverlay(FT('Ready'), '', FT('Play'), start, false);
     view.draw();
     if (playImmediately) start();
   }
@@ -34,13 +34,13 @@
     if (!running || state.over) return;
     paused = !paused;
     if (paused) { cancelAnimationFrame(frame); frame = 0; } ui.setPaused(paused);
-    if (paused) ui.showOverlay('Paused', '', 'Resume', togglePause);
+    if (paused) ui.showOverlay(FT('Paused'), '', FT('Resume'), togglePause);
     else { ui.hideOverlay(); wake(); }
   }
   function end() {
     running = false;
     OGAudio.play(state.won ? 'success' : 'failure');
-    ui.showOverlay(state.won ? 'Board complete' : 'Game over', `${state.score} ${state.score === 1 ? 'fruit' : 'fruits'} collected · Best ${best}`, 'Play again', () => { restart(); start(); });
+    ui.showOverlay(FT(state.won ? 'Board complete' : 'Game over'), `${state.score} ${FT(state.score === 1 ? 'fruit' : 'fruits')} ${FT('collected')} · ${FT('Best')} ${best}`, FT('Play again'), () => { restart(); start(); });
     view.draw();
   }
   function draw(ctx, size) {

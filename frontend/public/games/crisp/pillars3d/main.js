@@ -1,6 +1,9 @@
-title = "PILLARS 3D";
+const __es = new URLSearchParams(location.search).get('lang') === 'es';
+title = __es ? "PILARES 3D" : "PILLARS 3D";
 
-description = `
+description = __es ? `
+[Desliza] Muévete
+` : `
 [Slide] Move
 `;
 

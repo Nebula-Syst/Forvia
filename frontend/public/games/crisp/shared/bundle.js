@@ -1,6 +1,12 @@
 (function (exports) {
     'use strict';
 
+    // Forvia addition, not upstream (see NOTICE.md): GamePlayer.jsx appends ?lang=es|en to every
+    // game's iframe src. The only hardcoded UI string shared across every game in this collection
+    // (checked: none of them override it, and the rewind feature it sits beside is off by default
+    // and unused by all of them) is this one, so this is the one spot that needs it.
+    const __lang = new URLSearchParams(location.search).get('lang') === 'es' ? 'es' : 'en';
+
     function clamp(v, low = 0, high = 1) {
         return Math.max(low, Math.min(v, high));
     }
@@ -1193,6 +1199,115 @@ l l l
    l
 
 `,
+        // Forvia addition, not upstream (see NOTICE.md): áéíóúñÁÉÍÓÚÑ¿¡ — this bitmap font only
+        // ever covered 0x21–0x7e (plain ASCII), so Spanish needed these drawn by hand, in the
+        // same 'l'-per-dot format as every pattern above. Lowercase reuses each base letter's
+        // already-blank top row for the accent; uppercase needs the full 6-row grid since the
+        // base letter already fills all 5. See printChar() below for how these get looked up.
+        `
+  l
+ lll
+l  l
+l  l
+ lll
+`,
+        `
+  l
+ ll
+l ll
+ll
+ ll
+`,
+        `
+  l
+
+
+l
+l
+`,
+        `
+  l
+ ll
+l  l
+l  l
+ ll
+`,
+        `
+  l
+l  l
+l  l
+l  l
+ lll
+`,
+        `
+ l l
+lll
+l  l
+l  l
+l  l
+`,
+        `
+  l
+ lll
+l   l
+lllll
+l   l
+l   l
+`,
+        `
+  l
+lllll
+l
+llll
+l
+lllll
+`,
+        `
+  l
+lllll
+  l
+  l
+  l
+lllll
+`,
+        `
+  l
+ lll
+l   l
+l   l
+l   l
+ lll
+`,
+        `
+  l
+l   l
+l   l
+l   l
+l   l
+ lll
+`,
+        `
+ l l
+l   l
+ll  l
+l l l
+l  ll
+l   l
+`,
+        `
+  l
+
+  ll
+l   l
+ lll
+`,
+        `
+l
+
+l
+l
+l
+`,
     ];
 
     let hitBoxes;
@@ -1377,9 +1492,13 @@ l l l
         }
         return collision;
     }
+    // Forvia addition, not upstream (see NOTICE.md): the 14 extra glyphs appended to
+    // textPatterns/characterImages above (indices 94..107) cover these, in this exact order.
+    const EXTRA_CHARS = "áéíóúñÁÉÍÓÚÑ¿¡";
     function printChar(c, x, y, _options) {
         const cca = c.charCodeAt(0);
-        if (cca < 0x20 || cca > 0x7e) {
+        const extraIndex = EXTRA_CHARS.indexOf(c);
+        if (cca < 0x20 || (cca > 0x7e && extraIndex < 0)) {
             return { isColliding: { rect: {}, text: {}, char: {} } };
         }
         const options = mergeDefaultOptions(_options);
@@ -1392,7 +1511,7 @@ l l l
         if (cca <= 0x20) {
             return { isColliding: { rect: {}, text: {}, char: {} } };
         }
-        const cc = cca - 0x21;
+        const cc = extraIndex >= 0 ? 94 + extraIndex : cca - 0x21;
         const li = options.isCharacter ? characterImages[cc] : textImages[cc];
         const rotation = wrap(options.rotation, 0, 4);
         if (options.color === "black" &&
@@ -2721,7 +2840,7 @@ l l l
      * Transition to the game-over state.
      * @param _gameOverText
      */
-    function end(_gameOverText = "GAME OVER") {
+    function end(_gameOverText = (__lang === "es" ? "FIN DEL JUEGO" : "GAME OVER")) {
         gameOverText = _gameOverText;
         if (isShowingTime) {
             exports.time = undefined;

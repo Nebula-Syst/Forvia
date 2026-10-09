@@ -1,6 +1,12 @@
-title = "INVINCIBLE MAN";
+const __es = new URLSearchParams(location.search).get('lang') === 'es';
+title = __es ? "HOMBRE INVENCIBLE" : "INVINCIBLE MAN";
 
-description = `
+description = __es ? `
+[Toca]
+ Gira
+[Mantén]
+ Camina hacia fuera
+` : `
 [Tap]
  Turn
 [Hold]

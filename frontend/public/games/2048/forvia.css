@@ -10,3 +10,8 @@ html, body {
     radial-gradient(1200px 900px at 100% 100%, rgba(163,230,53,.16), transparent 60%),
     #000000 !important;
 }
+
+/* "Score"/"Best" are CSS-generated content (style/main.css), not real text — can't be swapped by
+   the ?lang=es script in index.html, so the override lives here instead. */
+html[lang="es"] .score-container:after { content: "Puntos"; }
+html[lang="es"] .best-container:after { content: "Mejor"; }

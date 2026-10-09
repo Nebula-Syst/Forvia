@@ -1,6 +1,11 @@
-title = "CHARGE BEAM";
+const __es = new URLSearchParams(location.search).get('lang') === 'es';
+title = __es ? "RAYO CARGADO" : "CHARGE BEAM";
 
-description = `
+description = __es ? `
+[Toca]    Dispara
+[Mantén]  Carga
+[Suelta]  Dispara fuerte
+` : `
 [Tap]     Shot
 [Hold]    Charge
 [Release] Fire

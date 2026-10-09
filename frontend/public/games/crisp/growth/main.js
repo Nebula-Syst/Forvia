@@ -1,6 +1,9 @@
-title = "GROWTH";
+const __es = new URLSearchParams(location.search).get('lang') === 'es';
+title = __es ? "CRECIMIENTO" : "GROWTH";
 
-description = `
+description = __es ? `
+[Mantén] Crece
+` : `
 [Hold] Growth
 `;
 

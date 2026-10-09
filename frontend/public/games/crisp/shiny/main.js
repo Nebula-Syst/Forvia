@@ -1,6 +1,9 @@
-title = "SHINY";
+const __es = new URLSearchParams(location.search).get('lang') === 'es';
+title = __es ? "BRILLANTE" : "SHINY";
 
-description = `
+description = __es ? `
+[Mantén] Lluvioso
+` : `
 [Hold] Rainy
 `;
 

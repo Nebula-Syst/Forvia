@@ -1,6 +1,9 @@
-title = "DANGO";
+const __es = new URLSearchParams(location.search).get('lang') === 'es';
+title = __es ? "DANGO" : "DANGO";
 
-description = `
+description = __es ? `
+[Toca] Estira
+` : `
 [Tap] Stretch
 `;
 

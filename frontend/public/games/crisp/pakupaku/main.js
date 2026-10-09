@@ -1,6 +1,9 @@
-title = "PAKU PAKU";
+const __es = new URLSearchParams(location.search).get('lang') === 'es';
+title = __es ? "PAKU PAKU" : "PAKU PAKU";
 
-description = `
+description = __es ? `
+[Toca] Gira
+` : `
 [Tap] Turn
 `;
 

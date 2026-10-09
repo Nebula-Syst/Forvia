@@ -1,6 +1,10 @@
-title = "RB DRIVE";
+const __es = new URLSearchParams(location.search).get('lang') === 'es';
+title = __es ? "CONDUCCIÓN RB" : "RB DRIVE";
 
-description = `
+description = __es ? `
+[Toca]
+ Cambia de carril
+` : `
 [Tap]
  Change Lane
 `;

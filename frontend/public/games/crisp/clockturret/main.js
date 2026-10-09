@@ -1,6 +1,10 @@
-title = "CLOCK TURRET";
+const __es = new URLSearchParams(location.search).get('lang') === 'es';
+title = __es ? "TORRETA RELOJ" : "CLOCK TURRET";
 
-description = `
+description = __es ? `
+[Mantén]
+ Para y dispara
+` : `
 [Hold]
  Stop and Shoot
 `;

@@ -1,6 +1,9 @@
-title = "FLIP O";
+const __es = new URLSearchParams(location.search).get('lang') === 'es';
+title = __es ? "VOLTEO" : "FLIP O";
 
-description = `
+description = __es ? `
+[Toca] Voltea
+` : `
 [Tap] Flip
 `;
 

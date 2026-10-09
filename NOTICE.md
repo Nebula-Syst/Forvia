@@ -197,9 +197,17 @@ without it, the normal view's header (a title and an "← All games" link to a p
 serve) would show through status-bar/notch safe areas with no working destination. CSS can't
 reach a `<canvas>`'s own drawing, so `snake/game.js` and `labyrinth/game.js` also have their few
 hardcoded board/wall/trail colors swapped for this same dark palette (same shapes, same logic,
-different hex values only) — `logic.js`, `style.css`, and every DOM-only game's own `game.js`
-(`memory/`, `whac-a-mole/`, already dark through CSS alone) are untouched, as is `shared/
-favicon.svg` and `LICENSE`.
+different hex values only). `logic.js`, `style.css`, `shared/favicon.svg`, and `LICENSE` are
+untouched.
+
+**2026-10-09 — Spanish.** `GamePlayer.jsx` appends `?lang=es|en` to every game's iframe `src`.
+A new `shared/forvia-i18n.js` (loaded first, not from upstream) holds a small EN→ES dictionary
+and does two things when that param is `es`: translates the static shell text present in every
+game's `index.html` (stat labels, Pause/Restart, the difficulty panel, the control hint) by
+element id/class — the same markup in all four games, so one pass covers them — and exposes a
+`FT(string)` lookup helper. `shared/ui.js` and each game's own `game.js` (`snake/`, `labyrinth/`,
+`memory/`, `whac-a-mole/`) now wrap their handful of hardcoded result strings (e.g. "Game over",
+"N fruits collected · Best N") in calls to that helper instead of hardcoding English outright.
 
 ```
 MIT License
@@ -241,8 +249,19 @@ party staying up. Each game's `index.html` is this project's own (not from upstr
 one shared page with a `?gamename` query string instead of a folder per game) — same dark
 background recipe as the rest of the mini-games, and the one line needed to actually boot the
 engine (`window.addEventListener('load', onLoad)`, upstream's own bootstrapping call, just made
-explicit here instead of living in upstream's shared index.html). Every game's own `main.js` is
-unmodified.
+explicit here instead of living in upstream's shared index.html).
+
+**2026-10-09 — Spanish.** This engine's bitmap font (`shared/bundle.js`) only ever covered
+0x21–0x7e, plain ASCII — no `áéíóúñ¿¡`. `printChar`'s range check and character-to-glyph lookup
+are patched to also recognize those fourteen characters, and `textPatterns` (the font's own
+pixel-pattern table, one entry per character, untouched for every character already in it) gets
+fourteen more hand-drawn entries appended in the exact same format — same 'l'-per-dot style as
+every existing glyph, not a different font. The only hardcoded UI string shared by every game in
+the collection (checked: none of the 26 override it) is also patched there: `GAME_OVER`'s English
+default becomes `FIN DEL JUEGO` under `?lang=es`. Each game's own `main.js` has its `title` and
+`description` (the text shown on the title screen, control instructions included) translated the
+same way — an `__es` check picks between the original English and a new Spanish string — with
+everything else in that file (actual gameplay logic) untouched.
 
 `frontend/public/games/2048/` (`js/`, `style/`, minus its old IE/Safari-only `.eot`/`.svg` font
 formats — this project only ever serves a modern WebView or browser, and `.woff` alone covers
@@ -252,6 +271,12 @@ elements and scripts as upstream's, minus the apple-touch-icon/startup-image lin
 with the image files themselves — not useful inside an iframe) and the closing promotional
 paragraphs, plus one new `forvia.css` for the same dark background treatment. The board's own
 tile colors — the whole point of the game's look — are untouched.
+
+**2026-10-09 — Spanish.** `index.html` sets `<html lang>` from the same `?lang=` param and
+translates its own static text (intro, "New Game", "How to play") inline when it's `es`;
+`js/html_actuator.js`'s two win/lose messages do the same. "Score"/"Best" are CSS-generated
+content in upstream's own `style/main.css` (untouched) — overridden for Spanish in `forvia.css`
+instead, scoped to `html[lang="es"]`.
 
 ## This fork
 

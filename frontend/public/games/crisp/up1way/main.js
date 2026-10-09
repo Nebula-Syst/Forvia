@@ -1,6 +1,9 @@
-title = "UP 1 WAY";
+const __es = new URLSearchParams(location.search).get('lang') === 'es';
+title = __es ? "SUBE YA" : "UP 1 WAY";
 
-description = `
+description = __es ? `
+[Toca] Sube
+` : `
 [Tap] Go up
 `;
 

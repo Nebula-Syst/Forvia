@@ -31,7 +31,7 @@
     best = Number(OG.storage.get(bestKey(), 0)) || 0;
     scoreLabel.textContent = '0'; bestLabel.textContent = String(best); timeLabel.textContent = '0:30';
     clearHoles(); ui.setPaused(false);
-    ui.showOverlay('Ready', '30 seconds', 'Play', start, false);
+    ui.showOverlay(FT('Ready'), FT('30 seconds'), FT('Play'), start, false);
     if (playImmediately) start();
   }
   function start() {
@@ -65,13 +65,13 @@
     if (!running || finished) return;
     paused = !paused;
     if (paused) { cancelAnimationFrame(frame); frame = 0; } ui.setPaused(paused);
-    if (paused) ui.showOverlay('Paused', '', 'Resume', togglePause);
+    if (paused) ui.showOverlay(FT('Paused'), '', FT('Resume'), togglePause);
     else { ui.hideOverlay(); wake(); }
   }
   function finish() {
     running = false; finished = true; active = -1; clearHoles();
     OGAudio.play('success');
-    ui.showOverlay('Round complete', `${score} moles caught · Best ${best}`, 'Another round', () => { restart(); start(); });
+    ui.showOverlay(FT('Round complete'), `${score} ${FT('moles caught')} · ${FT('Best')} ${best}`, FT('Another round'), () => { restart(); start(); });
   }
   function tick(now) {
     frame = 0;

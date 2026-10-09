@@ -4,6 +4,7 @@
   <meta charset="utf-8">
   <title>2048 — Forvia</title>
 
+  <script>document.documentElement.lang = new URLSearchParams(location.search).get('lang') === 'es' ? 'es' : 'en';</script>
   <link href="style/main.css" rel="stylesheet" type="text/css">
   <link href="forvia.css" rel="stylesheet" type="text/css">
 
@@ -72,6 +73,17 @@
     </p>
   </div>
 
+  <!-- Forvia addition, not upstream (see NOTICE.md): static-text translation for ?lang=es. -->
+  <script>
+    if (document.documentElement.lang === 'es') {
+      document.querySelector('.game-intro').innerHTML = 'Une los números y llega a la <strong>ficha 2048</strong>';
+      document.querySelector('.restart-button').textContent = 'Nueva partida';
+      document.querySelector('.keep-playing-button').textContent = 'Seguir jugando';
+      document.querySelector('.retry-button').textContent = 'Reintentar';
+      document.querySelector('.game-explanation').innerHTML =
+        '<strong class="important">Cómo jugar:</strong> Desliza (o usa las <strong>flechas</strong>) para mover las fichas. Cuando dos fichas con el mismo número se tocan, ¡se <strong>fusionan en una!</strong>';
+    }
+  </script>
   <script src="js/bind_polyfill.js"></script>
   <script src="js/classlist_polyfill.js"></script>
   <script src="js/animframe_polyfill.js"></script>

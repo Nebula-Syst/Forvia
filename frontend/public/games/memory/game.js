@@ -85,7 +85,7 @@
       OGAudio.play('hit'); ui.announce(`Match. ${matched} of ${total} pairs found.`);
       if (matched === total) {
         won = true; OGAudio.play('success');
-        ui.showOverlay('All pairs found', `${total} pairs · ${moves} moves · ${OG.formatTime(elapsed)}`, 'New board', restart);
+        ui.showOverlay(FT('All pairs found'), `${total} ${FT('pairs')} · ${moves} ${FT('moves')} · ${OG.formatTime(elapsed)}`, FT('New board'), restart);
       }
     } else { remaining = 850; ui.announce('No match. Try another pair.'); }
   }
@@ -93,7 +93,7 @@
     if (won) return;
     paused = !paused;
     if (paused) { cancelAnimationFrame(frame); frame = 0; } ui.setPaused(paused);
-    if (paused) ui.showOverlay('Paused', '', 'Resume', togglePause);
+    if (paused) ui.showOverlay(FT('Paused'), '', FT('Resume'), togglePause);
     else { ui.hideOverlay(); wake(); }
   }
   function tick(now) {

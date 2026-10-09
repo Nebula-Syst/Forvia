@@ -1,6 +1,10 @@
-title = "ATTACK CHAIN";
+const __es = new URLSearchParams(location.search).get('lang') === 'es';
+title = __es ? "CADENA DE ATAQUE" : "ATTACK CHAIN";
 
-description = `
+description = __es ? `
+[Toca]
+ Elige carta
+` : `
 [Tap]
  Select card
 `;

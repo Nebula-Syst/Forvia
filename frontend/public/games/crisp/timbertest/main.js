@@ -1,6 +1,9 @@
-title = "TIMBER TEST";
+const __es = new URLSearchParams(location.search).get('lang') === 'es';
+title = __es ? "PRUEBA DE TALA" : "TIMBER TEST";
 
-description = `
+description = __es ? `
+[Toca] Corta un tronco
+` : `
 [Tap] Cut a log
 `;
 

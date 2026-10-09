@@ -1,6 +1,9 @@
-title = "PAINT BALL";
+const __es = new URLSearchParams(location.search).get('lang') === 'es';
+title = __es ? "BOLA DE PINTURA" : "PAINT BALL";
 
-description = `
+description = __es ? `
+[Toca] Lanza
+` : `
 [Tap] Throw
 `;
 

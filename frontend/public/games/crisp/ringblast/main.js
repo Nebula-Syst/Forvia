@@ -1,6 +1,11 @@
-title = "RING BLAST";
+const __es = new URLSearchParams(location.search).get('lang') === 'es';
+title = __es ? "EXPLOSIÓN DE ANILLO" : "RING BLAST";
 
-description = `
+description = __es ? `
+[Desliza]
+ Cambia
+ ángulo/velocidad
+` : `
 [Slide]
  Change
  angle/speed

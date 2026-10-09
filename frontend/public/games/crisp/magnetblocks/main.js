@@ -1,6 +1,10 @@
-title = "MAGNET BLOCKS";
+const __es = new URLSearchParams(location.search).get('lang') === 'es';
+title = __es ? "BLOQUES MAGNÉTICOS" : "MAGNET BLOCKS";
 
-description = `
+description = __es ? `
+[Arrastra]
+Coloca el imán
+` : `
 [Drag]
 Place magnet
 `;

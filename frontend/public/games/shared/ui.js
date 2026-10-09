@@ -53,7 +53,7 @@ window.OG = (() => {
     });
     const sound = document.getElementById('sound');
     function updateSound() {
-      sound.textContent = OGAudio.enabled ? 'Sound on' : 'Sound off';
+      sound.textContent = FT(OGAudio.enabled ? 'Sound on' : 'Sound off');
       sound.setAttribute('aria-pressed', String(OGAudio.enabled));
     }
     sound.addEventListener('click', () => { OGAudio.toggle(); updateSound(); });
@@ -152,7 +152,7 @@ window.OG = (() => {
       setPaused(value) {
         paused = value;
         const button = document.getElementById('pause');
-        button.textContent = paused ? 'Resume' : 'Pause';
+        button.textContent = FT(paused ? 'Resume' : 'Pause');
         button.setAttribute('aria-pressed', String(paused));
       }
     };

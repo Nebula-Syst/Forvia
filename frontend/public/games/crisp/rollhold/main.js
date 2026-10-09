@@ -1,6 +1,10 @@
-title = "ROLL HOLD";
+const __es = new URLSearchParams(location.search).get('lang') === 'es';
+title = __es ? "RODAR Y MANTENER" : "ROLL HOLD";
 
-description = `
+description = __es ? `
+[Mantén]
+ Fija un ángulo
+` : `
 [Hold]
  Hold an angle
 `;

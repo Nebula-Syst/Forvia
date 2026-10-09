@@ -1,6 +1,9 @@
-title = "METEO PLANET";
+const __es = new URLSearchParams(location.search).get('lang') === 'es';
+title = __es ? "PLANETA METEORO" : "METEO PLANET";
 
-description = `
+description = __es ? `
+[Toca] Muévete
+` : `
 [Tap] Move
 `;
 

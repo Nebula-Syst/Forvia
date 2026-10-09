@@ -1,6 +1,10 @@
-title = "MARUSANSI";
+const __es = new URLSearchParams(location.search).get('lang') === 'es';
+title = __es ? "MARUSANSI" : "MARUSANSI";
 
-description = `
+description = __es ? `
+  Toca
+para empezar
+` : `
    Tap
 to start
 `;

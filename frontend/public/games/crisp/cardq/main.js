@@ -1,6 +1,10 @@
-title = "CARD Q";
+const __es = new URLSearchParams(location.search).get('lang') === 'es';
+title = __es ? "CARTA Q" : "CARD Q";
 
-description = `
+description = __es ? `
+[Toca]
+ Saca una carta
+` : `
 [Tap]
  Pull out a card
 `;

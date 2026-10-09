@@ -1,6 +1,9 @@
-title = "SURVIVOR";
+const __es = new URLSearchParams(location.search).get('lang') === 'es';
+title = __es ? "SUPERVIVIENTE" : "SURVIVOR";
 
-description = `
+description = __es ? `
+[Toca] Salta
+` : `
 [Tap] Jump
 `;
 
