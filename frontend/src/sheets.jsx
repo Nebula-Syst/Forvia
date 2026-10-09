@@ -278,11 +278,15 @@ export function reportBugSheet() {
 
 /* ============================ coach: assign a routine ============================ */
 // The coach picks one of their OWN routines (S().routines — same list Routines.jsx manages)
-// and a target: one specific athlete from the roster, or the whole box. The server stamps a
-// fresh routine id on save (POST /api/coach/box/assign-routine) so every athlete who later
-// applies it gets an independently-editable copy — this sheet just picks and sends, it never
-// mutates the coach's own routine.
-function AssignRoutineForm({ box, roster, close, onDone }) {
+// and a target. The server stamps a fresh routine id on save (POST /api/coach/box/assign-
+// routine) so every athlete who later applies it gets an independently-editable copy — this
+// sheet just picks and sends, it never mutates the coach's own routine.
+//
+// Two shapes for `target`: {box, roster} — the original box path, target is one roster member
+// or the whole box — or {athlete} — a direct (box-less) client hired through the marketplace,
+// where there's only ever one possible target, so the picker is skipped entirely.
+function AssignRoutineForm({ target, close, onDone }) {
+  const { box, roster, athlete } = target
   const routines = S().routines || []
   const [routineId, setRoutineId] = useState(routines[0]?.id || '')
   const [athleteId, setAthleteId] = useState('__all__')
@@ -292,7 +296,8 @@ function AssignRoutineForm({ box, roster, close, onDone }) {
     if (!routine) return toast(t('Pick a routine'))
     setBusy(true)
     try {
-      await coachAssignRoutine(box.id, athleteId === '__all__' ? null : athleteId, routine)
+      const targetAthleteId = athlete ? athlete.id : (athleteId === '__all__' ? null : athleteId)
+      await coachAssignRoutine(box ? box.id : null, targetAthleteId, routine)
       toast(t('Routine assigned'))
       close()
       onDone && onDone()
@@ -306,14 +311,18 @@ function AssignRoutineForm({ box, roster, close, onDone }) {
     ) : <>
       <div className="muted small" style={{ margin: '10px 0 6px' }}>{t('Routine')}</div>
       <Segmented options={routines.map(r => ({ value: r.id, label: r.name }))} value={routineId} onChange={setRoutineId} />
-      <div className="muted small" style={{ margin: '14px 0 6px' }}>{t('Assign to')}</div>
-      <Segmented options={[{ value: '__all__', label: t('Whole box') }, ...roster.map(a => ({ value: a.id, label: a.name }))]} value={athleteId} onChange={setAthleteId} />
+      {athlete ? (
+        <div className="muted small" style={{ margin: '14px 0 6px' }}>{t('Assign to {0}', athlete.name)}</div>
+      ) : <>
+        <div className="muted small" style={{ margin: '14px 0 6px' }}>{t('Assign to')}</div>
+        <Segmented options={[{ value: '__all__', label: t('Whole box') }, ...roster.map(a => ({ value: a.id, label: a.name }))]} value={athleteId} onChange={setAthleteId} />
+      </>}
       <Button variant="primary" style={{ marginTop: 16 }} onClick={send} disabled={busy}>{t('Assign')}</Button>
     </>}
   </>
 }
-export function assignRoutineSheet(box, roster, onDone) {
-  ui().openSheet(close => <AssignRoutineForm box={box} roster={roster} close={close} onDone={onDone} />)
+export function assignRoutineSheet(target, onDone) {
+  ui().openSheet(close => <AssignRoutineForm target={target} close={close} onDone={onDone} />)
 }
 
 /* ============================ coach: request a box ============================ */

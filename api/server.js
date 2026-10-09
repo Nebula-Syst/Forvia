@@ -42,6 +42,7 @@ let db = {
   boxInvites: [], routineAssignments: [], wods: [], wodResults: [], boxRequests: [], boxStaff: [],
   classTypes: [], dayTemplates: [], weekTemplates: [], wodTemplates: [], classSessions: [],
   classBookings: [], classPenalties: [], liveClasses: [], publicFoods: [], boxPlans: [],
+  coachClients: [],
   // NOT one of this service's own COLLECTIONS (see db.js) — refreshUsersMirror() below is what
   // actually keeps this populated. Declared here (rather than left to spring into existence on
   // the first successful refresh) so a request arriving before that first refresh finishes finds
@@ -821,10 +822,15 @@ const isMemberOfBox = (userId, boxId) => db.boxMemberships.some(m => m.userId ==
 // actions that stay owner-only.
 const isStaffOfBox = (userId, boxId) => db.boxStaff.some(s => s.boxId === boxId && s.userId === userId);
 const canManageBox = (userId, boxId) => isCoachOfBox(userId, boxId) || isStaffOfBox(userId, boxId);
+// A direct (box-less) coaching relationship — hired through the marketplace, approved by the
+// coach. Same "re-derived fresh, never cached" discipline as the box helpers above.
+const isActiveClientOf = (coachId, athleteId) =>
+  db.coachClients.some(c => c.coachId === coachId && c.athleteId === athleteId && c.status === 'active');
 const canViewAthlete = (userId, athleteUid) => {
   const myBoxIds = new Set(db.boxes.filter(b => b.coachId === userId).map(b => b.id)
     .concat(db.boxStaff.filter(s => s.userId === userId).map(s => s.boxId)));
-  return db.boxMemberships.some(m => m.userId === athleteUid && myBoxIds.has(m.boxId));
+  return db.boxMemberships.some(m => m.userId === athleteUid && myBoxIds.has(m.boxId))
+    || isActiveClientOf(userId, athleteUid);
 };
 // Membership plans: a plan choice is an attribute of the existing membership relationship (the
 // boxMemberships row), not a new one — one plan per (boxId, userId) at a time, stored as a
@@ -1356,8 +1362,22 @@ const routes = {
     if (!me) return json(res, 401, { error: 'not signed in' });
     const q = new URL(req.url, 'http://x').searchParams;
     const lat = Number(q.get('lat')), lon = Number(q.get('lon'));
-    const hasOrigin = isFinite(lat) && isFinite(lon);
-    let coaches = db.users.filter(u => u.coach && u.coachVisible && !u.disabled).map(socialUser);
+    // q.get() returns null when the param is absent, and Number(null) is 0 — not NaN — so
+    // isFinite() alone can't tell "absent" from "deliberately (0,0)". q.has() can.
+    const hasOrigin = q.has('lat') && q.has('lon') && isFinite(lat) && isFinite(lon);
+    // 'dismissed'/'ended' collapse to 'none' — a past request or a relationship that's since
+    // ended shouldn't permanently block requesting this coach again. A re-request after that
+    // pushes a brand new row rather than reusing the old one, so there can be several rows for
+    // the same pair — checking all of them (not just the first/oldest) is what keeps a genuinely
+    // active relationship from being masked by an earlier ended/dismissed row.
+    const relationshipWith = coachId => {
+      const rows = db.coachClients.filter(c => c.coachId === coachId && c.athleteId === me.id);
+      if (rows.some(r => r.status === 'active')) return 'active';
+      if (rows.some(r => r.status === 'pending')) return 'pending';
+      return 'none';
+    };
+    let coaches = db.users.filter(u => u.coach && u.coachVisible && !u.disabled)
+      .map(u => ({ ...socialUser(u), relationship: relationshipWith(u.id) }));
     if (hasOrigin) {
       coaches = coaches
         .filter(c => c.coachLocation)
@@ -2519,6 +2539,116 @@ const routes = {
     json(res, 200, { boxes: [...boxes, ...staffBoxes, ...ownedBoxes] });
   },
 
+  /* ---------- direct (box-less) coaching relationships ---------- */
+  // Hired through the marketplace instead of joining a box. Same request→approve shape as
+  // coach-requests/box-requests (a row with a status, the deciding party flips it), except the
+  // COACH is the approver here, not an admin — it's their own client list. Never deleted, only
+  // status-flipped (pending → active/dismissed, active → ended), so there's always a record and
+  // re-requesting after a dismiss/end is just a fresh row rather than a special "reopen" case.
+
+  'POST /api/coach/clients/request': async (req, res) => {
+    const me = readSession(req);
+    if (!me) return json(res, 401, { error: 'not signed in' });
+    if (me.coach) return json(res, 400, { error: 'coaches can\'t request coaching' });
+    const body = await readBody(req);
+    const coachId = String(body.coachId || '');
+    const coach = db.users.find(u => u.id === coachId);
+    if (!coach || !coach.coach || !coach.coachVisible || coach.disabled) return json(res, 404, { error: 'not found' });
+    if (db.coachClients.some(c => c.coachId === coachId && c.athleteId === me.id && (c.status === 'pending' || c.status === 'active'))) {
+      return json(res, 400, { error: 'already requested or already a client' });
+    }
+    const row = { id: crypto.randomBytes(8).toString('base64url'), coachId, athleteId: me.id, status: 'pending', created: new Date().toISOString() };
+    db.coachClients.push(row);
+    saveDb();
+    audit(req, 'coach.client.request', { user: me, msg: coachId });
+    wsSend(coachId, { type: 'coach:client-request' });
+    json(res, 200, { ok: true });
+  },
+
+  'GET /api/coach/clients/requests': async (req, res) => {
+    const coach = requireCoach(req, res); if (!coach) return;
+    const requests = db.coachClients.filter(c => c.coachId === coach.id && c.status === 'pending').map(c => {
+      const u = db.users.find(x => x.id === c.athleteId);
+      return u ? { id: c.id, created: c.created, athlete: socialUser(u) } : null;
+    }).filter(Boolean);
+    json(res, 200, { requests });
+  },
+
+  'POST /api/coach/clients/requests/approve': async (req, res) => {
+    const coach = requireCoach(req, res); if (!coach) return;
+    const body = await readBody(req);
+    const row = db.coachClients.find(c => c.id === body.id);
+    if (!row || row.coachId !== coach.id) return json(res, 404, { error: 'no such request' });
+    if (row.status !== 'pending') return json(res, 400, { error: 'already reviewed' });
+    row.status = 'active';
+    saveDb();
+    audit(req, 'coach.client.approve', { user: coach, msg: row.athleteId });
+    wsSend(row.athleteId, { type: 'coach:client-approved' });
+    json(res, 200, { ok: true });
+  },
+
+  'POST /api/coach/clients/requests/dismiss': async (req, res) => {
+    const coach = requireCoach(req, res); if (!coach) return;
+    const body = await readBody(req);
+    const row = db.coachClients.find(c => c.id === body.id);
+    if (!row || row.coachId !== coach.id) return json(res, 404, { error: 'no such request' });
+    if (row.status !== 'pending') return json(res, 400, { error: 'already reviewed' });
+    row.status = 'dismissed';
+    saveDb();
+    audit(req, 'coach.client.dismiss', { user: coach, msg: row.athleteId });
+    // Same event as approve — the athlete side just re-fetches GET /api/athlete/coaches,
+    // which correctly shows nothing new for a dismissal.
+    wsSend(row.athleteId, { type: 'coach:client-approved' });
+    json(res, 200, { ok: true });
+  },
+
+  'GET /api/coach/clients': async (req, res) => {
+    const coach = requireCoach(req, res); if (!coach) return;
+    const clients = db.coachClients.filter(c => c.coachId === coach.id && c.status === 'active').map(c => {
+      const u = db.users.find(x => x.id === c.athleteId);
+      if (!u) return null;
+      return { ...socialUser(u), joined: c.created, streakDays: currentStreakDays(u.id), ...statsFor(u.id) };
+    }).filter(Boolean);
+    json(res, 200, { clients });
+  },
+
+  'GET /api/athlete/coaches': async (req, res) => {
+    const me = readSession(req);
+    if (!me) return json(res, 401, { error: 'not signed in' });
+    const coaches = db.coachClients.filter(c => c.athleteId === me.id && c.status === 'active').map(c => {
+      const u = db.users.find(x => x.id === c.coachId);
+      return u ? { ...socialUser(u), since: c.created } : null;
+    }).filter(Boolean);
+    json(res, 200, { coaches });
+  },
+
+  'POST /api/coach/clients/remove': async (req, res) => {
+    const coach = requireCoach(req, res); if (!coach) return;
+    const body = await readBody(req);
+    const athleteId = String(body.athleteId || '');
+    const row = db.coachClients.find(c => c.coachId === coach.id && c.athleteId === athleteId && c.status === 'active');
+    if (!row) return json(res, 404, { error: 'not found' });
+    row.status = 'ended';
+    saveDb();
+    audit(req, 'coach.client.remove', { user: coach, msg: athleteId });
+    wsSend(athleteId, { type: 'coach:client-ended' });
+    json(res, 200, { ok: true });
+  },
+
+  'POST /api/athlete/coaches/leave': async (req, res) => {
+    const me = readSession(req);
+    if (!me) return json(res, 401, { error: 'not signed in' });
+    const body = await readBody(req);
+    const coachId = String(body.coachId || '');
+    const row = db.coachClients.find(c => c.coachId === coachId && c.athleteId === me.id && c.status === 'active');
+    if (!row) return json(res, 404, { error: 'not found' });
+    row.status = 'ended';
+    saveDb();
+    audit(req, 'coach.client.leave', { user: me, msg: coachId });
+    wsSend(coachId, { type: 'coach:client-ended' });
+    json(res, 200, { ok: true });
+  },
+
   // A coach's view of one athlete's actual training — deliberately richer than the social
   // feed's trimmed shape (feedItemsFor strips weight/reps even for consenting public profiles,
   // because that's a peer-to-peer surface). A coach giving real feedback needs the real numbers,
@@ -2557,25 +2687,38 @@ const routes = {
     const q = new URL(req.url, 'http://x').searchParams;
     const boxId = q.get('boxId') || '';
     const athleteId = q.get('athleteId') || '';
-    if (!canManageBox(me.id, boxId)) return json(res, 404, { error: 'not found' });
-    const membership = db.boxMemberships.find(m => m.boxId === boxId && m.userId === athleteId);
     const u = db.users.find(x => x.id === athleteId);
-    if (!membership || !u) return json(res, 404, { error: 'not found' });
-    const plan = membership.planId ? db.boxPlans.find(p => p.id === membership.planId) : null;
-    const info = athletePlanInfo(boxId, athleteId);
+    if (!u) return json(res, 404, { error: 'not found' });
+    // boxId present → the existing box-membership path, unchanged. Absent → this must be a
+    // direct (box-less) client hired through the marketplace instead — no membership row, no
+    // plan, "joined" is just when the coach approved the request.
+    let joined, plan = null;
+    if (boxId) {
+      if (!canManageBox(me.id, boxId)) return json(res, 404, { error: 'not found' });
+      const membership = db.boxMemberships.find(m => m.boxId === boxId && m.userId === athleteId);
+      if (!membership) return json(res, 404, { error: 'not found' });
+      joined = membership.joined;
+      const rawPlan = membership.planId ? db.boxPlans.find(p => p.id === membership.planId) : null;
+      const info = athletePlanInfo(boxId, athleteId);
+      plan = rawPlan ? {
+        id: rawPlan.id, name: rawPlan.name, monthlyLimit: rawPlan.monthlyLimit,
+        usedThisMonth: info?.usedThisMonth ?? 0, remaining: info?.remaining ?? null,
+        classTypes: rawPlan.classTypes?.length ? rawPlan.classTypes : null,
+        expired: !!info?.expired, inGrace: !!info?.inGrace, graceDaysLeft: info?.graceDaysLeft ?? null,
+      } : null;
+    } else {
+      const client = db.coachClients.find(c => c.coachId === me.id && c.athleteId === athleteId && c.status === 'active');
+      if (!client) return json(res, 404, { error: 'not found' });
+      joined = client.created;
+    }
     json(res, 200, {
       user: socialUser(u),
       ...rankFor(athleteId),
       perks: perksFor(athleteId),
       streakDays: currentStreakDays(athleteId),
       ...statsFor(athleteId),
-      joined: membership.joined,
-      plan: plan ? {
-        id: plan.id, name: plan.name, monthlyLimit: plan.monthlyLimit,
-        usedThisMonth: info?.usedThisMonth ?? 0, remaining: info?.remaining ?? null,
-        classTypes: plan.classTypes?.length ? plan.classTypes : null,
-        expired: !!info?.expired, inGrace: !!info?.inGrace, graceDaysLeft: info?.graceDaysLeft ?? null,
-      } : null,
+      joined,
+      plan,
     });
   },
 
@@ -2584,19 +2727,27 @@ const routes = {
   // RoutineEdit.jsx already produces) and hands it here; the server stamps a fresh id so every
   // athlete who applies it ends up with an independently-editable copy, never a shared id.
   // athleteId: null means "whole box," resolved against CURRENT membership at read time below —
-  // never fanned out / snapshotted at assign time.
+  // never fanned out / snapshotted at assign time. boxId is optional: omitted means this is a
+  // direct (box-less) client hired through the marketplace, in which case athleteId is required
+  // (there's no "whole box" to fan out to without one) and authorization comes from an active
+  // coachClients row instead.
 
 
   'POST /api/coach/box/assign-routine': async (req, res) => {
     const me = readSession(req);
     if (!me) return json(res, 401, { error: 'not signed in' });
     const body = await readBody(req);
-    const boxId = String(body.boxId || '');
-    if (!canManageBox(me.id, boxId)) return json(res, 404, { error: 'not found' });
+    const boxId = body.boxId ? String(body.boxId) : null;
     const routine = body.routine;
     if (!routine || typeof routine !== 'object' || !routine.name) return json(res, 400, { error: 'routine required' });
     const athleteId = body.athleteId ? String(body.athleteId) : null;
-    if (athleteId && !isMemberOfBox(athleteId, boxId)) return json(res, 404, { error: 'not a member of this box' });
+    if (boxId) {
+      if (!canManageBox(me.id, boxId)) return json(res, 404, { error: 'not found' });
+      if (athleteId && !isMemberOfBox(athleteId, boxId)) return json(res, 404, { error: 'not a member of this box' });
+    } else {
+      if (!athleteId) return json(res, 400, { error: 'athleteId required without a box' });
+      if (!isActiveClientOf(me.id, athleteId)) return json(res, 404, { error: 'not found' });
+    }
     const assignment = {
       id: crypto.randomBytes(8).toString('base64url'),
       boxId, coachId: me.id, athleteId,
@@ -2622,7 +2773,7 @@ const routes = {
       .map(a => {
         const coach = db.users.find(u => u.id === a.coachId);
         const box = db.boxes.find(b => b.id === a.boxId);
-        return { id: a.id, routine: a.routine, created: a.created, coachName: coach?.name || null, boxName: box?.name || null };
+        return { id: a.id, routine: a.routine, created: a.created, coachName: coach?.name || null, boxName: box?.title || null };
       });
     json(res, 200, { assignments });
   },

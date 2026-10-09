@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react'
 import { useUI } from '../store/useUI.js'
-import { coachMarketplace } from '../lib/api.js'
+import { coachMarketplace, athleteRequestCoach } from '../lib/api.js'
 import { t } from '../lib/i18n.js'
 import Icon from '../components/Icon.jsx'
 import Avatar from '../components/Avatar.jsx'
 import LocationPicker from '../components/LocationPicker.jsx'
+import { Button } from '../components/ui.jsx'
 
 // Browse coaches offering personal training — opt-in only (Coach dashboard's "List me in the
 // marketplace" switch), independent of running a box. No hire/booking flow yet — that's a
@@ -26,6 +27,14 @@ export default function CoachMarketplace() {
       .then(r => { setCoaches(r.coaches); setRadiusKm(r.radiusKm) })
       .catch(e => toast(e.message))
   }, [searchLoc?.lat, searchLoc?.lon])
+
+  // POST /api/coach/clients/request creates a pending coachClients row — the coach, not this
+  // athlete, finalizes it (CoachClients.jsx's Approve), so this button only ever gets as far
+  // as "Pending" here. That's deliberate: it's what stops an athlete from just declaring
+  // themselves someone's client.
+  const request = c => athleteRequestCoach(c.id)
+    .then(() => { toast(t('Request sent')); setCoaches(cs => cs.map(x => x.id === c.id ? { ...x, relationship: 'pending' } : x)) })
+    .catch(e => toast(e.message))
 
   return <div className="narrow">
     <div className="hdr">
@@ -59,6 +68,13 @@ export default function CoachMarketplace() {
                   {c.distanceKm != null && <span> · {t('{0} km', c.distanceKm)}</span>}
                 </div>
               )}
+              <div style={{ marginTop: 10 }}>
+                {c.relationship === 'active'
+                  ? <Button size="sm" variant="tinted" disabled>{t('Your coach')}</Button>
+                  : c.relationship === 'pending'
+                  ? <Button size="sm" variant="tinted" disabled>{t('Pending')}</Button>
+                  : <Button size="sm" variant="primary" onClick={() => request(c)}>{t('Request coaching')}</Button>}
+              </div>
             </div>
           </div>
         ))}

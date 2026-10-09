@@ -6,7 +6,7 @@ import { coachAthleteWorkouts, coachAthleteProfile, coachBox, coachBoxPlans, str
 import { activeBoxColor, fmtDate, fmtVol } from '../../lib/format.js'
 import { useBoxAccent } from '../../lib/useBoxAccent.js'
 import { cachedBoxColor, setCachedBoxColors } from '../../lib/boxCache.js'
-import { assignPlanSheet } from '../../sheets.jsx'
+import { assignPlanSheet, assignRoutineSheet } from '../../sheets.jsx'
 import { EXIDX } from '../../lib/exercises.js'
 import { t, nameFor } from '../../lib/i18n.js'
 import Icon from '../../components/Icon.jsx'
@@ -15,10 +15,13 @@ import ProfileHeaderCard from '../../components/ProfileHeaderCard.jsx'
 const nameOfEntry = e => { const ex = EXIDX[e.id]; return ex ? nameFor(ex) : (e.target?.id || e.id) }
 
 // A coach's view of one athlete: the same identity card as their public profile (badges and
-// all — see ProfileHeaderCard), their plan status for this box, and their actual training log
-// (real per-set numbers, deliberately richer than the social feed, which strips those even for
-// public profiles — giving useful feedback needs them). GET /api/coach/athlete/* gates every
-// piece of this on an active box membership, re-checked fresh every request.
+// all — see ProfileHeaderCard), their plan status (box athletes only), and their actual
+// training log (real per-set numbers, deliberately richer than the social feed, which strips
+// those even for public profiles — giving useful feedback needs them). GET /api/coach/athlete/*
+// gates every piece of this fresh on every request, either against an active box membership or
+// — when this is reached without a boxId, via the box-less /coach/athlete/:athleteId route —
+// an active direct (marketplace-hired) coaching relationship instead. A direct client never has
+// a plan, so the plan card simply doesn't render for them.
 export default function CoachAthlete() {
   const { boxId, athleteId } = useParams()
   const nav = useNavigate()
@@ -32,15 +35,17 @@ export default function CoachAthlete() {
   const [open, setOpen] = useState(null)
 
   const load = () => {
-    coachBox(boxId).then(r => { setBox(r.box); setCachedBoxColors(boxId, r.box.colors, r.box.colorsEnabled) }).catch(e => toast(e.message))
-    coachBoxPlans(boxId).then(setPlans).catch(e => toast(e.message))
+    if (boxId) {
+      coachBox(boxId).then(r => { setBox(r.box); setCachedBoxColors(boxId, r.box.colors, r.box.colorsEnabled) }).catch(e => toast(e.message))
+      coachBoxPlans(boxId).then(setPlans).catch(e => toast(e.message))
+    }
     coachAthleteProfile(boxId, athleteId).then(setProfile).catch(e => toast(e.message))
   }
   useEffect(() => { load() }, [boxId, athleteId])
   useEffect(() => { coachAthleteWorkouts(athleteId).then(setWorkouts).catch(e => toast(e.message)) }, [athleteId])
   useEffect(() => { fetchStreakTiers().then(setStreakTierList).catch(() => setStreakTierList([])) }, [])
 
-  useBoxAccent(box ? activeBoxColor(box, myTheme) : cachedBoxColor(boxId, myTheme))
+  useBoxAccent(!boxId ? null : box ? activeBoxColor(box, myTheme) : cachedBoxColor(boxId, myTheme))
 
   const prCount = workouts ? workouts.reduce((n, w) => n + (w.prs?.length || 0), 0) : 0
   const plan = profile?.plan
@@ -51,9 +56,11 @@ export default function CoachAthlete() {
     : plan.monthlyLimit != null ? t('{0} of {1} classes this month', plan.usedThisMonth, plan.monthlyLimit)
     : plan.classTypes ? t('Only: {0}', plan.classTypes.join(', ')) : t('Unlimited')
 
+  const assignRoutine = () => assignRoutineSheet(box ? { box, roster: [{ id: athleteId, name: profile.user.name }] } : { athlete: { id: athleteId, name: profile.user.name } })
+
   return <div className="narrow">
     <div className="hdr hdr-center">
-      <button className="iconbtn" onClick={() => nav('/coach/box/' + boxId + '/athletes')} aria-label={t('Back')}><Icon name="chevronLeft" /></button>
+      <button className="iconbtn" onClick={() => nav(boxId ? '/coach/box/' + boxId + '/athletes' : '/coach/clients')} aria-label={t('Back')}><Icon name="chevronLeft" /></button>
       <h1 className="hdr-sub" style={{ margin: 0 }}>{t('Athlete')}</h1>
     </div>
 
@@ -61,6 +68,16 @@ export default function CoachAthlete() {
       <ProfileHeaderCard user={profile.user} level={profile.level} prestige={profile.prestige} perks={profile.perks} streakTierList={streakTierList} />
 
       <div className="card" style={{ marginTop: 10 }}>
+        <button className="row" style={{ alignItems: 'center', gap: 12, width: '100%', textAlign: 'left' }} onClick={assignRoutine}>
+          <span className="flat-badge" style={{ '--tint': 'var(--blue)', width: 34, height: 34, borderRadius: 10 }}><Icon name="dumbbell" /></span>
+          <span style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontWeight: 700, fontSize: 14.5 }}>{t('Assign a routine')}</div>
+          </span>
+          <Icon name="chevronRight" className="chev" />
+        </button>
+      </div>
+
+      {boxId && <div className="card" style={{ marginTop: 10 }}>
         <button className="row" style={{ alignItems: 'center', gap: 12, width: '100%', textAlign: 'left' }}
           onClick={() => box && assignPlanSheet(box, { id: athleteId, name: profile.user.name }, plans || [], plan?.id || null, load)}>
           <span className="flat-badge" style={{ '--tint': 'var(--acc)', width: 34, height: 34, borderRadius: 10 }}><Icon name="list" /></span>
@@ -70,7 +87,7 @@ export default function CoachAthlete() {
           </span>
           {planStatusPill && <span className="tag" style={planStatusPill.style}>{planStatusPill.label}</span>}
         </button>
-      </div>
+      </div>}
 
       <div className="card" style={{ marginTop: 10 }}>
         <div className="coach-stats">

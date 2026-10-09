@@ -179,7 +179,7 @@ export const coachRevokeInvite = (boxId, code) => api('/api/coach/box/invite/rev
 export const boxJoin = code => api('/api/box/join', { method: 'POST', body: JSON.stringify({ code }) }).then(r => r.box)
 export const athleteBoxes = () => api('/api/athlete/boxes').then(r => r.boxes)
 export const coachAthleteWorkouts = (athleteId, days) => api('/api/coach/athlete/workouts?athleteId=' + encodeURIComponent(athleteId) + (days ? '&days=' + days : '')).then(r => r.workouts)
-export const coachAthleteProfile = (boxId, athleteId) => api('/api/coach/athlete/profile?boxId=' + encodeURIComponent(boxId) + '&athleteId=' + encodeURIComponent(athleteId))
+export const coachAthleteProfile = (boxId, athleteId) => api('/api/coach/athlete/profile?' + (boxId ? 'boxId=' + encodeURIComponent(boxId) + '&' : '') + 'athleteId=' + encodeURIComponent(athleteId))
 export const boxImageUrl = boxId => '/api/box/image?boxId=' + encodeURIComponent(boxId)
 
 /* ---------- box requests (a coach asks for a new box, an admin approves it) ---------- */
@@ -193,6 +193,16 @@ export const boxRequestImageUrl = id => '/api/admin/box-requests/image?id=' + en
 /* ---------- personal-training marketplace ---------- */
 export const coachSetVisibility = (visible, hourlyRate, location) => api('/api/coach/visibility', { method: 'POST', body: JSON.stringify({ visible, hourlyRate, location }) }).then(r => r.user)
 export const coachMarketplace = (lat, lon) => api('/api/coaches/marketplace' + (lat != null && lon != null ? '?lat=' + lat + '&lon=' + lon : ''))
+
+/* ---------- direct (box-less) coaching relationships — hired via the marketplace ---------- */
+export const athleteRequestCoach = coachId => api('/api/coach/clients/request', { method: 'POST', body: JSON.stringify({ coachId }) })
+export const coachClientRequests = () => api('/api/coach/clients/requests').then(r => r.requests)
+export const coachClientRequestApprove = id => api('/api/coach/clients/requests/approve', { method: 'POST', body: JSON.stringify({ id }) })
+export const coachClientRequestDismiss = id => api('/api/coach/clients/requests/dismiss', { method: 'POST', body: JSON.stringify({ id }) })
+export const coachClients = () => api('/api/coach/clients').then(r => r.clients)
+export const athleteCoaches = () => api('/api/athlete/coaches').then(r => r.coaches)
+export const coachClientRemove = athleteId => api('/api/coach/clients/remove', { method: 'POST', body: JSON.stringify({ athleteId }) })
+export const athleteLeaveCoach = coachId => api('/api/athlete/coaches/leave', { method: 'POST', body: JSON.stringify({ coachId }) })
 
 /* ---------- geocoding (real places only — no free text) ---------- */
 export const geoSearch = (q, near, precise) => api('/api/geo/search?q=' + encodeURIComponent(q) + (near ? '&lat=' + near.lat + '&lon=' + near.lon : '') + (precise ? '&precise=1' : '')).then(r => r.places)

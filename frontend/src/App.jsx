@@ -80,6 +80,7 @@ import CoachBoxAbout from './views/coach/CoachBoxAbout.jsx'
 import CoachBoxPlans from './views/coach/CoachBoxPlans.jsx'
 import CoachBoxStaff from './views/coach/CoachBoxStaff.jsx'
 import CoachBoxAthletes from './views/coach/CoachBoxAthletes.jsx'
+import CoachClients from './views/coach/CoachClients.jsx'
 import MyBoxes from './views/MyBoxes.jsx'
 import BoxJoin from './views/BoxJoin.jsx'
 import BoxWod from './views/BoxWod.jsx'
@@ -252,6 +253,8 @@ function Shell() {
               <Route path="/coach/apply" element={user ? <CoachApply /> : <Navigate to="/home" replace />} />
               <Route path="/coaches" element={user ? <CoachMarketplace /> : <Navigate to="/home" replace />} />
               <Route path="/coach" element={user?.coach ? <CoachBoxes /> : <Navigate to="/home" replace />} />
+              <Route path="/coach/clients" element={user?.coach ? <CoachClients /> : <Navigate to="/home" replace />} />
+              <Route path="/coach/athlete/:athleteId" element={user?.coach ? <CoachAthlete /> : <Navigate to="/home" replace />} />
               {/* Any signed-in user, not just user?.coach — a box's staff (added via @username,
                   not necessarily an approved marketplace coach themselves) needs to reach this
                   too. The actual gate is server-side (canManageBox/canViewAthlete in

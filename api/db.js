@@ -21,7 +21,7 @@ const COLLECTIONS = [
   'importLevelCaps', 'streakTiers', 'coachRequests', 'boxes', 'boxMemberships', 'boxInvites',
   'routineAssignments', 'wods', 'wodResults', 'boxRequests', 'boxStaff', 'classTypes',
   'dayTemplates', 'weekTemplates', 'wodTemplates', 'classSessions', 'classBookings',
-  'classPenalties', 'liveClasses', 'publicFoods', 'boxPlans',
+  'classPenalties', 'liveClasses', 'publicFoods', 'boxPlans', 'coachClients',
 ];
 const tableFor = name => 'kv_' + name.replace(/[A-Z]/g, c => '_' + c.toLowerCase());
 

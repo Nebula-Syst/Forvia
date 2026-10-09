@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useStore } from '../store/useStore.js'
 import { useUI } from '../store/useUI.js'
-import { athleteBoxes, boxJoin, boxImageUrl } from '../lib/api.js'
+import { athleteBoxes, athleteCoaches, athleteLeaveCoach, boxJoin, boxImageUrl } from '../lib/api.js'
 import { tintInk } from '../lib/format.js'
 import { t } from '../lib/i18n.js'
 import Icon from '../components/Icon.jsx'
@@ -45,11 +45,13 @@ export default function MyBoxes() {
   const applyAssignment = useStore(s => s.applyRoutineAssignment)
   const refreshPending = useStore(s => s.refreshPendingAssignments)
   const [boxes, setBoxes] = useState(null)
+  const [coaches, setCoaches] = useState(null)
 
-  const load = () => athleteBoxes().then(setBoxes).catch(e => toast(e.message))
+  const load = () => { athleteBoxes().then(setBoxes).catch(e => toast(e.message)); athleteCoaches().then(setCoaches).catch(e => toast(e.message)) }
   useEffect(() => { load(); refreshPending() }, [])
 
   const apply = a => applyAssignment(a).then(() => toast(t('Added to your routines'))).catch(e => toast(e.message))
+  const leaveCoach = c => athleteLeaveCoach(c.id).then(() => { toast(t('Left {0}', c.name)); load() }).catch(e => toast(e.message))
 
   const openBox = b => nav('/box/' + b.id + '/classes', { state: { title: b.title } })
   const openJoin = () => openSheet(close => <JoinBoxSheet close={close} onJoined={load} />)
@@ -69,9 +71,26 @@ export default function MyBoxes() {
               <span className="lrow-i" style={{ '--tint': 'var(--indigo)' }}><Icon name="dumbbell" /></span>
               <span className="lrow-m">
                 <span className="lrow-t">{a.routine.name}</span>
-                <span className="lrow-s">{t('From {0} · {1}', a.coachName || '?', a.boxName || '')}</span>
+                <span className="lrow-s">{a.boxName ? t('From {0} · {1}', a.coachName || '?', a.boxName) : t('From {0}', a.coachName || '?')}</span>
               </span>
               <Button size="sm" variant="primary" onClick={() => apply(a)}>{t('Add')}</Button>
+            </div>
+          ))}
+        </div>
+      </Section>
+    )}
+
+    {!!coaches?.length && (
+      <Section title={t('Your coach(es)')}>
+        <div className="lrow-list">
+          {coaches.map(c => (
+            <div key={c.id} className="lrow">
+              <span className="lrow-i" style={{ '--tint': 'var(--indigo)' }}><Icon name="person" /></span>
+              <span className="lrow-m">
+                <span className="lrow-t">{c.name}</span>
+                <span className="lrow-s">@{c.username}</span>
+              </span>
+              <button className="iconbtn" style={{ color: 'var(--red)' }} onClick={() => leaveCoach(c)} aria-label={t('Leave')}><Icon name="xmark" /></button>
             </div>
           ))}
         </div>

@@ -125,6 +125,17 @@ export default function CoachBoxes() {
       {locOpen && <div style={{ marginTop: 12 }}><LocationPicker value={location} onChange={changeLocation} biasFrom={location} /></div>}
     </div>
 
+    {/* Entry point for box-less clients hired through the marketplace — CoachClients.jsx.
+        Separate from "Your boxes" below since a direct client never belongs to any box. */}
+    <button className="card tap" style={{ display: 'flex', alignItems: 'center', gap: 12, width: '100%', textAlign: 'left', marginBottom: 16 }} onClick={() => nav('/coach/clients')}>
+      <span className="flat-badge" style={{ '--tint': 'var(--purple)', width: 34, height: 34, borderRadius: 10 }}><Icon name="person" /></span>
+      <span style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontWeight: 700, fontSize: 14.5 }}>{t('Clients')}</div>
+        <div className="muted small" style={{ marginTop: 1 }}>{t('Athletes you coach directly, outside any box.')}</div>
+      </span>
+      <Icon name="chevronRight" className="chev" />
+    </button>
+
     {/* Not a <Section> — its .sect-b wrapper is its own glass card, and every box below is
         already a full card in its own right, so wrapping the list in another one just nested
         a card inside a card. Bare .sect-t label directly on the page instead, same idiom as
