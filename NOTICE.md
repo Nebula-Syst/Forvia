@@ -225,6 +225,34 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
+## More mini-games (2026-10-09)
+
+`frontend/public/games/crisp/` (`shared/bundle.js`, `shared/sounds.js`, and one `<slug>/main.js`
+per game) is vendored from [**crisp-game-lib-11-games**](https://github.com/abagames/crisp-game-lib-11-games)
+by ABA Games, MIT License, plus the [**crisp-game-lib**](https://github.com/abagames/crisp-game-lib)
+engine itself (`shared/bundle.js`) and [**sounds-some-sounds**](https://github.com/abagames/sounds-some-sounds)
+(`shared/sounds.js`), both by the same author, same license — reproduced in
+`frontend/public/games/crisp/shared/LICENSE.txt`. Three of these games use a theme that needs
+real WebGL filters, so `shared/pixi.min.js` and `shared/pixi-filters.js` are also vendored, from
+[**pixi.js**](https://github.com/pixijs/pixijs) and [**pixi-filters**](https://github.com/pixijs/pixi-filters)
+(Mathew Groves, Chad Engler, MIT License) — self-hosted rather than loaded from a CDN at runtime
+like upstream's own demo page does, so these games work offline and don't depend on a third
+party staying up. Each game's `index.html` is this project's own (not from upstream, which uses
+one shared page with a `?gamename` query string instead of a folder per game) — same dark
+background recipe as the rest of the mini-games, and the one line needed to actually boot the
+engine (`window.addEventListener('load', onLoad)`, upstream's own bootstrapping call, just made
+explicit here instead of living in upstream's shared index.html). Every game's own `main.js` is
+unmodified.
+
+`frontend/public/games/2048/` (`js/`, `style/`, minus its old IE/Safari-only `.eot`/`.svg` font
+formats — this project only ever serves a modern WebView or browser, and `.woff` alone covers
+that) is vendored from [**2048**](https://github.com/gabrielecirulli/2048) by Gabriele Cirulli,
+MIT License (`LICENSE.txt` kept alongside it). `index.html` is this project's own: the same
+elements and scripts as upstream's, minus the apple-touch-icon/startup-image links (dropped along
+with the image files themselves — not useful inside an iframe) and the closing promotional
+paragraphs, plus one new `forvia.css` for the same dark background treatment. The board's own
+tile colors — the whole point of the game's look — are untouched.
+
 ## This fork
 
 This repository is maintained by Nebula Systems as an update/fork of

@@ -13,9 +13,8 @@ import Icon from './Icon.jsx'
 // and same-origin means its own localStorage (best scores, sound/difficulty prefs) just works.
 //
 // Elapsed play time is logged exactly once, on unmount, regardless of how the sheet closes
-// (our own close button, the vendored game's "back to all games" link via games/close.html's
-// postMessage, or Android back/Escape via the sheet's existing history wiring) — a cleanup
-// function fires for all of those alike, so there's no need to wire each one separately.
+// (our own close button, or Android back/Escape via the sheet's existing history wiring) — a
+// cleanup function fires for all of those alike, so there's no need to wire each one separately.
 export default function GamePlayer({ slug, close }) {
   const startRef = useRef(Date.now())
   // "El tiempo máximo de juego sea el de descanso" — if a rest was already counting down when
@@ -32,12 +31,7 @@ export default function GamePlayer({ slug, close }) {
   }, [rest, close])
 
   useEffect(() => {
-    const onMessage = e => {
-      if (e.origin === location.origin && e.data?.type === 'og:close') close()
-    }
-    window.addEventListener('message', onMessage)
     return () => {
-      window.removeEventListener('message', onMessage)
       const ms = Date.now() - startRef.current
       if (ms > 500) useStore.getState().logGameTime(slug, ms)
     }
@@ -51,7 +45,7 @@ export default function GamePlayer({ slug, close }) {
     <div className="fs-view">
       <button className="iconbtn scan-close" aria-label={t('Close')} onPointerDown={e => { e.preventDefault(); close() }}><Icon name="xmark" /></button>
       <iframe
-        src={'/games/' + slug + '/index.html'}
+        src={'/games/' + (game?.path || slug) + '/index.html'}
         title={game ? t(game.label) : 'Mini-game'}
         allow="fullscreen"
         style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', border: 0 }}

@@ -49,12 +49,30 @@ const COVERS = {
       </g>
     </svg>
   ),
+  // 2048's own tile colors (style/main.css) — same orange "high-value tile" look, not a drawing.
+  '2048': (
+    <svg viewBox="0 0 48 48" width="100%" height="100%" aria-hidden="true">
+      <rect x="4" y="4" width="40" height="40" rx="10" fill="#edc22e" />
+      <text x="24" y="31" textAnchor="middle" fontFamily="Arial, sans-serif" fontWeight="700" fontSize="13" fill="#f9f6f2">2048</text>
+    </svg>
+  ),
 }
 
-export default function GameCover({ slug, size = 44 }) {
+// Everything past the hand-drawn batch above (e.g. the crisp-game-lib set) falls back to a
+// plain tinted initial — still distinguishes each tile from its neighbors by letter and color
+// without hand-illustrating dozens of one-off covers.
+function FallbackCover({ label, tint }) {
+  return <svg viewBox="0 0 48 48" width="100%" height="100%" aria-hidden="true">
+    <rect x="4" y="4" width="40" height="40" rx="10" style={{ fill: tint || '#333' }} fillOpacity=".3" />
+    <text x="24" y="31" textAnchor="middle" fontFamily="Arial, sans-serif" fontWeight="700" fontSize="18" style={{ fill: tint || '#fff' }}>
+      {(label || '?').charAt(0).toUpperCase()}
+    </text>
+  </svg>
+}
+
+export default function GameCover({ slug, label, tint, size = 44 }) {
   const svg = COVERS[slug]
-  if (!svg) return null
   return <span style={{ width: size, height: size, borderRadius: size * 0.3, overflow: 'hidden', flex: 'none', display: 'block' }}>
-    {svg}
+    {svg || <FallbackCover label={label} tint={tint} />}
   </span>
 }
