@@ -52,8 +52,8 @@
     if (!maze) return;
     const cell = size / maze.size;
     ctx.clearRect(0, 0, size, size);
-    ctx.fillStyle = '#f8faf3'; ctx.fillRect(0, 0, size, size);
-    ctx.fillStyle = '#dee8d5';
+    ctx.fillStyle = '#13150d'; ctx.fillRect(0, 0, size, size);
+    ctx.fillStyle = '#4a5540';
     for (const index of trail) {
       ctx.beginPath(); ctx.arc((index % maze.size + .5) * cell, (Math.floor(index / maze.size) + .5) * cell, cell * .09, 0, Math.PI * 2); ctx.fill();
     }
@@ -62,10 +62,10 @@
     ctx.beginPath(); ctx.arc(cell / 2, cell / 2, cell * .32, 0, Math.PI * 2); ctx.stroke();
     const exit = (maze.size - 1) * cell;
     ctx.fillStyle = '#e8d69c'; ctx.fillRect(exit + 2, exit + 2, cell - 4, cell - 4);
-    ctx.strokeStyle = '#624c20'; ctx.lineWidth = Math.max(1.5, cell * .055);
+    ctx.strokeStyle = '#d4b06a'; ctx.lineWidth = Math.max(1.5, cell * .055);
     ctx.beginPath(); ctx.moveTo(exit + cell * .35, exit + cell * .76); ctx.lineTo(exit + cell * .35, exit + cell * .23); ctx.stroke();
     ctx.fillStyle = '#bd411c'; ctx.beginPath(); ctx.moveTo(exit + cell * .37, exit + cell * .23); ctx.lineTo(exit + cell * .78, exit + cell * .38); ctx.lineTo(exit + cell * .37, exit + cell * .52); ctx.fill();
-    ctx.strokeStyle = '#53684c'; ctx.lineWidth = Math.max(2, cell * .065); ctx.lineCap = 'square';
+    ctx.strokeStyle = '#8fae80'; ctx.lineWidth = Math.max(2, cell * .065); ctx.lineCap = 'square';
     ctx.beginPath();
     maze.cells.forEach((walls, index) => {
       const x = (index % maze.size) * cell, y = Math.floor(index / maze.size) * cell;

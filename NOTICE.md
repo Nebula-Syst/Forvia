@@ -180,12 +180,26 @@ the rights holder first**, and keep any attribution that accompanies it intact.
 ## Mini-games (2026-10-09)
 
 `frontend/public/games/` (`shared/`, `labyrinth/`, `snake/`, `memory/`, `whac-a-mole/`) is
-vendored, unmodified, from [**OpenGames**](https://github.com/opengames-dev/opengames-dev.github.io)
-by the OpenGames contributors, commit `b3afbbb` (2026-09-09), used under the **MIT License**
-reproduced below. These are the playable mini-games offered during a workout's rest periods and
-from the standalone "Mini-games" catalog in Settings — pure HTML/CSS/vanilla JS, no build step,
-no network calls, no accounts. Everything *around* them (the catalog page, the rest-timer
-integration, the embedding chrome) is Forvia's own code under the PolyForm license above.
+vendored from [**OpenGames**](https://github.com/opengames-dev/opengames-dev.github.io) by the
+OpenGames contributors, commit `b3afbbb` (2026-09-09), used under the **MIT License** reproduced
+below. These are the playable mini-games offered during a workout's rest periods and from the
+standalone "Mini-games" catalog in Settings — pure HTML/CSS/vanilla JS, no build step, no network
+calls, no accounts. Everything *around* them (the catalog page, the rest-timer integration, the
+embedding chrome) is Forvia's own code under the PolyForm license above.
+
+**Not unmodified.** Each game's `index.html` carries two small Forvia-specific additions on top
+of the otherwise-untouched upstream file: an extra stylesheet link
+(`shared/forvia.css`, a new file, not from upstream — a dark-theme override layer matching
+Forvia's own palette instead of the games' light default, and larger touch targets) and one
+inline script neutralizing the games' own Escape-key "exit immersive view" handler, since that
+view is now forced on permanently (`is-focused` added to `<body>`'s class list in each file) —
+without it, the normal view's header (a title and an "← All games" link to a page Forvia doesn't
+serve) would show through status-bar/notch safe areas with no working destination. CSS can't
+reach a `<canvas>`'s own drawing, so `snake/game.js` and `labyrinth/game.js` also have their few
+hardcoded board/wall/trail colors swapped for this same dark palette (same shapes, same logic,
+different hex values only) — `logic.js`, `style.css`, and every DOM-only game's own `game.js`
+(`memory/`, `whac-a-mole/`, already dark through CSS alone) are untouched, as is `shared/
+favicon.svg` and `LICENSE`.
 
 ```
 MIT License

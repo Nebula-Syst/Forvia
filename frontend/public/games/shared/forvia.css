@@ -1,0 +1,48 @@
+/* Forvia's own override layer on top of the vendored shared/style.css — not part of upstream
+   OpenGames (see NOTICE.md). Loaded after it on every game page. Three jobs:
+   1. Dark palette matching Forvia's own default theme instead of the games' light cream default.
+   2. Bigger touch targets for the D-pad / toolbar buttons.
+   3. Hide the in-game fullscreen toggle — every game page is already forced into its own
+      `is-focused` immersive layout (body class set directly in each index.html), which is what
+      actually fixes the "title sits under the status bar" and "All games link goes nowhere
+      inside an iframe" issues: that layout already positions everything with env(safe-area-
+      inset-*) and hides the header (title + back link) entirely. The toggle button would just
+      let someone tap their way back into the un-focused, unsafe-area-aware layout. */
+
+:root {
+  color-scheme: dark;
+  --paper: #000000;
+  --ink: #ffffff;
+  --muted: rgba(235, 235, 245, .6);
+  --line: rgba(255, 255, 255, .16);
+  --orange: #a3e635; /* focus ring */
+  --accent: #a3e635;
+  --tint: #11140c;
+}
+/* Every game individually re-pins --accent/--tint (shared/style.css's own
+   [data-game="…"] rules) — override all of them to the same brand green instead of each
+   game's own distinct accent, so the app reads as one consistent product, not four. */
+.game-page[data-game] { --accent: #a3e635; --tint: #11140c; }
+
+button, .button { background: transparent; }
+button:hover, .button:hover { background: rgba(255, 255, 255, .08); }
+button.primary, .button.primary { background: var(--accent); color: #0a0d06; border-color: var(--accent); }
+button.primary:hover, .button.primary:hover { background: #b6f24a; }
+.icon-button:hover { background: rgba(255, 255, 255, .08); }
+.difficulty { background: rgba(255, 255, 255, .06); }
+.difficulty button[aria-pressed="true"] { background: #1c1f14; box-shadow: none; }
+.dpad button { background: rgba(255, 255, 255, .08); }
+.overlay { background: rgba(0, 0, 0, .88); }
+.settings-content { box-shadow: 0 8px 30px rgba(0, 0, 0, .5); }
+.play-area { border-color: rgba(255, 255, 255, .12); }
+
+/* Bigger touch targets — the vendored default is 44px throughout; this project asked for
+   noticeably larger. Keeps the same grid math (3 columns × fixed size) the D-pad relies on. */
+.icon-button, .dpad button { width: 56px; height: 56px; font-size: 22px; }
+.icon-button svg { width: 26px; height: 26px; }
+.primary-controls button { min-height: 52px; font-size: 14px; padding-inline: 18px; }
+@media (min-width: 700px), (min-width: 540px) and (orientation: landscape) {
+  .dpad, .is-focused .dpad { grid-template-columns: repeat(3, 56px); grid-template-rows: repeat(2, 56px); }
+}
+
+#fullscreen { display: none; }

@@ -47,18 +47,18 @@
     if (!state) return;
     const cell = size / state.size;
     ctx.clearRect(0, 0, size, size);
-    ctx.fillStyle = '#f4f7ed'; ctx.fillRect(0, 0, size, size);
-    ctx.strokeStyle = '#e5ebdd'; ctx.lineWidth = .6;
+    ctx.fillStyle = '#13150d'; ctx.fillRect(0, 0, size, size);
+    ctx.strokeStyle = 'rgba(255,255,255,.08)'; ctx.lineWidth = .6;
     ctx.beginPath();
     for (let i = 0; i <= state.size; i++) { ctx.moveTo(i * cell, 0); ctx.lineTo(i * cell, size); ctx.moveTo(0, i * cell); ctx.lineTo(size, i * cell); } ctx.stroke();
     if (state.food) {
       const x = (state.food.x + .5) * cell, y = (state.food.y + .5) * cell;
       const pulse = OG.reducedMotion.matches ? 1 : 1 + Math.sin(now / 240) * .06;
       ctx.fillStyle = '#bc4021'; ctx.beginPath(); ctx.arc(x, y, cell * .34 * pulse, 0, Math.PI * 2); ctx.fill();
-      ctx.strokeStyle = '#526c36'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(x, y - cell * .25); ctx.lineTo(x + cell * .12, y - cell * .48); ctx.stroke();
+      ctx.strokeStyle = '#8fae80'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(x, y - cell * .25); ctx.lineTo(x + cell * .12, y - cell * .48); ctx.stroke();
     }
     state.body.forEach((p, i) => {
-      ctx.fillStyle = i === 0 ? '#294d35' : '#61864d';
+      ctx.fillStyle = i === 0 ? '#a3e635' : '#6fa33f';
       ctx.beginPath(); ctx.roundRect(p.x * cell + 1, p.y * cell + 1, cell - 2, cell - 2, cell * .23); ctx.fill();
     });
     const head = state.body[0], d = SnakeLogic.vectors[state.direction];

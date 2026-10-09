@@ -3,19 +3,21 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="theme-color" content="#f8f7f2">
+  <meta name="theme-color" content="#000000">
   <meta name="description" content="Play Memory for free. No ads, accounts, or tracking. A tiny open-source browser game from OpenGames.">
   <title>Memory — OpenGames</title>
   <link rel="icon" href="../shared/favicon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="../shared/style.css">
   <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="../shared/forvia.css">
+  <script>window.addEventListener('keydown', function(e){ if (e.key === 'Escape' && document.body.classList.contains('is-focused') && !(document.getElementById('settings')||{}).open) e.stopImmediatePropagation() }, true)</script>
   <script src="../shared/audio.js" defer></script>
   <script src="../shared/ui.js" defer></script>
   <script src="../shared/input.js" defer></script>
-  
+
   <script src="game.js" defer></script>
 </head>
-<body class="game-page" data-game="memory">
+<body class="game-page is-focused" data-game="memory">
   <a class="skip-link" href="#main">Skip to game</a>
   <header class="game-header">
     <a class="back-link" href="../index.html">← All games</a>

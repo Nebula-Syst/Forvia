@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react'
 import { useStore } from '../store/useStore.js'
+import { useUI } from '../store/useUI.js'
 import { GAMES } from '../lib/games.js'
 import { t } from '../lib/i18n.js'
 import Icon from './Icon.jsx'
@@ -17,6 +18,18 @@ import Icon from './Icon.jsx'
 // function fires for all of those alike, so there's no need to wire each one separately.
 export default function GamePlayer({ slug, close }) {
   const startRef = useRef(Date.now())
+  // "El tiempo máximo de juego sea el de descanso" — if a rest was already counting down when
+  // this game opened, the game is capped to it: the moment that rest ends (naturally hitting 0,
+  // Skip, or dropping below 0 via −15), this view closes itself. +15/extending rest naturally
+  // extends the cap too, since this just watches the live timer rather than a fixed deadline
+  // snapshotted at open time. A game opened with no rest running (catalog, or the in-workout
+  // button between sets) is never capped — hadRestRef is only ever true if one was already live.
+  const rest = useUI(s => s.timer)
+  const hadRestRef = useRef(!!rest)
+
+  useEffect(() => {
+    if (hadRestRef.current && !rest) close()
+  }, [rest, close])
 
   useEffect(() => {
     const onMessage = e => {
