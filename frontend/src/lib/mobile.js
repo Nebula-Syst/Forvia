@@ -5,6 +5,9 @@
 import { registerPlugin } from '@capacitor/core'
 import { MUSCLES, MUSCLE_NAME, loadOfWorkouts } from './muscles.js'
 import { t } from './i18n.js'
+import { api } from './api.js'
+import { workoutXp, streakDays } from './history.js'
+import { tierFor } from './rank.js'
 
 export const MOBILE = !!window.Capacitor?.isNativePlatform?.()
 
@@ -38,14 +41,18 @@ export async function nativeLoad() { return null }
 export async function nativeSave(state) { /* no native persistence yet — synced state already covers this */ }
 export async function shareExport(json, filename) { /* no native share sheet yet */ }
 
-// Which muscle to name in the workout reminder: whichever has gone longest without a set,
-// same "what am I neglecting" question rankOf's `missed` answers, but with a full recency
+// Which muscles to name in the workout reminder: the two that have gone longest without a
+// set, same "what am I neglecting" question rankOf's `missed` answers, but with a full recency
 // order instead of just worked-vs-missed — an untrained muscle sorts before any trained date
-// (empty string < any 'YYYY-MM-DD'). Ties (several muscles never trained, or trained on the
-// same day) rotate through by day-of-year instead of always naming the first one in body order.
-function suggestedMuscle(S) {
+// (empty string < any 'YYYY-MM-DD'). There's no weekly split left to read a literal "today's
+// muscles" off of (routines are picked freely each session, see forvia-core's reminderTick) —
+// this is the closest honest stand-in: whatever's been neglected longest is, in practice,
+// usually what a split would have scheduled for today anyway. Ties (several muscles never
+// trained, or trained on the same day) rotate through by day-of-year instead of always naming
+// the same ones first.
+function suggestedMuscles(S, n = 2) {
   const workouts = S.workouts || []
-  if (!workouts.length) return null
+  if (!workouts.length) return []
   const lastTrained = {}
   workouts.forEach(w => {
     const load = loadOfWorkouts([w])
@@ -53,10 +60,40 @@ function suggestedMuscle(S) {
       if (load[slug] > 0 && (!lastTrained[slug] || w.d > lastTrained[slug])) lastTrained[slug] = w.d
     })
   })
-  const oldestDate = MUSCLES.reduce((min, slug) => (lastTrained[slug] || '') < min ? (lastTrained[slug] || '') : min, '9999-99-99')
-  const tied = MUSCLES.filter(slug => (lastTrained[slug] || '') === oldestDate)
   const dayIdx = Math.floor(Date.now() / 86400000)
-  return tied[dayIdx % tied.length]
+  const ranked = MUSCLES.slice().sort((a, b) => (lastTrained[a] || '') < (lastTrained[b] || '') ? -1 : 1)
+  // Rotate ties (equal last-trained date) so a big block of "never trained" muscles doesn't
+  // always lead with the same two — same day-of-year trick the old single-muscle version used,
+  // applied per equal-date run instead of just the very first one.
+  let i = 0
+  while (i < ranked.length) {
+    let j = i + 1
+    while (j < ranked.length && (lastTrained[ranked[j]] || '') === (lastTrained[ranked[i]] || '')) j++
+    const run = ranked.slice(i, j)
+    const shift = dayIdx % run.length
+    ranked.splice(i, run.length, ...run.slice(shift), ...run.slice(0, shift))
+    i = j
+  }
+  return ranked.slice(0, n)
+}
+
+// "One more session and you'll level up" is only worth saying when it's actually true — close
+// enough that a normal session plausibly closes the gap. "Normal" is this user's own last 10
+// sessions' average XP (workoutXp — mirrors api/server.js's formula, see lib/history.js),
+// never a fixed guess: a light-training account and a heavy-volume one earn wildly different
+// XP per session, and a flat threshold would be honest for neither. `rank` comes from a fresh
+// GET /api/me/nebula fetch at sync time (not S — the client has no local XP/level math, that's
+// server-only), so this degrades to nothing (not a guess) if that fetch fails or never ran yet.
+function levelUpLine(rank, S) {
+  if (!rank || rank.readyToPrestige) return null
+  const remaining = rank.xpForLevel - rank.xpInLevel
+  const recent = (S.workouts || []).slice(-10)
+  if (!recent.length) return null
+  const avgXp = recent.reduce((n, w) => n + workoutXp(w), 0) / recent.length
+  if (avgXp <= 0 || remaining > avgXp * 1.15) return null
+  const nextLevel = rank.level + 1
+  const tier = tierFor(nextLevel)
+  return t("One more session and you'll level up to {0}", tier.name + ' · ' + t('Level {0}', nextLevel))
 }
 
 // The workout-day reminder, natively: forvia-core's own reminderTick() (server.js) does the
@@ -92,12 +129,29 @@ export async function syncReminder(S, interactive = false) {
     const loggedToday = (S.workouts || []).some(w => w.d === today)
     if (loggedToday || at <= now) at.setDate(at.getDate() + 1)
 
-    const muscle = suggestedMuscle(S)
+    const muscles = suggestedMuscles(S)
+    const names = muscles.map(slug => t(MUSCLE_NAME[slug]))
+    const title = names.length > 1 ? t('Time to train {0} and {1}', names[0], names[1])
+      : names.length ? t('Time to train {0}', names[0])
+      : t('Workout day reminder')
+
+    // The rank fetch needs a live session — never the thing that blocks scheduling the
+    // reminder itself (offline, or this resync ran before login finished): falls back to the
+    // plain base line below, same as it always has, rather than failing the whole sync.
+    let rank = null
+    try { rank = (await api('/api/me/nebula')).user?.rank || null } catch { /* degrade, don't fail */ }
+    const streak = streakDays(S)
+
+    const parts = [t("You haven't logged a workout today — let's go") + ' 💪']
+    const levelUp = levelUpLine(rank, S)
+    if (levelUp) parts.push(levelUp)
+    if (streak >= 3) parts.push(t("Keep your {0}-day streak going", streak) + ' 🔥')
+
     await LocalNotifications.schedule({
       notifications: [{
         id: REMINDER_ID,
-        title: muscle ? t('Time to train {0}', t(MUSCLE_NAME[muscle])) : t('Workout day reminder'),
-        body: t("You haven't logged a workout today — let's go") + ' 💪',
+        title,
+        body: parts.join(' '),
         schedule: { at, allowWhileIdle: true },
       }],
     })
