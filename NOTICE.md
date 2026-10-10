@@ -279,6 +279,18 @@ own `viewSize` to fill a phone screen would mean re-balancing each one's hand-bu
 collision bounds, so that's left untouched; the card framing instead makes that empty space read
 as deliberate chrome around a floating "cartridge" rather than a layout bug.
 
+**2026-10-10 — Landscape lock.** Card framing alone wasn't enough for the widest of these games
+(`landscape: true` in `lib/games.js`: Charge Beam, Clean Robo, Foot Laser, Growth, Paku Paku,
+Shiny, Sky Golf, Up 1 Way) — nothing about their own `viewSize` changed, but `GamePlayer.jsx` now
+tries to rotate the *screen* for just those, with `requestFullscreen()` + `screen.orientation.lock
+('landscape')` (both standard Web APIs, no vendored file touched), unwound on close. Once the
+screen is actually landscape, `shared/bundle.js`'s own `setSize` (unmodified logic, just reacting
+to the resize its own `window.addEventListener('resize', ...)` already listens for) fills it
+properly on its own. Neither API is universal — no Fullscreen or Orientation Lock support at all
+on iOS Safari, and some browsers refuse a landscape lock outright — so both calls are wrapped in
+try/catch; where they're refused, this just falls back to the portrait card framing above, not a
+crash.
+
 `frontend/public/games/2048/` (`js/`, `style/`, minus its old IE/Safari-only `.eot`/`.svg` font
 formats — this project only ever serves a modern WebView or browser, and `.woff` alone covers
 that) is vendored from [**2048**](https://github.com/gabrielecirulli/2048) by Gabriele Cirulli,

@@ -57,6 +57,32 @@ export default function GamePlayer({ slug, close }) {
   const game = GAMES.find(g => g.slug === slug)
   const hasSound = slug !== '2048'
 
+  // A handful of crisp-game-lib games (games.js's `landscape: true`) were built wide — on a
+  // portrait phone they're letterboxed to a sliver no matter how the canvas itself is framed.
+  // Rather than live with that, try to actually rotate the screen: requestFullscreen() first
+  // (most browsers refuse orientation.lock() outside fullscreen for a page that isn't installed
+  // as a PWA/TWA), then lock to landscape. Both are optional-enhancement Web APIs with real gaps
+  // (no fullscreen/orientation-lock support at all on iOS Safari, some desktop browsers reject
+  // landscape locks outright) — wrapped in try/catch so an unsupported browser just keeps today's
+  // portrait card framing instead of throwing. Already-landscape viewports (tablet, desktop, a
+  // phone already rotated) are left alone. Unwound on unmount so the rest of the app, and any
+  // other game opened after, goes back to normal.
+  useEffect(() => {
+    if (!game?.landscape) return
+    if (typeof window === 'undefined' || window.innerWidth >= window.innerHeight) return
+    let locked = false
+    ;(async () => {
+      try {
+        if (document.documentElement.requestFullscreen) await document.documentElement.requestFullscreen()
+        if (screen.orientation?.lock) { await screen.orientation.lock('landscape'); locked = true }
+      } catch { /* no fullscreen/orientation-lock support here — falls back to the portrait card */ }
+    })()
+    return () => {
+      try { if (locked) screen.orientation.unlock?.() } catch { /* best-effort */ }
+      try { if (document.fullscreenElement) document.exitFullscreen?.() } catch { /* best-effort */ }
+    }
+  }, [game])
+
   // No title here (unlike BarcodeScanSheet) — the game's own header already names itself inside
   // the iframe, right where this view's top strip is; a second title on top of it just doubled up.
   return (
