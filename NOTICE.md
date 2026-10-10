@@ -263,6 +263,22 @@ default becomes `FIN DEL JUEGO` under `?lang=es`. Each game's own `main.js` has 
 same way — an `__es` check picks between the original English and a new Spanish string — with
 everything else in that file (actual gameplay logic) untouched.
 
+**2026-10-10 — Volume and portrait framing.** `shared/sounds.js`'s own `setVolume` (no on/off
+concept, no persistence) is called directly from `GamePlayer.jsx` via same-origin
+`iframe.contentWindow.sss.setVolume(...)` — nothing in this vendored batch changed for that.
+What did change: `setSize`'s fit multiplier in `shared/bundle.js` (`const cs`, was `0.95`) is now
+`0.88`, a pure CSS-display-size constant, decoupled from each game's own `canvasSize`/`viewSize`
+game-unit coordinates and therefore from its gameplay/collision math. And a new, not-from-upstream
+`shared/forvia.js` (loaded by every game's `index.html` in place of the small inline background
+script each used to carry individually) adds rounded corners and a drop shadow/glow to the
+`<canvas>` once it's on the page. Several of these games use a wide/landscape `viewSize`
+(Up 1 Way, Charge Beam, Growth, Pakupaku...), and the engine always fits the canvas to the
+screen's *constraining* axis at that fixed ratio — on a tall 9:16 phone that leaves real empty
+space above and below even a square game, and a thin strip for a wide one. Re-tuning 26 games'
+own `viewSize` to fill a phone screen would mean re-balancing each one's hand-built layout and
+collision bounds, so that's left untouched; the card framing instead makes that empty space read
+as deliberate chrome around a floating "cartridge" rather than a layout bug.
+
 `frontend/public/games/2048/` (`js/`, `style/`, minus its old IE/Safari-only `.eot`/`.svg` font
 formats — this project only ever serves a modern WebView or browser, and `.woff` alone covers
 that) is vendored from [**2048**](https://github.com/gabrielecirulli/2048) by Gabriele Cirulli,

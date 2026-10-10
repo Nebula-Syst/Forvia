@@ -1854,4 +1854,6 @@ export default {
   "Labyrinth": "Laberinto",
   "Memory": "Memoria",
   "Whac-a-mole": "Topos",
+  "Mute": "Silenciar",
+  "Unmute": "Activar sonido",
 }

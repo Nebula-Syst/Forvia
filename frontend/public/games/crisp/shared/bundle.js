@@ -403,7 +403,12 @@ image-rendering: pixelated;
         }
         document.body.appendChild(canvas);
         const setSize = () => {
-            const cs = 0.95;
+            // Forvia: was 0.95 — trimmed slightly so the card framing (forvia.js's rounded
+            // corners + shadow/glow, added around the canvas on load) has visible breathing
+            // room instead of touching the viewport edges. Purely a CSS display-size multiplier,
+            // decoupled from canvas.width/height (canvasSize, in game units) and every game's
+            // own gameplay/collision math, which is untouched by this constant.
+            const cs = 0.88;
             const wr = innerWidth / innerHeight;
             const cr = canvasSize.x / canvasSize.y;
             const flgWh = wr < cr;
