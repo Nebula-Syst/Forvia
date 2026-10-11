@@ -6,7 +6,7 @@ import { useUI } from '../store/useUI.js'
 import { EXIDX } from '../lib/exercises.js'
 import { fmtDate, fmtDur, fmtVol } from '../lib/format.js'
 import { t, nameFor } from '../lib/i18n.js'
-import { socialFollow, socialUnfollow, socialFeed, socialDiscover, socialReact, socialUser, socialUsers, socialFollowing, streakTiers as fetchStreakTiers } from '../lib/api.js'
+import { socialFollow, socialUnfollow, socialFeed, socialDiscover, socialReact, socialUser, socialUsers, socialFollowing, socialFollowers, streakTiers as fetchStreakTiers } from '../lib/api.js'
 import { feedPostSheet } from '../sheets.jsx'
 import { Thumb } from '../components/Media.jsx'
 import Icon from '../components/Icon.jsx'
@@ -338,8 +338,12 @@ export function UserProfile() {
     <ProfileHeaderCard user={data.user} level={data.level} prestige={data.prestige} perks={data.perks} streakTierList={streakTierList}>
       <div className="row" style={{ justifyContent: 'center', gap: 22, marginTop: 14 }}>
         <div><div style={{ fontWeight: 700 }}>{data.workouts}</div><div className="dim small">{t('Workouts')}</div></div>
-        <div><div style={{ fontWeight: 700 }}>{data.followers}</div><div className="dim small">{t('Followers')}</div></div>
-        <div><div style={{ fontWeight: 700 }}>{data.following}</div><div className="dim small">{t('Following')}</div></div>
+        <button onClick={() => nav('/social/u/' + uid + '/followers')}>
+          <div style={{ fontWeight: 700 }}>{data.followers}</div><div className="dim small">{t('Followers')}</div>
+        </button>
+        <button onClick={() => nav('/social/u/' + uid + '/following')}>
+          <div style={{ fontWeight: 700 }}>{data.following}</div><div className="dim small">{t('Following')}</div>
+        </button>
       </div>
       {!isMe && <button className={'btn sm' + (data.isFollowing ? '' : ' primary')} style={{ width: '100%', marginTop: 14 }} onClick={toggleFollow}>
         {data.isFollowing ? t('Following') : t('Follow')}
@@ -420,28 +424,51 @@ function SearchSheet({ close }) {
 }
 const openSearchSheet = () => useUI.getState().openSheet(close => <SearchSheet close={close} />)
 
-// Who I follow — tap through to their profile, same as any name elsewhere in Social.
-function FriendsSheet({ close }) {
-  const [following, setFollowing] = useState(null)
-  useEffect(() => { socialFollowing().then(setFollowing).catch(() => setFollowing([])) }, [])
-  const { shown, loadingMore, hasMore, sentinelElRef } = useRevealPaging(following, !!following)
+// Who follows / is followed by :uid — one view, not a modal, so it gets its own URL, works
+// with back/forward and Android back the same as every other drill-down in the app, and is
+// reachable from both places that used to each have their own half of this (the Social tab's
+// own "Friends" button, which only ever showed *your* following list in a sheet, and the
+// profile header's Followers/Following counts, which weren't tappable at all). `kind` just
+// picks the fetcher and empty-state copy — the list itself renders identically either way.
+function ConnectionsList({ kind }) {
+  const { uid } = useParams()
+  const [list, setList] = useState(null)
+  useEffect(() => {
+    setList(null)
+    const fetcher = kind === 'followers' ? socialFollowers : socialFollowing
+    fetcher(uid).then(setList).catch(() => setList(false))
+  }, [uid, kind])
+  const { shown, loadingMore, hasMore, sentinelElRef } = useRevealPaging(list || null, uid + ':' + kind)
+
+  if (list === false) return <div className="narrow social-narrow">
+    <div className="hdr"><button className="iconbtn" onClick={() => nav(-1)} aria-label={t('Previous')}><Icon name="chevronLeft" /></button></div>
+    <div className="empty"><div className="ico"><Icon name="magnifier" /></div>{t("This profile isn't available.")}</div>
+  </div>
+  if (list === null) return null
 
   return <SkeletonTheme baseColor="var(--surface-2)" highlightColor="var(--glass-bg-2)">
-    <h3>{t('Friends')}</h3>
-    {following === null ? null : following.length === 0
-      ? <div className="empty"><div className="ico"><Icon name="heart" /></div>{t("You're not following anyone yet — search for people to follow them.")}</div>
-      : <div className="sect-b">
-        {following.slice(0, shown).map(person => (
-          <PersonRow key={person.id} person={person} onOpen={() => { close(); nav('/social/u/' + person.id) }}
-            right={<span className="dim small row" style={{ gap: 4 }}><Icon name="flame" style={{ fontSize: 13 }} />{person.streak || 0}</span>} />
-        ))}
-        {loadingMore && <PersonRowSkeleton />}
-        {hasMore && <div ref={sentinelElRef} style={{ height: 1 }} />}
-      </div>}
-    <div style={{ height: 8 }} />
+    <div className="narrow social-narrow">
+      <div className="hdr">
+        <button className="iconbtn" onClick={() => nav(-1)} aria-label={t('Previous')}><Icon name="chevronLeft" /></button>
+        <h1 style={{ flex: 1, marginLeft: 10, fontSize: 20 }}>{kind === 'followers' ? t('Followers') : t('Following')}</h1>
+      </div>
+      {list.length === 0
+        ? <div className="empty"><div className="ico"><Icon name="heart" /></div>
+          {kind === 'followers' ? t('No followers yet.') : t("Not following anyone yet — search for people to follow them.")}
+        </div>
+        : <div className="sect-b">
+          {list.slice(0, shown).map(person => (
+            <PersonRow key={person.id} person={person} onOpen={() => nav('/social/u/' + person.id)}
+              right={<span className="dim small row" style={{ gap: 4 }}><Icon name="flame" style={{ fontSize: 13 }} />{person.streak || 0}</span>} />
+          ))}
+          {loadingMore && <PersonRowSkeleton />}
+          {hasMore && <div ref={sentinelElRef} style={{ height: 1 }} />}
+        </div>}
+    </div>
   </SkeletonTheme>
 }
-const openFriendsSheet = () => useUI.getState().openSheet(close => <FriendsSheet close={close} />)
+export const FollowingList = () => <ConnectionsList kind="following" />
+export const FollowersList = () => <ConnectionsList kind="followers" />
 
 export default function Social() {
   const [tab, setTab] = useState('feed')
@@ -454,7 +481,7 @@ export default function Social() {
       <div className="hdr">
         <button className="iconbtn" onClick={openSearchSheet} aria-label={t('Search people')}><Icon name="magnifier" /></button>
         <div className="row" style={{ gap: 8 }}>
-          <button className="iconbtn" onClick={openFriendsSheet} aria-label={t('Friends')}><Icon name="list" /></button>
+          <button className="iconbtn" onClick={() => nav('/social/u/' + user.id + '/following')} aria-label={t('Friends')}><Icon name="list" /></button>
           <button className="iconbtn" onClick={() => nav('/social/u/' + user.id)} aria-label={t('My profile')}><Icon name="personCircle" /></button>
         </div>
       </div>

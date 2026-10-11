@@ -54,7 +54,7 @@ import SettingsData from './views/settings/SettingsData.jsx'
 import SettingsFairPlay from './views/settings/SettingsFairPlay.jsx'
 import SettingsLegal from './views/settings/SettingsLegal.jsx'
 import SettingsMobileApp from './views/settings/SettingsMobileApp.jsx'
-import Social, { UserProfile } from './views/Social.jsx'
+import Social, { UserProfile, FollowingList, FollowersList } from './views/Social.jsx'
 import Rank from './views/Rank.jsx'
 import Penalties from './views/Penalties.jsx'
 import Admin from './views/Admin.jsx'
@@ -249,6 +249,8 @@ function Shell() {
               <Route path="/settings/mobile-app" element={<SettingsMobileApp />} />
               <Route path="/social" element={<Social />} />
               <Route path="/social/u/:uid" element={<UserProfile />} />
+              <Route path="/social/u/:uid/following" element={<FollowingList />} />
+              <Route path="/social/u/:uid/followers" element={<FollowersList />} />
               <Route path="/rank" element={<Rank />} />
               <Route path="/penalties" element={<Penalties />} />
               <Route path="/admin" element={user?.admin ? <Admin /> : <Navigate to="/home" replace />} />

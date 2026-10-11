@@ -964,6 +964,8 @@ export default {
   "No matches.": "Sin resultados.",
   "Friends": "Amigos", "My profile": "Mi perfil",
   "You're not following anyone yet — search for people to follow them.": "Aún no sigues a nadie — busca personas para empezar a seguirlas.",
+  "Not following anyone yet — search for people to follow them.": "Todavía no sigue a nadie.",
+  "No followers yet.": "Aún sin seguidores.",
   "Leaderboard": "Clasificación",
   "Lets other accounts on this instance follow you and see your workouts in Social.": "Permite que otras cuentas de esta instancia te sigan y vean tus entrenamientos en Social.",
   "No activity yet — follow someone in Discover to see their workouts here.": "Aún no hay actividad — sigue a alguien en Descubrir para ver aquí sus entrenamientos.",

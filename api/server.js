@@ -764,6 +764,11 @@ function perksFor(uid) {
 // disappear from everyone's feed/leaderboard/discovery on their very next request.
 const isPublic = uid => { const u = db.users.find(x => x.id === uid); return !!u && !!u.public && !u.disabled; };
 const followingOf = uid => db.follows.filter(f => f.followerId === uid).map(f => f.followeeId).filter(isPublic);
+// Mirror of followingOf, the other direction — who follows uid. Same isPublic filter: a private
+// account disappears from a followee's followers list the same way it disappears from its own
+// following list above, keeping the privacy rule consistent regardless of which side you're
+// looking from.
+const followersOf = uid => db.follows.filter(f => f.followeeId === uid).map(f => f.followerId).filter(isPublic);
 // No badge preference saved yet → default to showing rank (and prestige, once there is
 // any) in the first slots.
 const defaultBadges = rank => ['rank', ...(rank.prestige > 0 ? ['prestige'] : [])];
@@ -2011,14 +2016,35 @@ const routes = {
   // number Home/Stats show them, computed the same way, just server-side.
 
 
+  // uid is optional — defaults to the caller's own list (what FriendsSheet/the Social tab's
+  // button has always shown), but any public profile's following list is visible too, same
+  // "404 the instant it isn't public, except your own" rule GET /api/social/user already uses
+  // (so viewing this page for yourself still works even if you've gone private — it's yours).
   'GET /api/social/following': async (req, res) => {
     const me = readSession(req);
     if (!me) return json(res, 401, { error: 'not signed in' });
-    const following = followingOf(me.id).map(uid => {
-      const u = db.users.find(x => x.id === uid);
-      return { ...socialUser(u), ...statsFor(uid) };
+    const uid = new URL(req.url, 'http://x').searchParams.get('uid') || me.id;
+    const target = db.users.find(x => x.id === uid);
+    if (!target || target.disabled || (!target.public && uid !== me.id)) return json(res, 404, { error: 'not found' });
+    const following = followingOf(uid).map(fid => {
+      const u = db.users.find(x => x.id === fid);
+      return { ...socialUser(u), ...statsFor(fid) };
     });
     json(res, 200, { following });
+  },
+
+  // Mirror of the above, the other direction — who follows uid (or the caller, if omitted).
+  'GET /api/social/followers': async (req, res) => {
+    const me = readSession(req);
+    if (!me) return json(res, 401, { error: 'not signed in' });
+    const uid = new URL(req.url, 'http://x').searchParams.get('uid') || me.id;
+    const target = db.users.find(x => x.id === uid);
+    if (!target || target.disabled || (!target.public && uid !== me.id)) return json(res, 404, { error: 'not found' });
+    const followers = followersOf(uid).map(fid => {
+      const u = db.users.find(x => x.id === fid);
+      return { ...socialUser(u), ...statsFor(fid) };
+    });
+    json(res, 200, { followers });
   },
 
 
