@@ -41,6 +41,31 @@ export async function nativeLoad() { return null }
 export async function nativeSave(state) { /* no native persistence yet — synced state already covers this */ }
 export async function shareExport(json, filename) { /* no native share sheet yet */ }
 
+// No time picker — when to fire is inferred from when this account actually trains, not asked
+// for. Each of the last 20 workouts' own `start` (Date.now() at the moment the session began,
+// local time) is rounded to the nearest half hour, and whichever slot comes up most often wins;
+// ties go to whichever was seen most recently, so a schedule that's drifted in the last few
+// weeks beats an older habit that happens to tie on count. A brand new account (no workouts
+// yet) has nothing to infer from, so this falls back to 08:00 — the same default the old manual
+// picker used, before there's enough history to do better than a guess.
+export function inferredReminderTime(S) {
+  const workouts = (S.workouts || []).filter(w => w.start).slice(-20)
+  if (!workouts.length) return '08:00'
+  const slots = new Map() // 'HH:MM' -> { count, lastIndex }
+  workouts.forEach((w, i) => {
+    const d = new Date(w.start)
+    const totalMin = d.getHours() * 60 + Math.round(d.getMinutes() / 30) * 30
+    const key = String(Math.floor(totalMin / 60) % 24).padStart(2, '0') + ':' + String(totalMin % 60).padStart(2, '0')
+    const cur = slots.get(key)
+    slots.set(key, { count: (cur?.count || 0) + 1, lastIndex: i })
+  })
+  let best = null
+  for (const [key, v] of slots) {
+    if (!best || v.count > best.v.count || (v.count === best.v.count && v.lastIndex > best.v.lastIndex)) best = { key, v }
+  }
+  return best.key
+}
+
 // Which muscles to name in the workout reminder: the two that have gone longest without a
 // set, same "what am I neglecting" question rankOf's `missed` answers, but with a full recency
 // order instead of just worked-vs-missed — an untrained muscle sorts before any trained date
@@ -107,9 +132,11 @@ function levelUpLine(rank, S) {
 // it actually fires. This resyncs instead: every call cancels whatever was scheduled and
 // re-decides from scratch using the S already in memory — if today's workout is already logged,
 // it schedules for tomorrow instead of today; if not, today's slot (or tomorrow's, if that time
-// already passed today). initRemindersResync() below calls this again on every app resume, so a
-// workout logged and then the app reopened corrects the schedule before evening; it just can't
-// correct itself while the app is never reopened at all that day.
+// already passed today) — "today's slot" itself is inferredReminderTime(S) above, recomputed
+// fresh every sync, so a training schedule that's shifted gets picked up the same way a logged
+// workout does. initRemindersResync() below calls this again on every app resume, so a workout
+// logged (or a shift in when they train) and then the app reopened corrects the schedule before
+// evening; it just can't correct itself while the app is never reopened at all that day.
 const REMINDER_ID = 19412
 export async function syncReminder(S, interactive = false) {
   if (!MOBILE) return false
@@ -122,7 +149,7 @@ export async function syncReminder(S, interactive = false) {
     await LocalNotifications.cancel({ notifications: [{ id: REMINDER_ID }] })
     if (!S.reminder?.on) return true
 
-    const [hh, mm] = (S.reminder.time || '08:00').split(':').map(Number)
+    const [hh, mm] = inferredReminderTime(S).split(':').map(Number)
     const now = new Date()
     const at = new Date(now.getFullYear(), now.getMonth(), now.getDate(), hh, mm, 0, 0)
     const today = at.getFullYear() + '-' + String(at.getMonth() + 1).padStart(2, '0') + '-' + String(at.getDate()).padStart(2, '0')

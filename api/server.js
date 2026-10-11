@@ -1982,6 +1982,12 @@ const routes = {
       db.follows.push({ followerId: me.id, followeeId: target.id, created: new Date().toISOString() });
       saveDb();
       audit(req, 'social.follow', { user: me, target });
+      // Live toast if they're online right now (App.jsx's wsOn('social:follow', ...)), a push if
+      // not — same pair every other cross-user event in this file uses (coach:client-request,
+      // box:reviewed, class:promoted...). Re-following someone you unfollowed fires this again;
+      // that's fine, it's a real new follow from their point of view too.
+      wsSend(target.id, { type: 'social:follow', uid: me.id, name: me.name, username: me.username || null });
+      notifyCorePush(target.id, { title: 'New follower', body: `${me.name} started following you` });
     }
     json(res, 200, { ok: true });
   },
@@ -2132,6 +2138,11 @@ const routes = {
     else { db.reactions.push({ userId: me.id, targetUid, workoutId, created: new Date().toISOString() }); liked = true; }
     saveDb();
     audit(req, 'social.react', { user: me, msg: (liked ? 'like' : 'unlike') + ':' + workoutId });
+    // Only a fresh like, and never for liking your own post — same shape as social:follow below.
+    if (liked && targetUid !== me.id) {
+      wsSend(targetUid, { type: 'social:like', uid: me.id, name: me.name, username: me.username || null, workoutId });
+      notifyCorePush(targetUid, { title: 'New like', body: `${me.name} liked your workout` });
+    }
     json(res, 200, { liked });
   },
 
@@ -2158,6 +2169,11 @@ const routes = {
     db.comments.push(c);
     saveDb();
     audit(req, 'social.comment.add', { user: me, msg: workoutId });
+    // Never for commenting on your own post — same shape as social:follow/social:like above.
+    if (targetUid !== me.id) {
+      wsSend(targetUid, { type: 'social:comment', uid: me.id, name: me.name, username: me.username || null, workoutId, text: c.text });
+      notifyCorePush(targetUid, { title: 'New comment', body: `${me.name}: ${c.text}`.slice(0, 160) });
+    }
     json(res, 200, { comment: publicComment(c) });
   },
 

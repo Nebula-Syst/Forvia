@@ -147,6 +147,19 @@ function Shell() {
       useUI.getState().toast(t('A spot opened up — reserve it: {0} · {1} {2}', msg.name, msg.date, msg.startTime))
     })
   }, [user?.id])
+  // New follower / like / comment (api/server.js's POST /api/social/follow|react|comment) —
+  // same pair every one of these events uses: a push for a closed app, this toast for an open
+  // one. No notification center/inbox exists yet to also log these into, same as rank-ups or a
+  // coach approval — the live nudge (or the push, if they weren't in the app) IS the notification.
+  useEffect(() => {
+    if (!user) return
+    const offs = [
+      wsOn('social:follow', msg => useUI.getState().toast(t('{0} started following you', msg.name))),
+      wsOn('social:like', msg => useUI.getState().toast(t('{0} liked your workout', msg.name))),
+      wsOn('social:comment', msg => useUI.getState().toast(t('{0} commented on your workout', msg.name))),
+    ]
+    return () => offs.forEach(off => off())
+  }, [user?.id])
   // bound to the workout, not to the route — checking Stats mid-session keeps the screen on
   useWakeLock(!!S.active && S.keepAwake !== false)
 

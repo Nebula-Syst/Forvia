@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { useStore } from '../../store/useStore.js'
 import { useUI } from '../../store/useUI.js'
 import { t } from '../../lib/i18n.js'
-import { MOBILE, syncReminder, syncFoodReminder } from '../../lib/mobile.js'
+import { MOBILE, syncReminder, syncFoodReminder, inferredReminderTime } from '../../lib/mobile.js'
 import { localTZ } from '../../lib/format.js'
 import { pushSupported, pushPermission, enablePush, disablePush, sendTestPush } from '../../lib/push.js'
 import Icon from '../../components/Icon.jsx'
@@ -32,15 +32,14 @@ function NativeReminderSection() {
     toast(v ? t('Notifications on') : t('Notifications off'))
   }
 
-  return <Section footer={on ? t('Timezone: {0} (auto-detected, updates if you travel).', S.reminder?.tz || localTZ()) : null}>
+  // No time picker — when it fires is inferred from when this account actually trains
+  // (lib/mobile.js's inferredReminderTime), recomputed on every sync, same as which muscles it
+  // names. This footer is read-only, just explaining what's about to happen, not a setting.
+  return <Section footer={on ? t('Around {0}, based on when you usually train — adjusts on its own as your schedule changes.', inferredReminderTime(S)) : null}>
     <Row icon="calendar" iconTint="var(--indigo)" title={t('Workout day reminder')}
-      subtitle={t("Only sent on days you have a routine planned and haven't logged a workout yet.")}>
+      subtitle={t("Only sent on days you haven't logged a workout yet.")}>
       <Switch checked={on} onChange={setOn} />
     </Row>
-    {on && <SelectRow icon="clock" iconTint="var(--orange)" title={t('Reminder time')}
-      value={S.reminder?.time || '08:00'}
-      onChange={v => update(s => { s.reminder = { ...(s.reminder || {}), time: v } })}
-      options={TIMES.map(v => ({ value: v, label: v }))} />}
   </Section>
 }
 
