@@ -1,7 +1,7 @@
 {
   "name": "forvia-frontend",
   "private": true,
-  "version": "1.35.0",
+  "version": "1.36.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -20,6 +20,7 @@
     "@lexical/react": "^0.51.0",
     "fflate": "^0.8.3",
     "lexical": "^0.51.0",
+    "motion": "^14.3.0",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
     "react-liquid-gauge": "^1.2.4",

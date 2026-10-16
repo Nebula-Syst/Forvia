@@ -2515,6 +2515,47 @@ body.resting .active-pill{bottom:calc(254px + var(--sab))}
 }
 #toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
 
+/* ------------------------------------------------------- Forvia Coin ledger --- */
+/* SettingsAds.jsx's balance/shop reads as a bank statement rather than a shop of cards —
+   see that file's own comment for why (a watch's payout isn't known until the SSV callback
+   lands, a redemption's cost always is, so only one of the two can ever carry a number). */
+.coin-balance{
+  display:flex;align-items:center;gap:6px;position:relative;
+  font-size:17px;font-weight:600;letter-spacing:-.012em;color:var(--acc);
+  padding-bottom:2px;   /* aligns its baseline with .hdr h1 next to it */
+}
+.coin-balance .icn{font-size:18px}
+.coin-chip{
+  position:absolute;top:-4px;right:0;transform:translateY(-100%);
+  padding:2px 8px;border-radius:99px;font-size:12px;font-weight:600;
+  background:var(--surface-2);border:1px solid var(--glass-border);box-shadow:var(--shadow-sm);
+  white-space:nowrap;
+}
+.coin-chip.up{color:var(--acc)}
+.coin-chip.down{color:var(--label-2)}
+
+.ledger-credit{display:flex;align-items:center;gap:8px}
+.ledger-mark{font-size:19px;font-weight:600;color:var(--acc)}
+
+.ledger-amt{
+  flex:none;min-width:52px;padding:8px 14px;border-radius:99px;text-align:center;
+  font-size:15px;font-weight:600;letter-spacing:-.006em;font-family:inherit;
+  background:var(--glass-bg-2);border:1px solid var(--glass-border);color:var(--label-3);
+  transition:background var(--fast),color var(--fast),border-color var(--fast);
+}
+.ledger-amt.afford{color:var(--acc);border-color:var(--acc-line)}
+.ledger-amt.afford:active{background:var(--acc-soft)}
+.ledger-amt:disabled{opacity:.7}
+
+/* Tints the whole row that just redeemed, not just its button — the row's title/subtitle is
+   what just "happened" — then fades, same acknowledging-not-decorating motion rule the rest
+   of the app already holds to. */
+.row-flash{animation:row-flash-kf .65s var(--ease)}
+@keyframes row-flash-kf{
+  0%{background:var(--acc-soft)}
+  100%{background:none}
+}
+
 /* ---------------------------------------------------------------- misc --- */
 .empty{text-align:center;color:var(--label-2);padding:44px 20px;font-size:15px;line-height:1.45}
 .empty .ico{font-size:34px;color:var(--label-2);margin-bottom:12px;display:flex;justify-content:center}
