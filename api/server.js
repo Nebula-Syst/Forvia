@@ -162,7 +162,7 @@ async function findOrFetchUser(id) {
 // This service's only write path onto forvia-core's `users` row: updates the local mirror
 // immediately (so the very next line of the SAME request already sees the new value — every
 // existing call site here used to just mutate the object directly and keep going) and pushes the
-// real write to forvia-core in the background. Fire-and-forget on purpose, same posture as
+// real write to forvia-core in the background. Fire-and-forget by default, same posture as
 // saveDb() itself: a request must never block on, or fail because of, a slow/unreachable sibling
 // service. patchChain (mirrors saveChain) only keeps this service's own outgoing patches from
 // reordering against each other over the wire — it does nothing to protect against forvia-core's
@@ -170,6 +170,17 @@ async function findOrFetchUser(id) {
 // own network call actually completing, which can very briefly show the old value again until the
 // next successful refresh picks up what was actually persisted. Same eventual-consistency
 // tradeoff this whole project already accepts everywhere else a write is fire-and-forget.
+//
+// Returns the chained promise, same reason saveDb() (forvia-core server.js) now does too: a rare,
+// high-stakes write — an admin's level/prestige/pro/streak nudge, a prestige spend — can `await
+// patchUser(...)` so the response only ever says "ok" once forvia-core has actually confirmed the
+// patch landed, instead of the instant the in-memory mirror changed. Real incident, 2026-10-13: a
+// burst of admin level-adjustment clicks got "ok" back for every one of them, but this service (or
+// its sibling) restarted before the last few patches actually reached forvia-core, so the account's
+// level quietly drifted back toward its real, undocked value over the next few days with no trace
+// of what had (and hadn't) actually been saved. Every other call site below still just calls this
+// bare — that's the right default for anything frequent/low-stakes (XP banking on every read,
+// pinning a workout, editing a bio); only await it where losing the write silently would be bad.
 let patchChain = Promise.resolve();
 function patchUser(uid, patch) {
   const u = db.users.find(x => x.id === uid);
@@ -179,6 +190,7 @@ function patchUser(uid, patch) {
     headers: { 'Content-Type': 'application/json', 'X-Internal-Secret': INTERNAL_SECRET },
     body: JSON.stringify({ uid, patch }),
   })).catch(e => console.error('patchUser failed:', uid, e.message));
+  return patchChain;
 }
 // A web push only forvia-core can actually send (it owns the VAPID keys and db.subs) — on behalf
 // of a Nebula feature (an anti-cheat ruling, a waitlist spot opening up). Fire-and-forget, same
@@ -1401,7 +1413,7 @@ const routes = {
     if (!user.pro) return json(res, 403, { error: 'A Pro subscription is required to prestige' });
     const rank = rankFor(user.id);
     if (!rank.readyToPrestige) return json(res, 400, { error: 'not ready to prestige' });
-    patchUser(user.id, { prestigeConfirmed: rank.prestige + 1, prestigeBaselineXp: rank.totalXp });   // spends whatever was earned, surplus included
+    await patchUser(user.id, { prestigeConfirmed: rank.prestige + 1, prestigeBaselineXp: rank.totalXp });   // spends whatever was earned, surplus included
     audit(req, 'prestige.confirm', { user, msg: 'prestige ' + user.prestigeConfirmed });
     json(res, 200, { user: nebulaMe(user) });
   },
@@ -1514,7 +1526,7 @@ const routes = {
     const floor = LEVEL_CUM[targetRawLevel - 1];
     const baseline = u.prestigeBaselineXp || 0;
     const xpWithoutAdjust = before.totalXp - (u.adminXpAdjust || 0);
-    patchUser(u.id, { adminXpAdjust: floor + baseline - xpWithoutAdjust });
+    await patchUser(u.id, { adminXpAdjust: floor + baseline - xpWithoutAdjust });
     audit(req, 'admin.user.level', { user: admin, target: u, msg: `${before.level} -> ${targetLevel}` });
     // Same real-time path as the anti-cheat events (wsSend, see above) — an admin nudge is
     // exactly the "arrives from outside this session" case that's worth pushing live rather
@@ -1546,7 +1558,7 @@ const routes = {
     if (target === current) return json(res, 400, { error: 'already at the limit' });
     const patch = { prestigeConfirmed: target };
     if (delta === 1) patch.prestigeBaselineXp = rankFor(u.id).totalXp;
-    patchUser(u.id, patch);
+    await patchUser(u.id, patch);
     audit(req, 'admin.user.prestige', { user: admin, target: u, msg: `${current} -> ${target}` });
     wsSend(u.id, { type: 'rank:changed' });
     json(res, 200, { rank: rankFor(u.id) });
@@ -1560,7 +1572,7 @@ const routes = {
     if (!u) return json(res, 404, { error: 'no such user' });
     const delta = body.delta === -1 ? -1 : 1;
     const streakBonus = (u.streakBonus || 0) + delta;
-    patchUser(u.id, { streakBonus });
+    await patchUser(u.id, { streakBonus });
     audit(req, 'admin.user.streak', { user: admin, target: u, msg: `bonus -> ${streakBonus}` });
     wsSend(u.id, { type: 'rank:changed' });
     json(res, 200, { streakBonus });
@@ -1577,7 +1589,7 @@ const routes = {
     const u = await findOrFetchUser(body.id);
     if (!u) return json(res, 404, { error: 'no such user' });
     const pro = !u.pro;
-    patchUser(u.id, { pro });
+    await patchUser(u.id, { pro });
     audit(req, 'admin.user.pro', { user: admin, target: u, msg: String(pro) });
     json(res, 200, { pro });
   },
@@ -1594,7 +1606,7 @@ const routes = {
     if (body.bio != null) patch.bio = String(body.bio).trim().slice(0, 140);
     if (body.public != null) patch.public = !!body.public;
     if (!Object.keys(patch).length) return json(res, 400, { error: 'nothing to change' });
-    patchUser(u.id, patch);
+    await patchUser(u.id, patch);
     audit(req, 'admin.user.profile', { user: admin, target: u, msg: Object.keys(patch).join(',') });
     json(res, 200, { ok: true, ...patch });
   },
