@@ -2105,8 +2105,14 @@ const routes = {
       ...rankFor(uid),
       perks: perksFor(uid),
       workouts: readState(uid)?.workouts?.length || 0,
-      followers: db.follows.filter(f => f.followeeId === uid).length,
-      following: db.follows.filter(f => f.followerId === uid).length,
+      // Same isPublic filter followersOf/followingOf apply to the actual list (GET
+      // /api/social/followers|following) — these numbers are what that list's length shows
+      // once you tap through, so they have to agree with it, not the raw follow-graph size
+      // (a private account disappearing from a followers *list* but still being counted here
+      // looked exactly like a broken count: real bug, caught by viewing a real profile with
+      // private followers after the followers/following page shipped).
+      followers: followersOf(uid).length,
+      following: followingOf(uid).length,
       isFollowing: db.follows.some(f => f.followerId === me.id && f.followeeId === uid),
       items,
     });
