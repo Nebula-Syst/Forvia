@@ -385,10 +385,14 @@ function statsFor(uid) {
 // exactly, since that's what the streak-badge day thresholds are checked against (both in
 // the UI and here, validating a showcase badge pick of 'streak:<tierId>').
 function currentStreakDays(uid) {
-  const workouts = (readState(uid) || {}).workouts || [];
+  const S = readState(uid) || {};
+  const workouts = S.workouts || [];
+  // streakSaves are coin-redeemed "counts as trained today" days (see POST /api/ads/redeem) —
+  // unioned in here so a save is indistinguishable from a real workout for streak purposes,
+  // same as the frontend's own streakDays(S) in lib/history.js does.
+  const days = new Set([...workouts.map(w => w.d), ...(S.streakSaves || [])]);
   let streak = 0;
-  if (workouts.length) {
-    const days = new Set(workouts.map(w => w.d));
+  if (days.size) {
     const cur = new Date();
     let gap = 0;
     for (let i = 0; i < 3650; i++) {
@@ -430,7 +434,14 @@ const PR_XP = 15, GOAL_XP = 150;
 // into the same field would make an admin's next level nudge silently eat or double-count
 // whatever XP ads had granted. db.adRewards rows are the source of truth instead, same
 // "recompute fresh, nothing to desync" shape db.taskCompletions already uses just above.
-const AD_REWARD_XP = 20, AD_REWARDS_PER_DAY = 3;
+const AD_REWARDS_PER_DAY = 3;
+// Default coin grant only used if an AdMob SSV callback ever omits reward_amount (shouldn't
+// happen once the ad unit's own reward config is set, but a 0-coin grant for a genuinely
+// watched ad would be worse than a safe fallback).
+const AD_REWARD_COINS_DEFAULT = 10;
+// Forvia Coin redemption prices — Forvia's own price list, independent of whatever
+// reward_amount ends up configured on the AdMob side (that's Google's number per video).
+const COIN_COST_PRO_DAY = 50, COIN_COST_STREAK_SAVE = 30, COIN_COST_MINIGAME_TIME = 10;
 // A workout's XP scales with what was actually done, not just that it happened — sets and
 // exercises are the load-independent baseline (rewards showing up and covering the body, and
 // keeps a bodyweight-only session from scoring near zero just because it has no weight to its
@@ -637,9 +648,17 @@ function scanForTasks(req, user, state) {
 // (×3), never more, even if an admin adds/removes tiers later. A Free account always gets 1 (no
 // bonus, no matter the streak).
 const STREAK_XP_MAX_MULTIPLIER = 3;
+// Pro is permanent when admin-granted (no proUntil at all) and time-boxed when bought with
+// Forvia Coin (proUntil is set, extended on each redemption rather than reset — see
+// POST /api/ads/redeem). Every place that used to read the bare `user.pro` boolean reads this
+// instead, except the admin toggle itself (POST /api/admin/user/pro), which writes `pro` and is
+// meant to stay permanent by design.
+function isProActive(user) {
+  return !!user?.pro && (!user?.proUntil || user.proUntil > Date.now());
+}
 function streakXpMultiplier(uid) {
   const user = db.users.find(u => u.id === uid);
-  if (!user?.pro) return 1;
+  if (!isProActive(user)) return 1;
   const days = currentStreakDays(uid);
   const tiers = (db.streakTiers.length ? db.streakTiers : FALLBACK_STREAK_TIERS).slice().sort((a, b) => a.days - b.days);
   if (!tiers.length) return 1;
@@ -682,7 +701,8 @@ function xpFor(uid) {
   const bw = S?.bodyweight?.length ? S.bodyweight[S.bodyweight.length - 1] : null;
   if (S?.targetW && bw && Math.abs(S.targetW - bw.w) < 0.05) xp += GOAL_XP;
   xp += db.taskCompletions.filter(c => c.userId === uid).reduce((n, c) => n + c.points, 0);
-  xp += db.adRewards.filter(r => r.userId === uid && r.kind === 'xp').reduce((n, r) => n + r.amount, 0);
+  // Ads never grant XP (deliberate — see Forvia Coin below). db.adRewards rows exist purely to
+  // track coin grants/dedup now, nothing here sums them into xp.
   xp += user?.adminXpAdjust || 0;
   return Math.max(0, xp);
 }
@@ -769,7 +789,7 @@ function backfillStreakXpBaselines() {
 // desync" reasoning as the rest of this section.
 function perksFor(uid) {
   const { level, prestige } = rankFor(uid);
-  const pro = !!db.users.find(u => u.id === uid)?.pro;
+  const pro = isProActive(db.users.find(u => u.id === uid));
   return {
     pinFavoritePR: level >= 11,   // Bronze
     bio: true,
@@ -812,10 +832,11 @@ const nebulaMe = user => {
     rank, perks: perksFor(user.id), badges: badgesFor(user, rank),
     coach: !!user.coach, coachVisible: !!user.coachVisible, hourlyRate: user.hourlyRate ?? null,
     coachLocation: user.coachLocation || null,
-    pro: !!user.pro,
+    pro: isProActive(user),
     public: !!user.public, bio: user.bio || '',
     pinnedWorkoutIds: user.pinnedWorkoutIds || [], pinnedPR: user.pinnedPR || null,
     streakBonus: user.streakBonus || 0,
+    coins: user.coins || 0,
   };
 };
 // A user's social presence to OTHER users — never leaks the auth-only fields above. Perks ride
@@ -1320,7 +1341,7 @@ const routes = {
     // Becoming a coach is a Pro perk — a Free account can still browse/apply to join a box as
     // an athlete, just not run one. Already-approved coaches predating this gate keep working
     // regardless of their own pro flag; this only blocks new applications.
-    if (!user.pro) return json(res, 403, { error: 'A Pro subscription is required to apply as a coach' });
+    if (!isProActive(user)) return json(res, 403, { error: 'A Pro subscription is required to apply as a coach' });
     // Once a request is pending, block a second one outright rather than silently merging —
     // the frontend already hides the form in this state; this is the backstop for a stale
     // tab, a second device, or a double-tapped submit landing as two in-flight requests.
@@ -1418,7 +1439,7 @@ const routes = {
     if (!user) return json(res, 401, { error: 'not signed in' });
     // Prestige itself is a Pro perk — a Free account still climbs to level 100 and sits
     // readyToPrestige (nothing about leveling changes), it just can't cash that in without Pro.
-    if (!user.pro) return json(res, 403, { error: 'A Pro subscription is required to prestige' });
+    if (!isProActive(user)) return json(res, 403, { error: 'A Pro subscription is required to prestige' });
     const rank = rankFor(user.id);
     if (!rank.readyToPrestige) return json(res, 400, { error: 'not ready to prestige' });
     await patchUser(user.id, { prestigeConfirmed: rank.prestige + 1, prestigeBaselineXp: rank.totalXp });   // spends whatever was earned, surplus included
@@ -1597,7 +1618,9 @@ const routes = {
     const u = await findOrFetchUser(body.id);
     if (!u) return json(res, 404, { error: 'no such user' });
     const pro = !u.pro;
-    await patchUser(u.id, { pro });
+    // An admin grant is permanent by design — clear any leftover proUntil from a prior
+    // coin-redeemed (expiring) grant so it can't fight this one.
+    await patchUser(u.id, { pro, proUntil: pro ? null : u.proUntil });
     audit(req, 'admin.user.pro', { user: admin, target: u, msg: String(pro) });
     json(res, 200, { pro });
   },
@@ -1909,7 +1932,42 @@ const routes = {
     if (!me) return json(res, 401, { error: 'not signed in' });
     const today = isoOf(new Date());
     const watchedToday = db.adRewards.filter(r => r.userId === me.id && r.date === today).length;
-    json(res, 200, { watchedToday, dailyCap: AD_REWARDS_PER_DAY, eligible: watchedToday < AD_REWARDS_PER_DAY, rewardXp: AD_REWARD_XP });
+    json(res, 200, { watchedToday, dailyCap: AD_REWARDS_PER_DAY, eligible: watchedToday < AD_REWARDS_PER_DAY, coins: me.coins || 0 });
+  },
+
+  // The Forvia Coin shop — coins only ever come from watching rewarded ads (POST /internal/
+  // ad-grant, see forvia-core's verified SSV callback), spent here on one of a small fixed menu.
+  // `item`, never `kind` — db.adRewards' own (now removed) `kind` was about *where* a coin came
+  // from; this is about *what it's spent on*, a different axis entirely.
+  'POST /api/ads/redeem': async (req, res) => {
+    const user = readSession(req);
+    if (!user) return json(res, 401, { error: 'not signed in' });
+    const body = await readBody(req);
+    const item = String(body.item || '');
+    const cost = { pro: COIN_COST_PRO_DAY, 'streak-save': COIN_COST_STREAK_SAVE, 'minigame-time': COIN_COST_MINIGAME_TIME }[item];
+    if (!cost) return json(res, 400, { error: 'unknown item' });
+    if ((user.coins || 0) < cost) return json(res, 400, { error: 'not enough Forvia Coin' });
+    const patch = { coins: (user.coins || 0) - cost };
+    if (item === 'pro') {
+      // Stacks rather than resets — redeeming again while already Pro extends from whichever is
+      // later, the existing expiry or now, so back-to-back redemptions correctly add up.
+      const base = Math.max(Date.now(), user.proUntil || 0);
+      patch.pro = true;
+      patch.proUntil = base + 24 * 60 * 60 * 1000;
+    }
+    await patchUser(user.id, patch);
+    if (item === 'streak-save') {
+      const S = readState(user.id) || {};
+      const today = isoOf(new Date());
+      const streakSaves = S.streakSaves || [];
+      if (!streakSaves.includes(today)) writeState(user.id, { ...S, streakSaves: [...streakSaves, today] });
+    }
+    // 'minigame-time' is a pure currency spend — the frontend's own rest-timer cap escape hatch
+    // (GamePlayer.jsx) just needs this debit to have actually happened before it lifts the cap.
+    const fresh = db.users.find(u => u.id === user.id);
+    audit(req, 'ads.redeem', { user, msg: item });
+    wsSend(user.id, { type: 'rank:changed' });
+    json(res, 200, { user: nebulaMe(fresh) });
   },
 
   /* ---------- social ---------- */
@@ -3780,13 +3838,19 @@ const internalRoutes = {
     const today = isoOf(new Date());
     const todayCount = db.adRewards.filter(r => r.userId === uid && r.date === today).length;
     if (todayCount >= AD_REWARDS_PER_DAY) return json(res, 200, { granted: false, reason: 'daily cap reached' });
+    const user = db.users.find(u => u.id === uid);
+    if (!user) return json(res, 404, { error: 'no such user' });
+    // reward_item/reward_amount are AdMob's own per-ad-unit reward config, passed through
+    // verbatim by forvia-core's verified SSV callback. Never XP — Forvia Coin only.
+    const amount = Number(body.rewardAmount) > 0 ? Math.round(Number(body.rewardAmount)) : AD_REWARD_COINS_DEFAULT;
     db.adRewards.push({
-      id: crypto.randomBytes(8).toString('base64url'), userId: uid, kind: 'xp', amount: AD_REWARD_XP,
+      id: crypto.randomBytes(8).toString('base64url'), userId: uid, rewardItem: String(body.rewardItem || ''), amount,
       sourceRewardId, date: today, created: new Date().toISOString(),
     });
     saveDb();
+    await patchUser(uid, { coins: (user.coins || 0) + amount });
     wsSend(uid, { type: 'rank:changed' });
-    json(res, 200, { granted: true, amount: AD_REWARD_XP });
+    json(res, 200, { granted: true, amount });
   },
 };
 

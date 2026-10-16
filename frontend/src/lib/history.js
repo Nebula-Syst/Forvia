@@ -373,8 +373,11 @@ export function streakWeeks(S) {
 // of days you actually trained, not a calendar span — rest days inside a tolerated gap aren't
 // counted, they're just not held against you either.
 export function streakDays(S) {
-  if (!S.workouts.length) return 0
-  const days = new Set(S.workouts.map(w => w.d))
+  // streakSaves (Forvia Coin-redeemed "counts as trained today" days — SettingsAds.jsx) are
+  // unioned in here so a save reads exactly like a real workout for streak purposes; mirrors
+  // api/server.js's own currentStreakDays exactly, since that's what feeds the XP multiplier.
+  const days = new Set([...S.workouts.map(w => w.d), ...(S.streakSaves || [])])
+  if (!days.size) return 0
   let streak = 0
   let gap = 0
   const cur = new Date()

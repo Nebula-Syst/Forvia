@@ -53,6 +53,11 @@ export const DEF = {
   // these exist (a stale second device merging workouts by id must be able to tell "never saw
   // this one yet" apart from "deleted this one on purpose").
   deletedWorkoutIds: [],
+  // Forvia Coin-redeemed "counts as trained today" days (see api/server.js POST /api/ads/redeem,
+  // item: 'streak-save') — ISO dates, append-only, written server-side via writeState the same
+  // way the anti-cheat workout-restore path already does. streakDays(S) below unions this with
+  // real workout days, so a save is indistinguishable from training for streak purposes.
+  streakSaves: [],
   // Running total of time spent on the mini-games catalog (GamesCatalog.jsx) outside any
   // workout — a fixed-size counter, not a growing log, so it doesn't add to this blob's existing
   // unbounded-array growth (workouts/foodDiary/etc.). Time played DURING a workout's rest is

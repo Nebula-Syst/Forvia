@@ -2,8 +2,13 @@ import { useEffect, useRef, useState } from 'react'
 import { useStore } from '../store/useStore.js'
 import { useUI } from '../store/useUI.js'
 import { GAMES } from '../lib/games.js'
+import { redeemCoins } from '../lib/api.js'
 import { t, getLang } from '../lib/i18n.js'
 import Icon from './Icon.jsx'
+
+// Mirrors api/server.js's own COIN_COST_MINIGAME_TIME — the server is still what actually
+// enforces it (POST /api/ads/redeem), this is just what the button shows.
+const MINIGAME_TIME_COST = 10
 
 // The actual play surface for a vendored mini-game (frontend/public/games/, see NOTICE.md).
 // Same fullscreen-takeover chrome as BarcodeScanSheet (sheets.jsx) — reuses its .scan-close/
@@ -42,10 +47,33 @@ export default function GamePlayer({ slug, close }) {
   // button between sets) is never capped — hadRestRef is only ever true if one was already live.
   const rest = useUI(s => s.timer)
   const hadRestRef = useRef(!!rest)
+  const toast = useUI(s => s.toast)
+  const user = useStore(s => s.user)
+  const coins = user?.coins || 0
+  // Forvia Coin escape hatch for the cap above — spending it lifts the cap for THIS session only
+  // (a per-mount flag, gone the moment this view unmounts, same as every other per-session ref
+  // here); the next game opened during a rest still starts capped unless redeemed again.
+  const [extraTime, setExtraTime] = useState(false)
+  const [redeeming, setRedeeming] = useState(false)
+  useEffect(() => () => setExtraTime(false), [])
 
   useEffect(() => {
-    if (hadRestRef.current && !rest) close()
-  }, [rest, close])
+    if (hadRestRef.current && !rest && !extraTime) close()
+  }, [rest, close, extraTime])
+
+  const redeemExtraTime = async () => {
+    if (coins < MINIGAME_TIME_COST || redeeming) return
+    setRedeeming(true)
+    try {
+      const updated = await redeemCoins('minigame-time')
+      useStore.getState().setUser({ ...useStore.getState().user, ...updated })
+      setExtraTime(true)
+      toast(t('Rest cap lifted for this game'))
+    } catch {
+      toast(t('Could not redeem — try again'))
+    }
+    setRedeeming(false)
+  }
 
   useEffect(() => {
     return () => {
@@ -88,6 +116,14 @@ export default function GamePlayer({ slug, close }) {
   return (
     <div className="fs-view">
       <button className="iconbtn scan-close" aria-label={t('Close')} onPointerDown={e => { e.preventDefault(); close() }}><Icon name="xmark" /></button>
+      {hadRestRef.current && !extraTime && coins >= MINIGAME_TIME_COST && (
+        <button
+          className="iconbtn scan-torch"
+          style={{ right: hasSound ? 64 : 14 }}
+          aria-label={t('Spend {0} Forvia Coin for more time', MINIGAME_TIME_COST)}
+          onPointerDown={e => { e.preventDefault(); redeemExtraTime() }}
+        ><Icon name="sparkles" /></button>
+      )}
       {hasSound && (
         <button
           className={'iconbtn scan-torch' + (muted ? ' on' : '')}
