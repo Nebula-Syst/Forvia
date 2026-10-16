@@ -16,6 +16,11 @@ import { uid } from '../lib/format.js'
 const KEY = 'gym_state_v1'
 export const DEF = {
   unit: 'kg', restSec: 90, sound: true, vibration: true, keepAwake: true, lang: 'en',
+  // Editing a set's weight normally cascades forward to the following undone sets of the same
+  // exercise (cascadeWeight, lib/history.js) — on by default, since that's always been the only
+  // behavior. Off means each set only ever carries the weight typed into it directly, same as
+  // setting wManual on every set — see Workout.jsx's setField.
+  autoFillWeight: true,
   theme: DEFAULT_THEME, accent: DEFAULT_ACCENT, reduceMotion: false, body: 'male', targetW: null,
   bodyweight: [], measurements: [], routines: [],
   // BMR/TDEE inputs for the nutrition-goals calculator (SettingsNutrition.jsx). Sex reuses

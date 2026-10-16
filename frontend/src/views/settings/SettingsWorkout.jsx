@@ -73,6 +73,10 @@ export default function SettingsWorkout() {
           options={[{ value: 'none', label: t('Off') }, { value: 'rir', label: t('RIR') }, { value: 'rpe', label: t('RPE') }]}
           value={effortOf(S)} onChange={v => update(s => { s.effort = v; delete s.showRir })} />
       </Row>
+      <Row icon="arrowDown" iconTint="var(--blue)" title={t('Auto-fill weight')}
+        subtitle={t('Changing a set’s weight fills it into the sets after it, too.')}>
+        <Switch checked={S.autoFillWeight !== false} onChange={v => update(s => { s.autoFillWeight = v })} />
+      </Row>
       {/* Purely how the muscle map is drawn — nothing else in the app reads this. */}
       <Row icon="figureStrength" iconTint="var(--teal)" title={t('Body diagram')}>
         <Segmented

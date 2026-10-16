@@ -488,9 +488,12 @@ function ActiveWorkout() {
     // cascadeWeight in lib/history.js), so a drop set or pyramid sticks once set instead of
     // getting stomped back by the next edit to an earlier row. Clearing the field (v == null)
     // drops wManual too, same as the field itself, so it goes back to inheriting cascades.
+    // Settings → Workout's "Auto-fill weight" toggle (S.autoFillWeight, default on) turns the
+    // cascade itself off — wManual still gets tracked the same either way, so flipping the
+    // setting mid-session (or just logging one) never leaves a stale half-state behind.
     if (field === 'w') {
       if (v == null) delete e.sets[i].wManual; else e.sets[i].wManual = true
-      e.sets = cascadeWeight(e.sets, i, v)
+      if (S.autoFillWeight !== false) e.sets = cascadeWeight(e.sets, i, v)
     }
   })
   const modeAt = idx => modeOf({ ...(A.entries[idx].target || {}), id: A.entries[idx].id })

@@ -666,6 +666,8 @@ export default {
   'No workouts in this period yet.': 'Aún no hay entrenamientos en este periodo.',
   'What this session hits': 'Qué trabaja esta sesión',
   'What you just trained': 'Lo que acabas de entrenar',
+  'Auto-fill weight': 'Autorrellenar peso',
+  'Changing a set’s weight fills it into the sets after it, too.': 'Al cambiar el peso de una serie, se rellena también en las series siguientes.',
   'Body diagram': 'Diagrama corporal',
   'Male': 'Masculino',
   'Female': 'Femenino',
