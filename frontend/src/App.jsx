@@ -9,7 +9,7 @@ import { setNav } from './lib/nav.js'
 import { wsOn } from './lib/ws.js'
 import { initAnalytics, trackPageView } from './lib/analytics.js'
 import { initBackButton } from './lib/back.js'
-import { MOBILE, syncReminder, syncFoodReminder, initRemindersResync, notifyNativeReady } from './lib/mobile.js'
+import { MOBILE, syncReminder, syncFoodReminder, initRemindersResync, notifyNativeReady, initAds } from './lib/mobile.js'
 import { useWakeLock } from './lib/wakelock.js'
 import LoadingScreen from './components/LoadingScreen.jsx'
 import TabBar from './components/TabBar.jsx'
@@ -49,6 +49,7 @@ import SettingsNutritionFoods from './views/settings/SettingsNutritionFoods.jsx'
 import SettingsNutritionMeals from './views/settings/SettingsNutritionMeals.jsx'
 import SettingsAppearance from './views/settings/SettingsAppearance.jsx'
 import SettingsSubscription from './views/settings/SettingsSubscription.jsx'
+import SettingsAds from './views/settings/SettingsAds.jsx'
 import SettingsNotifications from './views/settings/SettingsNotifications.jsx'
 import SettingsData from './views/settings/SettingsData.jsx'
 import SettingsFairPlay from './views/settings/SettingsFairPlay.jsx'
@@ -112,6 +113,14 @@ function Shell() {
   // Only once there's an account signed in — see lib/analytics.js's own comment on why consent
   // at account creation is the gate, not the signed-out login screen or a guest session.
   useEffect(() => { if (user && gaId) initAnalytics(gaId) }, [user?.id, gaId])
+  // Ads plan, phase 1 — same gate as GA just above, plus MOBILE (initAds() is already a no-op
+  // off-platform, but there's no reason to even try before someone's signed in: the SDK init +
+  // UMP consent walk is pointless without an account to eventually grant a reward to). Result is
+  // informational only right now (nothing reads it yet) — SettingsAds.jsx re-derives its own
+  // "can I show an ad" answer independently when it actually matters, right before the button is
+  // tapped, rather than trusting a value cached from however long ago the app launched.
+  const admobUnitId = useStore(s => s.config?.admob_rewarded_unit_id)
+  useEffect(() => { if (user && MOBILE && admobUnitId) initAds() }, [user?.id, admobUnitId])
   useEffect(() => { trackPageView(loc.pathname) }, [loc.pathname])
   // Native app only (lib/mobile.js — a no-op everywhere else): resyncs the on-device workout
   // reminder whenever the toggle, its time, or today's workout count changes — logging a
@@ -242,6 +251,7 @@ function Shell() {
               <Route path="/settings/nutrition/meals" element={<SettingsNutritionMeals />} />
               <Route path="/settings/appearance" element={<SettingsAppearance />} />
               <Route path="/settings/subscription" element={<SettingsSubscription />} />
+              <Route path="/settings/ads" element={<SettingsAds />} />
               <Route path="/settings/notifications" element={<SettingsNotifications />} />
               <Route path="/settings/data" element={<SettingsData />} />
               <Route path="/settings/fair-play" element={<SettingsFairPlay />} />

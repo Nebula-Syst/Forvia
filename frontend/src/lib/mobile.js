@@ -243,3 +243,50 @@ export async function initRemindersResync(getS) {
     return () => {}
   }
 }
+
+// Ads plan, phase 1 — optional AdMob rewarded video, native-only, same "no-op off-platform,
+// nothing to configure for a self-hosted instance that hasn't set it up" shape as every other
+// function in this file. @capacitor-community/admob pinned to its 7.x line specifically — the
+// latest major (8.x) requires @capacitor/core ^8, and this app is still on Capacitor 7
+// (package.json) throughout; bumping that is a separate, much bigger change than "add one
+// plugin" and not something to fold into this.
+//
+// Called once, early (App.jsx, native + signed-in only) — initializes the SDK and walks the UMP
+// consent flow if Google's own info call says this user needs it (EEA/UK by default; it decides,
+// this never hardcodes a region). Returns whether an ad can legally be requested at all right
+// now — SettingsAds.jsx reads this before ever showing the "watch an ad" button, same as it
+// checks GET /api/ads/status before showing it as enabled.
+export async function initAds() {
+  if (!MOBILE) return false
+  try {
+    const { AdMob, AdmobConsentStatus } = await import('@capacitor-community/admob')
+    await AdMob.initialize()
+    let info = await AdMob.requestConsentInfo()
+    if (info.status === AdmobConsentStatus.REQUIRED && info.isConsentFormAvailable) {
+      info = await AdMob.showConsentForm()
+    }
+    return !!info.canRequestAds
+  } catch {
+    return false   // plugin not linked yet on an older installed build — same posture as every other native call here
+  }
+}
+
+// Loads and shows one rewarded video. The actual reward is never granted from this promise
+// resolving — that would be exactly the "client says it watched one, pays itself" hole
+// POST /internal/ad-grant (api/server.js) and its SSV signature check exist specifically to
+// close. This only drives the immediate "thanks!" / "that didn't work" UI feedback; the real XP
+// shows up moments later the same way any other server-pushed rank change already does
+// (App.jsx's wsOn('rank:changed', ...)), once Google's SSV callback actually confirms it to
+// forvia-core. `uid` rides along as the ad's own ssv.userId — AdMob echoes it straight back
+// in the SSV callback's custom_data, which is how the grant knows whose reward this is.
+export async function watchRewardedAd(adUnitId, uid) {
+  if (!MOBILE || !adUnitId || !uid) return { ok: false, reason: 'not available' }
+  try {
+    const { AdMob } = await import('@capacitor-community/admob')
+    await AdMob.prepareRewardVideoAd({ adId: adUnitId, ssv: { userId: uid } })
+    const reward = await AdMob.showRewardVideoAd()
+    return { ok: !!reward }
+  } catch (e) {
+    return { ok: false, reason: e?.message || 'failed to load' }
+  }
+}

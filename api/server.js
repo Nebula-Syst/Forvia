@@ -424,6 +424,13 @@ function levelFromXp(xp) {
   return lvl;
 }
 const PR_XP = 15, GOAL_XP = 150;
+// Ads plan, phase 1 (optional rewarded video, AdMob) — kept separate from adminXpAdjust on
+// purpose: that field is an admin's own correction and the math in POST /api/admin/user/level
+// assumes it's ENTIRELY that (xpWithoutAdjust = totalXp - adminXpAdjust) — folding ad-earned XP
+// into the same field would make an admin's next level nudge silently eat or double-count
+// whatever XP ads had granted. db.adRewards rows are the source of truth instead, same
+// "recompute fresh, nothing to desync" shape db.taskCompletions already uses just above.
+const AD_REWARD_XP = 20, AD_REWARDS_PER_DAY = 3;
 // A workout's XP scales with what was actually done, not just that it happened — sets and
 // exercises are the load-independent baseline (rewards showing up and covering the body, and
 // keeps a bodyweight-only session from scoring near zero just because it has no weight to its
@@ -675,6 +682,7 @@ function xpFor(uid) {
   const bw = S?.bodyweight?.length ? S.bodyweight[S.bodyweight.length - 1] : null;
   if (S?.targetW && bw && Math.abs(S.targetW - bw.w) < 0.05) xp += GOAL_XP;
   xp += db.taskCompletions.filter(c => c.userId === uid).reduce((n, c) => n + c.points, 0);
+  xp += db.adRewards.filter(r => r.userId === uid && r.kind === 'xp').reduce((n, r) => n + r.amount, 0);
   xp += user?.adminXpAdjust || 0;
   return Math.max(0, xp);
 }
@@ -1891,6 +1899,17 @@ const routes = {
     const today = isoOf(new Date());
     const done = new Set(db.taskCompletions.filter(c => c.userId === me.id && c.date === today).map(c => c.taskId));
     json(res, 200, { tasks: tasksForToday().map(t => ({ ...t, done: done.has(t.id) })) });
+  },
+
+  // What the "Earn rewards" card reads before ever loading an ad — today's watch count against
+  // the cap, so the UI can grey the button out instead of letting someone load and sit through a
+  // whole rewarded ad only to be told afterward the cap was already hit.
+  'GET /api/ads/status': async (req, res) => {
+    const me = readSession(req);
+    if (!me) return json(res, 401, { error: 'not signed in' });
+    const today = isoOf(new Date());
+    const watchedToday = db.adRewards.filter(r => r.userId === me.id && r.date === today).length;
+    json(res, 200, { watchedToday, dailyCap: AD_REWARDS_PER_DAY, eligible: watchedToday < AD_REWARDS_PER_DAY, rewardXp: AD_REWARD_XP });
   },
 
   /* ---------- social ---------- */
@@ -3736,11 +3755,38 @@ const internalRoutes = {
       db.reactions = db.reactions.filter(r => r.userId !== uid);
       db.comments = db.comments.filter(c => c.userId !== uid);
       db.taskCompletions = db.taskCompletions.filter(c => c.userId !== uid);
+      db.adRewards = db.adRewards.filter(r => r.userId !== uid);
       saveDb();
       db.users = db.users.filter(u => u.id !== uid);
       stateCache.delete(uid);
     }
     json(res, 200, { ok: true });
+  },
+  // Called by forvia-core's GET /api/ads/ssv — ONLY after it's verified Google's own SSV
+  // signature, so by the time a request reaches here it's already been established this really
+  // is AdMob confirming a real rewarded ad was watched, not a client-side "trust me" call (the
+  // one thing that would make this trivially fakeable). sourceRewardId is AdMob's own reward
+  // transaction id — deduped against so a retried SSV callback (Google's own docs say these can
+  // be retried) never grants the same watch twice. Capped per UTC day per user; once the cap's
+  // hit this just quietly declines rather than erroring — forvia-core has nothing useful to do
+  // with a 4xx here either way, and the client already knows its own watch count from the
+  // reward-eligibility read it does before ever loading an ad.
+  'POST /internal/ad-grant': async (req, res) => {
+    if (!requireInternal(req, res)) return;
+    const body = await readBody(req);
+    const uid = String(body.uid || ''), sourceRewardId = String(body.sourceRewardId || '');
+    if (!uid || !sourceRewardId) return json(res, 400, { error: 'uid and sourceRewardId required' });
+    if (db.adRewards.some(r => r.sourceRewardId === sourceRewardId)) return json(res, 200, { granted: false, reason: 'duplicate' });
+    const today = isoOf(new Date());
+    const todayCount = db.adRewards.filter(r => r.userId === uid && r.date === today).length;
+    if (todayCount >= AD_REWARDS_PER_DAY) return json(res, 200, { granted: false, reason: 'daily cap reached' });
+    db.adRewards.push({
+      id: crypto.randomBytes(8).toString('base64url'), userId: uid, kind: 'xp', amount: AD_REWARD_XP,
+      sourceRewardId, date: today, created: new Date().toISOString(),
+    });
+    saveDb();
+    wsSend(uid, { type: 'rank:changed' });
+    json(res, 200, { granted: true, amount: AD_REWARD_XP });
   },
 };
 

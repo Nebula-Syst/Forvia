@@ -92,6 +92,7 @@ export const pinPR = (workoutId, exerciseId) => api('/api/social/pin-pr', { meth
 /* ---------- rank / daily tasks ---------- */
 export const confirmPrestige = () => api('/api/prestige', { method: 'POST' }).then(r => r.user)
 export const tasksToday = () => api('/api/tasks/today').then(r => r.tasks)
+export const adsStatus = () => api('/api/ads/status')
 export const adminTasks = () => api('/api/admin/tasks')
 export const adminTaskAdd = (name, desc, points, criteria) => api('/api/admin/tasks', { method: 'POST', body: JSON.stringify({ name, desc, points, criteria }) }).then(r => r.task)
 export const adminTaskRemove = id => api('/api/admin/tasks/remove', { method: 'POST', body: JSON.stringify({ id }) })

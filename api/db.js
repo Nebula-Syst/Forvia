@@ -22,6 +22,8 @@ const COLLECTIONS = [
   'routineAssignments', 'wods', 'wodResults', 'boxRequests', 'boxStaff', 'classTypes',
   'dayTemplates', 'weekTemplates', 'wodTemplates', 'classSessions', 'classBookings',
   'classPenalties', 'liveClasses', 'publicFoods', 'boxPlans', 'coachClients',
+  // One row per granted ad-watch reward (ads plan, phase 1) — see POST /internal/ad-grant.
+  'adRewards',
 ];
 const tableFor = name => 'kv_' + name.replace(/[A-Z]/g, c => '_' + c.toLowerCase());
 

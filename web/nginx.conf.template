@@ -48,6 +48,10 @@ server {
     location = /api/me { proxy_pass http://${CORE_BACKEND}:${CORE_PORT}; }
     location = /api/data { client_max_body_size 9m; proxy_pass http://${CORE_BACKEND}:${CORE_PORT}; }
     location = /api/config { proxy_pass http://${CORE_BACKEND}:${CORE_PORT}; }
+    # Google's own SSV callback hits this directly — everything else under /api/ads/ (the
+    # "Earn rewards" card's own status read) is ${BACKEND}'s (Nebula owns XP), so this needs its
+    # own exact-match carve-out or it falls into the generic /api/ catch-all below instead.
+    location = /api/ads/ssv { proxy_pass http://${CORE_BACKEND}:${CORE_PORT}; }
     location = /api/health { proxy_pass http://${CORE_BACKEND}:${CORE_PORT}; }
     location = /api/uploads { proxy_pass http://${CORE_BACKEND}:${CORE_PORT}; }
     location = /api/bugs { proxy_pass http://${CORE_BACKEND}:${CORE_PORT}; }

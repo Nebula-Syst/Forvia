@@ -27,6 +27,10 @@ export default function Settings() {
   const showProfile = user && !DEMO
   const showNotifications = user || MOBILE
   const showProgress = user
+  // Ads plan, phase 1 — same "empty by default" gate everywhere else this config is read: a
+  // self-hosted instance that's never set up AdMob just never shows this tile at all, same as
+  // it never shows a push-notification toggle in a browser that doesn't support push.
+  const showAds = user && MOBILE && !!useStore(s => s.config?.admob_rewarded_unit_id)
 
   return <div className="narrow settings-home">
     {/* Three named clusters instead of one flat grid — same h4.sec label already used for
@@ -42,6 +46,10 @@ export default function Settings() {
         {user && !DEMO && (
           <Tile icon="crown" tint="var(--acc)" title={t('Subscription')} subtitle={t('Plans, coming soon')}
             onClick={() => nav('/settings/subscription')} />
+        )}
+        {showAds && (
+          <Tile icon="sparkles" tint="var(--acc)" title={t('Earn rewards')} subtitle={t('Watch an ad for XP')}
+            onClick={() => nav('/settings/ads')} />
         )}
         {showProfile && (
           <Tile icon="sparkles" tint="var(--purple)" title={t('Profile')} subtitle={t('Bio, badges')}
