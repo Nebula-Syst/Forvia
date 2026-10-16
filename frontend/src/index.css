@@ -2515,45 +2515,85 @@ body.resting .active-pill{bottom:calc(254px + var(--sab))}
 }
 #toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
 
-/* ------------------------------------------------------- Forvia Coin ledger --- */
-/* SettingsAds.jsx's balance/shop reads as a bank statement rather than a shop of cards —
-   see that file's own comment for why (a watch's payout isn't known until the SSV callback
-   lands, a redemption's cost always is, so only one of the two can ever carry a number). */
-.coin-balance{
-  display:flex;align-items:center;gap:6px;position:relative;
-  font-size:17px;font-weight:600;letter-spacing:-.012em;color:var(--acc);
-  padding-bottom:2px;   /* aligns its baseline with .hdr h1 next to it */
+/* ------------------------------------------------------------- Forvia Coin --- */
+/* SettingsAds.jsx leads with the balance as a real hero (lit, animated, a stack of coins in
+   front of it) rather than a line item — a flat list gives every row equal weight, so nothing
+   on the page reads as the point of it. The shop below still reads as a statement though: a
+   watch's row carries no number (its payout isn't known until AdMob's SSV callback lands) while
+   a redemption panel always carries its exact debit plus an affordability ring. */
+.coin-hero{
+  position:relative;height:200px;margin:4px 0 4px;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;
 }
-.coin-balance .icn{font-size:18px}
+.coin-hero-ring{
+  position:absolute;top:50%;left:50%;width:176px;height:176px;transform:translate(-50%,-50%);
+  border-radius:50%;border:1.5px dashed var(--acc-line);animation:coin-spin 18s linear infinite;
+}
+.coin-hero-glow{
+  position:absolute;top:50%;left:50%;width:148px;height:148px;transform:translate(-50%,-50%);
+  border-radius:50%;background:radial-gradient(circle, var(--acc-soft), transparent 70%);
+  animation:coin-breathe 3s ease-in-out infinite;
+}
+@keyframes coin-spin{to{transform:translate(-50%,-50%) rotate(360deg)}}
+@keyframes coin-breathe{0%,100%{opacity:.55}50%{opacity:1}}
+
+.coin-stack{position:relative;display:flex;align-items:flex-end;justify-content:center;height:30px}
+.coin-stack-c{
+  width:26px;height:26px;margin-left:-8px;border-radius:50%;flex:none;
+  display:flex;align-items:center;justify-content:center;font-size:15px;
+  background-image:var(--glass-sheen), linear-gradient(155deg, color-mix(in srgb, var(--acc) 100%, #fff 22%), var(--acc-2));
+  color:var(--on-acc);box-shadow:0 2px 6px -1px color-mix(in srgb, var(--acc) 55%, transparent);
+  animation:coin-bob 2.6s ease-in-out infinite;
+}
+.coin-stack-c:first-child{margin-left:0}
+@keyframes coin-bob{0%,100%{transform:translateY(0)}50%{transform:translateY(-4px)}}
+
+.coin-hero-num{
+  position:relative;display:flex;align-items:center;gap:6px;
+  font-size:52px;font-weight:800;letter-spacing:-.03em;line-height:1;color:var(--acc);
+}
+.coin-hero-label{
+  font-size:12px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--label-2);
+}
 .coin-chip{
-  position:absolute;top:-4px;right:0;transform:translateY(-100%);
-  padding:2px 8px;border-radius:99px;font-size:12px;font-weight:600;
+  position:absolute;top:-6px;right:-44px;
+  padding:3px 9px;border-radius:99px;font-size:13px;font-weight:600;
   background:var(--surface-2);border:1px solid var(--glass-border);box-shadow:var(--shadow-sm);
   white-space:nowrap;
 }
 .coin-chip.up{color:var(--acc)}
 .coin-chip.down{color:var(--label-2)}
 
-.ledger-credit{display:flex;align-items:center;gap:8px}
-.ledger-mark{font-size:19px;font-weight:600;color:var(--acc)}
+.coin-watch-btn{width:100%}
 
-.ledger-amt{
-  flex:none;min-width:52px;padding:8px 14px;border-radius:99px;text-align:center;
-  font-size:15px;font-weight:600;letter-spacing:-.006em;font-family:inherit;
-  background:var(--glass-bg-2);border:1px solid var(--glass-border);color:var(--label-3);
-  transition:background var(--fast),color var(--fast),border-color var(--fast);
+.coin-shop{display:flex;flex-direction:column;gap:10px;margin-top:22px}
+.coin-shop-label{
+  font-size:12px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--label-3);
+  padding:0 2px;
 }
-.ledger-amt.afford{color:var(--acc);border-color:var(--acc-line)}
-.ledger-amt.afford:active{background:var(--acc-soft)}
-.ledger-amt:disabled{opacity:.7}
+.redeem-panel{
+  display:flex;align-items:center;gap:14px;width:100%;text-align:left;
+  padding:14px 16px;border-radius:var(--r-lg);color:var(--label);font:inherit;
+  background:var(--glass-bg-2);background-image:var(--glass-sheen);
+  border:1px solid var(--glass-border);box-shadow:var(--shadow-sm);
+  transition:background var(--fast);
+}
+.redeem-panel:active{background:var(--surface-2)}
+.redeem-panel:disabled{opacity:.85}
+.redeem-ring{flex:none}
+.redeem-txt{flex:1;min-width:0;display:flex;flex-direction:column;gap:1px}
+.redeem-title{font-size:15px;font-weight:600;letter-spacing:-.012em}
+.redeem-sub{font-size:12.5px;color:var(--label-2);line-height:1.3}
+.redeem-cost{flex:none;font-size:19px;font-weight:800;letter-spacing:-.01em;color:var(--label-3)}
+.redeem-cost.afford{color:var(--acc)}
 
-/* Tints the whole row that just redeemed, not just its button — the row's title/subtitle is
-   what just "happened" — then fades, same acknowledging-not-decorating motion rule the rest
+/* Tints the whole panel that just redeemed, not just its number — the panel's title/subtitle
+   is what just "happened" — then fades, same acknowledging-not-decorating motion rule the rest
    of the app already holds to. */
 .row-flash{animation:row-flash-kf .65s var(--ease)}
 @keyframes row-flash-kf{
   0%{background:var(--acc-soft)}
-  100%{background:none}
+  100%{background:var(--glass-bg-2)}
 }
 
 /* ---------------------------------------------------------------- misc --- */

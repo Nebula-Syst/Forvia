@@ -48,6 +48,8 @@ export default {
   'Every few entries, browsing logged meals': 'Cada pocas entradas, al ver comidas registradas',
   'Completely optional — watch a short ad, get a small XP bonus. Never required to use Forvia.': 'Totalmente opcional — ve un anuncio corto y gana algo de XP extra. Nunca hace falta para usar Forvia.',
   '{0} of {1} watched today — resets at midnight.': '{0} de {1} vistos hoy — se reinicia a medianoche.',
+  '{0} of {1} today': '{0} de {1} hoy',
+  'Redeem': 'Canjear',
   'Watch an ad': 'Ver un anuncio',
   '+{0} XP': '+{0} XP',
   'Watch': 'Ver',
