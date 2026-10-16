@@ -1,8 +1,10 @@
 import { useEffect } from 'react'
 import { useUI } from '../store/useUI.js'
+import { useStore } from '../store/useStore.js'
 import { t } from '../lib/i18n.js'
 import { Button } from './ui.jsx'
 import GamesPicker from './GamesPicker.jsx'
+import AdUnit from './AdUnit.jsx'
 import { playGame } from '../sheets.jsx'
 
 function formatClock(totalSeconds) {
@@ -25,6 +27,8 @@ export default function RestTimer() {
   const work = useUI(s => s.work)
   const { addRest, stopRest, finishWorkEarly, stopWork } = useUI()
   const active = work || rest
+  const adOn = useStore(s => s.S.adPlacements?.rest)
+  const adSlot = useStore(s => s.config?.adsense_slot_banner)
 
   // The bar is fixed above the tab bar and floats over whatever is beneath it — during a
   // rest that was the next set's row. Extra bottom padding lets the page scroll clear.
@@ -67,6 +71,8 @@ export default function RestTimer() {
       {/* The moment rest starts, the option to play is already right here — no extra tap to
           "find" it (confirmed design: inline, not a discreet prompt button). */}
       <GamesPicker compact onPick={playGame} />
+      {/* Opt-in (Settings → Ads) — off by default, unlike Social's own always-on placement. */}
+      {adOn && <AdUnit slot={adSlot} />}
     </div>
   )
 }

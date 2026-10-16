@@ -8,6 +8,7 @@ import { setLang, useLang, t } from './lib/i18n.js'
 import { setNav } from './lib/nav.js'
 import { wsOn } from './lib/ws.js'
 import { initAnalytics, trackPageView } from './lib/analytics.js'
+import { initAdSense } from './lib/ads.js'
 import { initBackButton } from './lib/back.js'
 import { MOBILE, syncReminder, syncFoodReminder, initRemindersResync, notifyNativeReady, initAds } from './lib/mobile.js'
 import { useWakeLock } from './lib/wakelock.js'
@@ -121,6 +122,11 @@ function Shell() {
   // tapped, rather than trusting a value cached from however long ago the app launched.
   const admobUnitId = useStore(s => s.config?.admob_rewarded_unit_id)
   useEffect(() => { if (user && MOBILE && admobUnitId) initAds() }, [user?.id, admobUnitId])
+  // Web/PWA half (lib/ads.js — AdSense). Same gate as GA just above, plus lib/ads.js's own
+  // !MOBILE check (belt-and-suspenders — Google's policy bans AdSense inside the installed
+  // app's WebView, see that file's comment).
+  const adsenseClientId = useStore(s => s.config?.adsense_client_id)
+  useEffect(() => { if (user && adsenseClientId) initAdSense(adsenseClientId) }, [user?.id, adsenseClientId])
   useEffect(() => { trackPageView(loc.pathname) }, [loc.pathname])
   // Native app only (lib/mobile.js — a no-op everywhere else): resyncs the on-device workout
   // reminder whenever the toggle, its time, or today's workout count changes — logging a

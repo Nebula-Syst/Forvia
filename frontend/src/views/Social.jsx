@@ -12,6 +12,7 @@ import { Thumb } from '../components/Media.jsx'
 import Icon from '../components/Icon.jsx'
 import RankBadge from '../components/RankBadge.jsx'
 import Avatar from '../components/Avatar.jsx'
+import AdUnit from '../components/AdUnit.jsx'
 import ProfileHeaderCard from '../components/ProfileHeaderCard.jsx'
 import { useRevealPaging, PAGE_SIZE, REVEAL_DELAY_MS } from '../lib/useRevealPaging.js'
 import { Segmented } from '../components/ui.jsx'
@@ -182,11 +183,12 @@ function FeedCardSkeleton() {
   </div>
 }
 
-function PostList({ fetcher, emptyIcon, emptyText, withFollow }) {
+function PostList({ fetcher, emptyIcon, emptyText, withFollow, ads }) {
   const [items, setItems] = useState(null)
   const [shown, setShown] = useState(PAGE_SIZE)
   const [loadingMore, setLoadingMore] = useState(false)
   const unit = useStore(s => s.S.unit)
+  const adSlot = useStore(s => s.config?.adsense_slot_feed)
   const toast = useUI(s => s.toast)
   const load = () => fetcher().then(list => { setItems(list); setShown(PAGE_SIZE) }).catch(e => toast(e.message || t('Could not load')))
   useEffect(() => { load() }, [])
@@ -241,9 +243,19 @@ function PostList({ fetcher, emptyIcon, emptyText, withFollow }) {
     try { await socialFollow(item.uid) } catch (e) { toast(e.message || t('Could not save')); load() }
   }
 
+  // Ads plan — Discover only (DiscoverTab passes `ads`), never the "For you" feed of people
+  // actually followed: that one reads as your own social circle, Discover is already a browse/
+  // scroll surface of strangers' public posts, closer to what a banner between cards is for.
+  // Not opt-out, unlike every other placement in Settings → Ads — same "one ad per 5 posts"
+  // feed-native shape Instagram/every other social feed already uses, by explicit request. Still
+  // only actually renders once a real slot is configured (AdUnit's own guard) — an instance that
+  // hasn't set one up sees nothing either way.
   return <SkeletonTheme baseColor="var(--surface-2)" highlightColor="var(--glass-bg-2)">
     <div className="list">
-      {items.slice(0, shown).map(item => <FeedCard key={item.uid + item.workout.id} item={item} onReact={react} onFollow={withFollow ? follow : null} unit={unit} />)}
+      {items.slice(0, shown).map((item, i) => <>
+        <FeedCard key={item.uid + item.workout.id} item={item} onReact={react} onFollow={withFollow ? follow : null} unit={unit} />
+        {ads && i > 0 && (i + 1) % 5 === 0 && <AdUnit key={'ad' + i} slot={adSlot} />}
+      </>)}
       {loadingMore && <FeedCardSkeleton />}
       {hasMore && <div ref={sentinelElRef} style={{ height: 1 }} />}
     </div>
@@ -288,7 +300,7 @@ function SuggestedPeople() {
 
 const DiscoverTab = () => <>
   <SuggestedPeople />
-  <PostList fetcher={socialDiscover} emptyIcon="magnifier" withFollow
+  <PostList fetcher={socialDiscover} emptyIcon="magnifier" withFollow ads
     emptyText={t('Nobody on this instance has made their profile public yet.')} />
 </>
 

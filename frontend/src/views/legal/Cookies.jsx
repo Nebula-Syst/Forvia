@@ -5,9 +5,11 @@ import Icon from '../../components/Icon.jsx'
 // login — see App.jsx). Forvia sets one cookie of its own (the signed session cookie forvia-core
 // issues) plus, once someone has an account and is signed in, Google Analytics' own cookies —
 // see frontend/src/lib/analytics.js for exactly when that loads and why account creation (not a
-// separate banner) is this project's consent moment for it. localStorage isn't a cookie
-// technically, but the same "what does this app store in my browser and why" question applies
-// to it, so it's covered here too.
+// separate banner) is this project's consent moment for it — and, only once the person has
+// opted into a specific placement themselves (Settings → Ads, S.adPlacements; never the
+// installed app, see lib/ads.js's own comment on why), Google AdSense's. localStorage isn't a
+// cookie technically, but the same "what does this app store in my browser and why" question
+// applies to it, so it's covered here too.
 export default function Cookies() {
   const nav = useNavigate()
   return <div className="narrow">
@@ -21,7 +23,7 @@ export default function Cookies() {
 
     <h4 className="sec">1. Resumen</h4>
     <p className="muted small" style={{ lineHeight: 1.5 }}>
-      Forvia usa una cookie propia, imprescindible para iniciar sesión, y las cookies de <strong>Google Analytics</strong> una vez tienes una cuenta y has iniciado sesión — nada de publicidad ni rastreo de terceros ajeno a eso. No hay un banner de "aceptar cookies" independiente: como una cuenta es la única forma de entrar en Forvia, el aviso y el enlace a esta misma página aparecen en el propio formulario de creación de cuenta, y crearla es lo que entendemos como tu aceptación.
+      Forvia usa una cookie propia, imprescindible para iniciar sesión, las cookies de <strong>Google Analytics</strong> una vez tienes una cuenta y has iniciado sesión, y — solo si lo activas tú, apagado por defecto, y nunca dentro de la app instalada — las de <strong>Google AdSense</strong> para mostrar anuncios opcionales. No hay un banner de "aceptar cookies" independiente: como una cuenta es la única forma de entrar en Forvia, el aviso y el enlace a esta misma página aparecen en el propio formulario de creación de cuenta, y crearla es lo que entendemos como tu aceptación para la sesión y Analytics; AdSense además requiere que tú mismo lo actives en Ajustes.
     </p>
 
     <h4 className="sec">2. La cookie de sesión (propia, siempre activa)</h4>
@@ -54,22 +56,38 @@ export default function Cookies() {
       Los datos que Analytics recoge (pantallas visitadas, dispositivo y navegador de forma general, aproximación de ubicación por IP) los trata Google como encargado del tratamiento, según sus propias condiciones — puedes leerlas en <a href="https://policies.google.com/privacy" target="_blank" rel="noopener">policies.google.com/privacy</a>. No le pasamos tu nombre, correo, ni ningún dato de entrenamiento: solo actividad de navegación dentro de la app.
     </p>
 
-    <h4 className="sec">4. Lo que no usamos</h4>
+    <h4 className="sec">4. Cookies de Google AdSense (solo si tú las activas)</h4>
     <p className="muted small" style={{ lineHeight: 1.5 }}>
-      Ninguna cookie de publicidad o retargeting, ningún píxel de redes sociales, y ningún rastreador de terceros más allá de Google Analytics.
+      Forvia puede mostrar anuncios opcionales de Google AdSense en algunos puntos de la app — nunca por defecto, nunca dentro de la app instalada para Android (la política de Google lo prohíbe ahí), y solo en los sitios concretos que tú elijas activar en <strong>Ajustes → Anuncios</strong>. Si activas alguno, Google puede colocar cookies de publicidad para elegir y medir esos anuncios:
+    </p>
+    <table className="small muted" style={{ width: '100%', borderCollapse: 'collapse', lineHeight: 1.5, marginBottom: 8 }}>
+      <tbody>
+        <tr><td style={{ paddingRight: 10, paddingBottom: 6, verticalAlign: 'top', whiteSpace: 'nowrap' }}><strong>Nombre</strong></td><td style={{ paddingBottom: 6 }}><code>__gads</code>, <code>__gpi</code> y similares, según la configuración estándar de Google AdSense.</td></tr>
+        <tr><td style={{ paddingRight: 10, paddingBottom: 6, verticalAlign: 'top', whiteSpace: 'nowrap' }}><strong>Para qué</strong></td><td style={{ paddingBottom: 6 }}>Elegir qué anuncio mostrar y medir cuántas veces se ve, para pagar a Forvia por ese espacio.</td></tr>
+        <tr><td style={{ paddingRight: 10, paddingBottom: 6, verticalAlign: 'top', whiteSpace: 'nowrap' }}><strong>Quién la pone</strong></td><td style={{ paddingBottom: 6 }}>Google — cookies de terceros.</td></tr>
+        <tr><td style={{ paddingRight: 10, verticalAlign: 'top', whiteSpace: 'nowrap' }}><strong>Duración</strong></td><td>Hasta 13 meses, según la configuración estándar de Google AdSense.</td></tr>
+      </tbody>
+    </table>
+    <p className="muted small" style={{ lineHeight: 1.5 }}>
+      Puedes leer las condiciones de Google sobre esto en <a href="https://policies.google.com/technologies/ads" target="_blank" rel="noopener">policies.google.com/technologies/ads</a>. Desactivar cada sitio en Ajustes → Anuncios en cualquier momento retira ese anuncio la próxima vez que cargue la pantalla; borrar las cookies desde tu navegador tiene el mismo efecto antes de eso.
     </p>
 
-    <h4 className="sec">5. Almacenamiento local del navegador (no es técnicamente una cookie)</h4>
+    <h4 className="sec">5. Lo que no usamos</h4>
+    <p className="muted small" style={{ lineHeight: 1.5 }}>
+      Ningún píxel de redes sociales ni rastreador de terceros más allá de Google Analytics y, si tú lo activas, Google AdSense — nada de retargeting ni de venta de datos a redes de publicidad externas.
+    </p>
+
+    <h4 className="sec">6. Almacenamiento local del navegador (no es técnicamente una cookie)</h4>
     <p className="muted small" style={{ lineHeight: 1.5 }}>
       Además de esas cookies, Forvia guarda algunos datos directamente en tu navegador mediante <code>localStorage</code> — una tecnología distinta de las cookies (no viaja con cada petición al servidor) pero con un propósito parecido: recordar cosas entre visitas. En Forvia se usa para una copia local de tu perfil, para que la app cargue al instante sin esperar al servidor, y una marca para no repetirte la animación de "subida de nivel" que ya viste. Nada de esto se envía a Nebula Systems ni a nadie más salvo cuando la propia app sincroniza tu progreso con el servidor como parte normal de su funcionamiento.
     </p>
 
-    <h4 className="sec">6. Cómo controlarlas</h4>
+    <h4 className="sec">7. Cómo controlarlas</h4>
     <p className="muted small" style={{ lineHeight: 1.5 }}>
-      Puedes borrar la cookie <code>gymsid</code>, las de Google Analytics, y los datos de <code>localStorage</code> en cualquier momento desde los ajustes de tu navegador ("Borrar datos del sitio" o equivalente) — el efecto será que se cierra tu sesión. También puedes cerrar sesión de forma normal desde Ajustes → Cuenta, que borra la cookie de sesión sin tocar la configuración del navegador. Como una cuenta es obligatoria para usar Forvia, no ofrecemos un interruptor dentro de la app para mantener la cuenta pero desactivar solo Analytics — si lo prefieres, puedes bloquearlo tú mismo con una extensión de bloqueo de rastreadores o el complemento de inhabilitación que el propio Google ofrece.
+      Puedes borrar la cookie <code>gymsid</code>, las de Google Analytics y AdSense, y los datos de <code>localStorage</code> en cualquier momento desde los ajustes de tu navegador ("Borrar datos del sitio" o equivalente) — el efecto será que se cierra tu sesión. También puedes cerrar sesión de forma normal desde Ajustes → Cuenta, que borra la cookie de sesión sin tocar la configuración del navegador. Las cookies de AdSense tienen su propio interruptor, sitio por sitio, en Ajustes → Anuncios — no hace falta tocar el navegador para esas. Como una cuenta es obligatoria para usar Forvia, no ofrecemos un interruptor dentro de la app para mantener la cuenta pero desactivar solo Analytics — si lo prefieres, puedes bloquearlo tú mismo con una extensión de bloqueo de rastreadores o el complemento de inhabilitación que el propio Google ofrece.
     </p>
 
-    <h4 className="sec">7. Más información</h4>
+    <h4 className="sec">8. Más información</h4>
     <p className="muted small" style={{ lineHeight: 1.5, marginBottom: 4 }}>
       Para el resto de datos que Forvia guarda (tu perfil, tus entrenamientos, etc., no relacionados con cookies), consulta la <a onClick={e => { e.preventDefault(); nav('/legal/privacy') }} href="/legal/privacy">política de privacidad</a>. Cualquier duda: <a href="mailto:nebulasystemsinfo@gmail.com">nebulasystemsinfo@gmail.com</a>.
     </p>

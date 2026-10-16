@@ -5,6 +5,7 @@ import { t } from '../lib/i18n.js'
 import { MEALS } from '../lib/nutrition.js'
 import Icon from '../components/Icon.jsx'
 import { Button } from '../components/ui.jsx'
+import AdUnit from '../components/AdUnit.jsx'
 import { mealFilterSheet, editFoodSheet } from '../sheets.jsx'
 
 // The full "everything logged today" list behind Nutrition.jsx's "See all" — a flat, ordered
@@ -61,6 +62,8 @@ export default function NutritionDiary() {
   const macroKcal = carbs * KCAL_PER_G.carbsG + fat * KCAL_PER_G.fatG + protein * KCAL_PER_G.proteinG
   const pctOf = k => macroKcal > 0 ? Math.round(k / macroKcal * 100) : 0
 
+  const adOn = useStore(s => s.S.adPlacements?.nutrition)
+  const adSlot = useStore(s => s.config?.adsense_slot_feed)
   const filterMeal = MEALS.find(m => m.key === filter)
   const filterLabel = filterMeal ? filterMeal.name() : t('All meals')
   const groups = filter === 'all'
@@ -97,6 +100,11 @@ export default function NutritionDiary() {
         ))}
       </div>
     </div>
+
+    {/* Opt-in (Settings → Ads) — one placement per page view, ahead of the grouped list rather
+        than interleaved mid-group (meals group food items in a nested structure a "every Nth
+        row" cadence doesn't map onto cleanly). */}
+    {adOn && <AdUnit slot={adSlot} />}
 
     {groups.length === 0
       ? <div className="dim small" style={{ textAlign: 'center', margin: '30px 0' }}>{t('No items logged yet')}</div>

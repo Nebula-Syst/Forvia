@@ -21,6 +21,12 @@ export const DEF = {
   // behavior. Off means each set only ever carries the weight typed into it directly, same as
   // setting wManual on every set — see Workout.jsx's setField.
   autoFillWeight: true,
+  // Ads plan — Social → Discover gets a banner every 5 posts unconditionally (not in here, not
+  // a choice); every OTHER placement is opt-in, off by default, one key per spot (SettingsAds.jsx
+  // is where these get turned on). A placement a future release adds just isn't in this object
+  // yet for an existing account — components read S.adPlacements?.<key>, never a bare
+  // S.adPlacements.<key>, so a missing key reads as false/off, not a crash.
+  adPlacements: { rest: false, workoutSummary: false, history: false, library: false, nutrition: false },
   theme: DEFAULT_THEME, accent: DEFAULT_ACCENT, reduceMotion: false, body: 'male', targetW: null,
   bodyweight: [], measurements: [], routines: [],
   // BMR/TDEE inputs for the nutrition-goals calculator (SettingsNutrition.jsx). Sex reuses

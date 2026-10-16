@@ -17,6 +17,7 @@ import { Button, Slider, Switch, Segmented, SelectRow, Row, NumberField, TextFie
 import { glyphOf, GLYPH_GROUPS, DEFAULT_GLYPH } from './lib/glyphs.js'
 import BodyMap from './components/BodyMap.jsx'
 import GamePlayer from './components/GamePlayer.jsx'
+import AdUnit from './components/AdUnit.jsx'
 import { exerciseMuscleSnapshot, loadOfWorkouts } from './lib/muscles.js'
 import { parseImport, mergeImport, preloadTranslatedNames, applyMatchOverride } from './lib/import-csv.js'
 import { buildPlanBundle, parsePlan, mergePlan, printPlan } from './lib/plan-share.js'
@@ -1683,6 +1684,7 @@ const MAX_IMAGE_MB = 6
 function FinishSummary({ w, prs, e1prs = [], xp = 0, close }) {
   const st = useStore(s => s.S)
   const user = useStore(s => s.user)
+  const adSlot = useStore(s => s.config?.adsense_slot_banner)
   const maxImages = user?.perks?.maxPhotos || DEFAULT_MAX_WORKOUT_IMAGES
   // xp is the raw, un-bonused amount this workout earned (workoutXp(w) + PRs — see
   // finishWorkout below); the streak-bonus multiplier itself only exists server-side
@@ -1773,6 +1775,8 @@ function FinishSummary({ w, prs, e1prs = [], xp = 0, close }) {
 
     <h4 className="sec" style={{ textAlign: 'left' }}>{t('What you just trained')}</h4>
     <BodyMap load={loadOfWorkouts([w])} body={st.body} />
+    {/* Opt-in (Settings → Ads) — shown once, right here, never anywhere mid-workout itself. */}
+    {st.adPlacements?.workoutSummary && <AdUnit slot={adSlot} />}
     <div style={{ height: 14 }} />
     <Button variant="primary" onClick={() => { close(); nav('/home') }}>{t('Nice!')}</Button>
   </div>

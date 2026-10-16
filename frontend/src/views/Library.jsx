@@ -8,6 +8,10 @@ import { Thumb } from '../components/Media.jsx'
 import { exerciseDetailSheet, addToRoutineSheet, customExSheet } from '../sheets.jsx'
 import Icon from '../components/Icon.jsx'
 import { Button } from '../components/ui.jsx'
+import AdUnit from '../components/AdUnit.jsx'
+
+// Opt-in (Settings → Ads) — off by default, same "every 6th row" cadence as History's own list.
+const AD_EVERY = 6
 
 export default function Library() {
   const S = useStore(s => s.S)
@@ -26,6 +30,8 @@ export default function Library() {
   // Drop the equipment filter if the search narrowed it away, so you never hit a dead end.
   const eqOn = eqOpts.includes(eq) ? eq : ''
   const f = eqOn ? base.filter(e => e.eq === eqOn) : base
+  const adOn = useStore(s => s.S.adPlacements?.library)
+  const adSlot = useStore(s => s.config?.adsense_slot_feed)
 
   return <>
     <div className="hdr"><div><h1>{t('Exercises')}</h1><div className="sub">{t('{0} exercises with animations', EXDB.length)}</div></div></div>
@@ -44,17 +50,20 @@ export default function Library() {
         <div className="thumb thumb-x"><Icon name="sparkles" /></div>
         <div className="grow"><div className="tt">{t('Create your own exercise')}</div><div className="ss">{t('name + body part, no animation')}</div></div><Icon name="plus" className="chev" />
       </div>
-      {f.slice(0, shown).map(e => {
+      {f.slice(0, shown).map((e, i) => {
         const best = bestWeightFor(S, e.id)
         const locked = lockedIds.has(e.id)
-        return <div key={e.id} className="item" style={locked ? { opacity: .5 } : undefined} onClick={() => exerciseDetailSheet(e)}>
-          <Thumb ex={e} />
-          <div className="grow"><div className="tt capitalize">{nameFor(e)}</div><div className="ss capitalize">{t(e.tg || e.bp)} · {t(e.eq)}</div></div>
-          {locked ? <Icon name="lock" style={{ color: 'var(--label-3)' }} /> : <>
-            {best > 0 && <span className="tag acc">{fmtNum(best)}</span>}
-            <Button size="sm" variant="tinted" icon="plus" onClick={ev => { ev.stopPropagation(); addToRoutineSheet(e) }}>{t('Plan')}</Button>
-          </>}
-        </div>
+        return <>
+          <div key={e.id} className="item" style={locked ? { opacity: .5 } : undefined} onClick={() => exerciseDetailSheet(e)}>
+            <Thumb ex={e} />
+            <div className="grow"><div className="tt capitalize">{nameFor(e)}</div><div className="ss capitalize">{t(e.tg || e.bp)} · {t(e.eq)}</div></div>
+            {locked ? <Icon name="lock" style={{ color: 'var(--label-3)' }} /> : <>
+              {best > 0 && <span className="tag acc">{fmtNum(best)}</span>}
+              <Button size="sm" variant="tinted" icon="plus" onClick={ev => { ev.stopPropagation(); addToRoutineSheet(e) }}>{t('Plan')}</Button>
+            </>}
+          </div>
+          {adOn && i > 0 && (i + 1) % AD_EVERY === 0 && <AdUnit key={'ad' + i} slot={adSlot} />}
+        </>
       })}
       {f.length === 0 && <div className="empty"><div className="ico"><Icon name="magnifier" /></div>{t('No match')}</div>}
     </div>

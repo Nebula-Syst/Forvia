@@ -47,7 +47,7 @@ export default function Privacy() {
       También usamos <strong>Google Analytics</strong> para entender cómo se usa la app (qué pantallas se visitan, con qué frecuencia) y así poder mejorarla — solo una vez que has creado una cuenta e iniciado sesión, nunca en la pantalla de acceso. Esto envía datos de uso a Google, que los trata como encargado según sus propias condiciones; puedes leer las suyas en <a href="https://policies.google.com/privacy" target="_blank" rel="noopener">policies.google.com/privacy</a>. Detalle completo de qué guarda y por cuánto tiempo: <a onClick={e => { e.preventDefault(); nav('/legal/cookies') }} href="/legal/cookies">política de cookies</a>.
     </p>
     <p className="muted small" style={{ lineHeight: 1.5 }}>
-      <strong>No vendemos tus datos ni los compartimos con nadie con fines publicitarios.</strong> Google Analytics es la única herramienta de terceros que recibe datos de uso, y solo para medir y mejorar el servicio — no hay anuncios ni redes de publicidad en Forvia.
+      <strong>No vendemos tus datos.</strong> Google Analytics recibe datos de uso para medir y mejorar el servicio. Forvia puede mostrar anuncios opcionales de Google AdSense — apagados por defecto, nunca en la app instalada, y solo en los sitios concretos que tú mismo actives en Ajustes → Anuncios — pero no le pasamos a Google ni a nadie tu nombre, correo, ni ningún dato de entrenamiento con fines publicitarios; Google solo ve la misma actividad de navegación que ya ve con Analytics. Detalle completo: <a onClick={e => { e.preventDefault(); nav('/legal/cookies') }} href="/legal/cookies">política de cookies</a>.
     </p>
 
     <h4 className="sec">5. Dónde vive tu información</h4>
@@ -75,7 +75,7 @@ export default function Privacy() {
 
     <h4 className="sec">9. Cookies</h4>
     <p className="muted small" style={{ lineHeight: 1.5 }}>
-      Forvia usa una cookie propia, estrictamente necesaria para mantener tu sesión iniciada, y las cookies de Google Analytics (punto 4) una vez has iniciado sesión — ninguna de publicidad ni rastreo de terceros ajeno a eso. Detalle completo, incluido qué guardamos en el almacenamiento local de tu navegador (<code>localStorage</code>) y cómo borrarlo: <a onClick={e => { e.preventDefault(); nav('/legal/cookies') }} href="/legal/cookies">política de cookies</a>.
+      Forvia usa una cookie propia, estrictamente necesaria para mantener tu sesión iniciada, las cookies de Google Analytics (punto 4) una vez has iniciado sesión, y — solo donde tú mismo las actives en Ajustes → Anuncios, nunca por defecto — las de Google AdSense. Detalle completo, incluido qué guardamos en el almacenamiento local de tu navegador (<code>localStorage</code>) y cómo borrarlo: <a onClick={e => { e.preventDefault(); nav('/legal/cookies') }} href="/legal/cookies">política de cookies</a>.
     </p>
 
     <h4 className="sec">10. Menores</h4>
