@@ -2600,13 +2600,16 @@ body.resting .active-pill{bottom:calc(254px + var(--sab))}
 /* NutritionFoodDetail.jsx — serving size leads, same reason MyFitnessPal's own food screen
    puts it right under the name: it's the one choice this whole screen exists for, everything
    below (meal, macros, extra nutrients) is read-only context around it. */
-.food-detail-title{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.food-detail-kcal{
-  display:flex;align-items:baseline;justify-content:center;gap:6px;
-  margin:6px 0 20px;
+/* The calorie ring splits by each macro's actual calorie share (carbs/protein-coded orange/
+   blue, fat indigo — the exact same three colors the macro bars below already use, so the
+   ring and the bars read as the same language, not two different charts). */
+.food-detail-ring{position:relative;display:flex;justify-content:center;margin:6px 0 20px}
+.food-detail-ring svg circle{transition:stroke-dasharray .3s var(--ease),stroke-dashoffset .3s var(--ease)}
+.food-detail-ring-label{
+  position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;
 }
-.food-detail-kcal .n{font-size:44px;font-weight:800;letter-spacing:-.025em;line-height:1;color:var(--acc)}
-.food-detail-kcal .u{font-size:15px;font-weight:600;color:var(--label-2)}
+.food-detail-ring-label .n{font-size:30px;font-weight:800;letter-spacing:-.02em;line-height:1;color:var(--label)}
+.food-detail-ring-label .u{font-size:13px;font-weight:600;color:var(--label-2);margin-top:2px}
 .food-detail-qty{display:flex;flex-direction:column;align-items:center}
 .food-detail-actions{margin-top:22px}
 

@@ -71,15 +71,41 @@ export default function NutritionFoodDetail() {
     nav('/nutrition/diary?d=' + dateIso, { replace: true })
   }
 
+  // Calorie contribution per macro (carbs/protein 4 kcal/g, fat 9) rather than splitting the
+  // ring by gram weight — a gram of fat isn't worth the same ring real estate as a gram of
+  // carbs, and this is the same arithmetic `kcal` itself already comes from.
+  const carbsKcal = carbs * 4, fatKcal = fat * 9, proteinKcal = protein * 4
+  const macroTotal = carbsKcal + fatKcal + proteinKcal
+
   return <div className="narrow food-detail-view">
     <div className="hdr">
       <button className="iconbtn" onClick={() => nav(-1)} aria-label={t('Back')}><Icon name="chevronLeft" /></button>
-      <div style={{ flex: 1, marginLeft: 10 }}><h1 className="food-detail-title">{food.name}</h1></div>
+      <div style={{ flex: 1, marginLeft: 10 }}><h1 className="hdr-sub">{food.name}</h1></div>
     </div>
 
-    <div className="food-detail-kcal">
-      <span className="n">{kcal}</span>
-      <span className="u">{t('kcal')}</span>
+    <div className="food-detail-ring">
+      <svg width="148" height="148" viewBox="0 0 148 148">
+        <circle cx="74" cy="74" r="60" fill="none" stroke="var(--glass-border)" strokeWidth="14" />
+        {macroTotal > 0 && [
+          { v: carbsKcal, color: 'var(--orange)' },
+          { v: fatKcal, color: 'var(--indigo)' },
+          { v: proteinKcal, color: 'var(--blue)' },
+        ].reduce((acc, seg) => {
+          const frac = seg.v / macroTotal
+          const C = 2 * Math.PI * 60
+          if (seg.v > 0) acc.arcs.push(
+            <circle key={seg.color} cx="74" cy="74" r="60" fill="none" stroke={seg.color} strokeWidth="14"
+              strokeDasharray={`${frac * C} ${C - frac * C}`} strokeDashoffset={-acc.cum * C}
+              transform="rotate(-90 74 74)" />
+          )
+          acc.cum += frac
+          return acc
+        }, { arcs: [], cum: 0 }).arcs}
+      </svg>
+      <div className="food-detail-ring-label">
+        <span className="n">{kcal}</span>
+        <span className="u">{t('kcal')}</span>
+      </div>
     </div>
 
     <div className="food-detail-qty">
