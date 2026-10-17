@@ -2553,7 +2553,9 @@ function BarcodeScanSheet({ dateIso, mealKey, close }) {
               const code = codes[0].rawValue
               const food = await foodByBarcode(code).catch(() => null)
               close()
-              if (food) logQuantitySheet(dateIso, mealKey, food)
+              // NutritionFoodDetail.jsx, same route/state handoff NutritionFoodSearch.jsx's
+              // own Open Food Facts results use — a barcode match is the same per-100g shape.
+              if (food) nav('/nutrition/food/' + dateIso + '/' + mealKey, { state: { food, kind: 'off' } })
               else toast(t('Product not found — try search instead'))
               return
             }
