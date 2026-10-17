@@ -2596,6 +2596,20 @@ body.resting .active-pill{bottom:calc(254px + var(--sab))}
   100%{background:var(--glass-bg-2)}
 }
 
+/* --------------------------------------------------- nutrition food detail --- */
+/* NutritionFoodDetail.jsx — serving size leads, same reason MyFitnessPal's own food screen
+   puts it right under the name: it's the one choice this whole screen exists for, everything
+   below (meal, macros, extra nutrients) is read-only context around it. */
+.food-detail-title{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.food-detail-kcal{
+  display:flex;align-items:baseline;justify-content:center;gap:6px;
+  margin:6px 0 20px;
+}
+.food-detail-kcal .n{font-size:44px;font-weight:800;letter-spacing:-.025em;line-height:1;color:var(--acc)}
+.food-detail-kcal .u{font-size:15px;font-weight:600;color:var(--label-2)}
+.food-detail-qty{display:flex;flex-direction:column;align-items:center}
+.food-detail-actions{margin-top:22px}
+
 /* ---------------------------------------------------------------- misc --- */
 .empty{text-align:center;color:var(--label-2);padding:44px 20px;font-size:15px;line-height:1.45}
 .empty .ico{font-size:34px;color:var(--label-2);margin-bottom:12px;display:flex;justify-content:center}

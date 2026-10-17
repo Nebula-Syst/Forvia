@@ -1453,6 +1453,8 @@ export default {
   "{0} kcal / 100g": "{0} kcal / 100g", "grams": "gramos", "units": "unidades", "{0} units": "{0} ud.",
   "By weight": "Por peso", "By units": "Por unidades", "Per 100g": "Por 100 g", "Per unit": "Por unidad",
   "g/unit": "g/unidad", "{0} kcal / unit": "{0} kcal / unidad",
+  "Search foods": "Buscar alimentos", "Amount": "Cantidad", "Quantity": "Cantidad",
+  "Weight per unit": "Peso por unidad", "g": "g", "{0} of {1} kcal": "{0} de {1} kcal",
   "Food saved": "Alimento guardado", "New food": "Nuevo alimento", "My foods": "Mis alimentos",
   "No custom foods yet.": "Todavía no hay alimentos personalizados.",
   "Save as meal": "Guardar como comida", "Meal saved": "Comida guardada", "Meal removed": "Comida eliminada",

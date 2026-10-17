@@ -31,7 +31,6 @@ import { waterGoalForDate } from './lib/nutrition-goals.js'
 import { parseNutritionCSV, mergeNutritionImport } from './lib/import-nutrition.js'
 import { parseNutritionLabelText } from './lib/ocr-nutrition.js'
 import { unzipSync, strFromU8 } from 'fflate'
-import { StackedBar } from './components/MacroBars.jsx'
 import LocationPicker from './components/LocationPicker.jsx'
 import LiquidFillGauge from 'react-liquid-gauge'
 import { passwordLogin, passwordRegister, setPassword, deleteAccount, socialComments, socialComment, socialCommentRemove, socialUpload, pinWorkout, unpinWorkout, pinPR, reportBug, foodSearch, foodByBarcode, publicFoodSearch, createPublicFood, coachAssignRoutine, coachRequestBox, coachAssignPlan } from './lib/api.js'
@@ -45,7 +44,7 @@ const toast = m => ui().toast(m)
 // *creating* a new one. Rather than delete the extras, they stay — just locked: visible
 // everywhere, not usable to log/add until back on Pro. "Which 5 stay unlocked" is simply
 // array order (oldest first — these arrays are only ever appended to, never reordered).
-const lockedIds = (list, pro) => new Set(pro ? [] : (list || []).slice(5).map(x => x.id))
+export const lockedIds = (list, pro) => new Set(pro ? [] : (list || []).slice(5).map(x => x.id))
 const snd = () => S().sound
 const setUser = u => useStore.getState().setUser(u)
 
@@ -1844,125 +1843,24 @@ function doFinishWorkout() {
 // Meal labels computed fresh on every call (not a module constant) so they follow a language
 // switch — derived from the shared MEALS list (lib/nutrition.js) so the order here matches
 // the chronological breakfast→lunch→snack→dinner order used everywhere else.
-const mealOptions = () => MEALS.map(m => ({ value: m.key, label: m.name() }))
+export const mealOptions = () => MEALS.map(m => ({ value: m.key, label: m.name() }))
 
 // Weight vs. units — shared by LogQuantitySheet (a searched/scanned food only ever reports
 // per-100g macros, so "units" there also needs a weight-per-unit to convert through) and
 // CustomFoodForm (which collects the rate directly in whichever unit you pick).
-const FOOD_QTY_MODES = () => [{ value: 'weight', label: t('By weight') }, { value: 'unit', label: t('By units') }]
+export const FOOD_QTY_MODES = () => [{ value: 'weight', label: t('By weight') }, { value: 'unit', label: t('By units') }]
 const FOOD_VISIBILITY = () => [{ value: 'private', label: t('Private') }, { value: 'public', label: t('Public') }]
 // A food search now merges three sources (yours, the community's, Open Food Facts) — this
 // filters which of them actually render, same list either way, nothing re-fetched on change.
-const FOOD_SOURCES = () => [{ value: 'all', label: t('All') }, { value: 'mine', label: t('Mine') }, { value: 'community', label: t('Community') }, { value: 'off', label: t('Database') }]
+export const FOOD_SOURCES = () => [{ value: 'all', label: t('All') }, { value: 'mine', label: t('Mine') }, { value: 'community', label: t('Community') }, { value: 'off', label: t('Database') }]
 
-function logFoodItem(dateIso, meal, item) {
+export function logFoodItem(dateIso, meal, item) {
   update(s => {
     const list = s.foodDiary[dateIso] || (s.foodDiary[dateIso] = [])
     list.push({ id: uid(), meal, ...item })
   })
   toast(t('Food logged'))
 }
-
-function LogQuantitySheet({ dateIso, mealKey, food, close }) {
-  const [mode, setMode] = useState('weight')
-  const [grams, setGrams] = useState(100)
-  const [units, setUnits] = useState(1)
-  // Open Food Facts only ever reports per-100g macros, never a per-unit rate — logging "3 of
-  // these" still has to go through grams somewhere, so unit mode also asks the weight of one
-  // unit and converts. Once saved, though, the item stores `units` (not grams) and its own
-  // baked-in per-unit kcal/macros, same as a unit-mode CustomFoodForm entry — editing it
-  // later (EditFoodSheet) just scales the unit count, the gram conversion doesn't resurface.
-  const [unitGrams, setUnitGrams] = useState(100)
-  const [meal, setMeal] = useState(mealKey)
-  const [detail, setDetail] = useState(false)
-  const goals = S().nutritionGoals
-  const effectiveGrams = mode === 'weight' ? (grams || 0) : (units || 0) * (unitGrams || 0)
-  const factor = effectiveGrams / 100
-  const kcal = Math.round(food.kcal100 * factor)
-  const carbs = Math.round(food.carbs100 * factor)
-  const fat = Math.round(food.fat100 * factor)
-  const protein = Math.round(food.protein100 * factor)
-  const save = () => {
-    if (mode === 'weight') {
-      if (!grams || grams <= 0) { toast(t('Enter a valid amount')); return }
-      logFoodItem(dateIso, meal, { name: food.name, grams, kcal, carbsG: carbs, fatG: fat, proteinG: protein })
-    } else {
-      if (!units || units <= 0 || !unitGrams || unitGrams <= 0) { toast(t('Enter a valid amount')); return }
-      logFoodItem(dateIso, meal, { name: food.name, units, kcal, carbsG: carbs, fatG: fat, proteinG: protein })
-    }
-    close()
-  }
-  return <>
-    <h3>{food.name}</h3>
-    <Segmented options={FOOD_QTY_MODES()} value={mode} onChange={setMode} />
-    <div style={{ height: 12 }} />
-    {/* A plain NumberField has no styling of its own outside a .stp/.unit-field wrapper —
-        left bare here it fell back to the browser's native (white) input chrome. */}
-    {mode === 'weight'
-      ? <div className="unit-field" style={{ width: 140, margin: '2px 0 14px' }}>
-        <NumberField value={grams} decimal={false} onChange={setGrams} />
-        <span className="dim">{t('grams')}</span>
-      </div>
-      : <div className="row" style={{ gap: 10, margin: '2px 0 14px' }}>
-        <div className="unit-field" style={{ flex: 1 }}>
-          <NumberField value={units} decimal={false} onChange={setUnits} />
-          <span className="dim">{t('units')}</span>
-        </div>
-        <div className="unit-field" style={{ flex: 1 }}>
-          <NumberField value={unitGrams} decimal={false} onChange={setUnitGrams} />
-          <span className="dim">{t('g/unit')}</span>
-        </div>
-      </div>}
-    <Segmented options={mealOptions()} value={meal} onChange={setMeal} />
-    <div style={{ height: 16 }} />
-    {/* Same bar language as Nutrition.jsx's meal cards (a calorie bar + 3 macro bars against
-        the day's goals) rather than the old bare "46 kcal · C 12g · G 0g · P 0g" text card —
-        prior={0} since this is a single not-yet-logged item, not a cumulative meal total. */}
-    <div className="row between" style={{ marginBottom: 4 }}>
-      <span className="small" style={{ fontWeight: 600 }}>{t('Calories')}</span>
-      <span className="small" style={{ color: 'var(--label-2)' }}>{t('{0} kcal', kcal)}</span>
-    </div>
-    <div style={{ marginBottom: 12 }}><StackedBar prior={0} own={kcal} goal={goals.calories} color="var(--acc)" /></div>
-    <div className="row" style={{ gap: 10 }}>
-      {[
-        { l: t('Carbs'), v: carbs, g: goals.carbsG, c: 'var(--orange)' },
-        { l: t('Fat'), v: fat, g: goals.fatG, c: 'var(--indigo)' },
-        { l: t('Protein'), v: protein, g: goals.proteinG, c: 'var(--blue)' },
-      ].map((m, i) => (
-        <div key={i} style={{ flex: 1 }}>
-          <div className="row between" style={{ marginBottom: 4 }}>
-            <span style={{ fontSize: 11, color: 'var(--label-2)' }}>{m.l}</span>
-            {detail && <span style={{ fontSize: 11, color: 'var(--label-2)' }}>{m.v}g</span>}
-          </div>
-          <StackedBar prior={0} own={m.v} goal={m.g} color={m.c} />
-          {detail && <div className="dim small" style={{ marginTop: 4, textAlign: 'center' }}>{Math.round(m.g ? m.v / m.g * 100 : 0)}%</div>}
-        </div>
-      ))}
-    </div>
-    {detail && <>
-      <div className="divider" style={{ margin: '14px 0 10px' }} />
-      {/* The 4 headline macros above are only ever the ones the search/barcode result
-          actually reported for — sugars, fibre, saturated fat and salt come from the same
-          Open Food Facts product, when it has them (extraNutriments in api/server.js omits
-          any that are genuinely missing rather than showing a fake 0). */}
-      {['satFat100', 'sugars100', 'fiber100', 'salt100'].some(k => food[k] != null)
-        ? <div className="list">
-          {food.satFat100 != null && <div className="row between" style={{ padding: '7px 0' }}><span className="small dim">{t('Saturated fat')}</span><span className="small">{Math.round(food.satFat100 * factor * 10) / 10}g</span></div>}
-          {food.sugars100 != null && <div className="row between" style={{ padding: '7px 0' }}><span className="small dim">{t('Sugars')}</span><span className="small">{Math.round(food.sugars100 * factor * 10) / 10}g</span></div>}
-          {food.fiber100 != null && <div className="row between" style={{ padding: '7px 0' }}><span className="small dim">{t('Fiber')}</span><span className="small">{Math.round(food.fiber100 * factor * 10) / 10}g</span></div>}
-          {food.salt100 != null && <div className="row between" style={{ padding: '7px 0' }}><span className="small dim">{t('Salt')}</span><span className="small">{Math.round(food.salt100 * factor * 10) / 10}g</span></div>}
-        </div>
-        : <div className="dim small">{t('No further nutrition data for this item.')}</div>}
-    </>}
-    <div style={{ height: 8 }} />
-    <button className="small" style={{ background: 'none', border: 'none', padding: 0, color: 'var(--label-2)', fontWeight: 600 }} onClick={() => setDetail(v => !v)}>
-      {detail ? t('Show less') : t('See all nutrients')}
-    </button>
-    <div style={{ height: 14 }} />
-    <Button variant="primary" onClick={save}>{t('Log food')}</Button>
-  </>
-}
-export const logQuantitySheet = (dateIso, mealKey, food) => ui().openSheet(close => <LogQuantitySheet dateIso={dateIso} mealKey={mealKey} food={food} close={close} />)
 
 // A custom food's macros are entered as a rate (per 100g, or per single unit — "manzana" is
 // the same food whether you log 200g of it or 10 of them) plus a quantity in whichever unit
@@ -2192,48 +2090,6 @@ function ScanMacrosSheet({ dateIso, mealKey, close }) {
 }
 export const scanMacrosSheet = (dateIso, mealKey) => ui().openSheet(close => <ScanMacrosSheet dateIso={dateIso} mealKey={mealKey} close={close} />)
 
-// Logging a quantity of an already-defined "Mis alimentos" food (FoodSearchSheet's results,
-// or re-logging from Settings) — its rate is already in the right unit (per 100g for
-// mode:'weight', per single unit for mode:'unit'), so unlike LogQuantitySheet's Open Food
-// Facts flow there's no weight/unit toggle or gram conversion to offer, just the one
-// quantity its mode already implies.
-function LogCustomFoodSheet({ dateIso, mealKey, food, close }) {
-  const [qty, setQty] = useState(food.mode === 'weight' ? 100 : 1)
-  const [meal, setMeal] = useState(mealKey)
-  const factor = food.mode === 'weight' ? (qty || 0) / 100 : (qty || 0)
-  const kcal = Math.round(food.kcal * factor)
-  const carbs = Math.round(food.carbs * factor)
-  const fat = Math.round(food.fat * factor)
-  const protein = Math.round(food.protein * factor)
-  const save = () => {
-    if (!qty || qty <= 0) { toast(t('Enter a valid amount')); return }
-    const item = { name: food.name, kcal, carbsG: carbs, fatG: fat, proteinG: protein }
-    if (food.mode === 'weight') item.grams = qty; else item.units = qty
-    logFoodItem(dateIso, meal, item)
-    close()
-  }
-  return <>
-    <h3>{food.name}</h3>
-    <div className="unit-field" style={{ width: 140, margin: '14px 0' }}>
-      <NumberField value={qty} decimal={false} onChange={setQty} />
-      <span className="dim">{food.mode === 'weight' ? t('grams') : t('units')}</span>
-    </div>
-    <Segmented options={mealOptions()} value={meal} onChange={setMeal} />
-    <div style={{ height: 14 }} />
-    <div className="card" style={{ textAlign: 'center', padding: 14 }}>
-      <div style={{ fontSize: 22, fontWeight: 800 }}>{kcal} <span className="dim small" style={{ fontWeight: 500 }}>kcal</span></div>
-      <div className="dim small" style={{ marginTop: 4 }}>{carbs}g · {fat}g · {protein}g</div>
-    </div>
-    <div style={{ height: 14 }} />
-    <Button variant="primary" onClick={save}>{t('Log food')}</Button>
-  </>
-}
-export const logCustomFoodSheet = (dateIso, mealKey, food) => {
-  const { user, S } = useStore.getState()
-  if (lockedIds(S.customFoods, user?.pro).has(food.id)) return toast(t('This food is locked — go Pro to use it again.'))
-  ui().openSheet(close => <LogCustomFoodSheet dateIso={dateIso} mealKey={mealKey} food={food} close={close} />)
-}
-
 // Creating or editing a "Mis alimentos" definition itself (Settings → Nutrition → My foods)
 // — just the rate, no quantity or meal, since those only make sense at logging time.
 function CustomFoodDefForm({ existing, close }) {
@@ -2307,10 +2163,10 @@ export const customFoodDefSheet = existing => {
 
 // "Mis comidas" — saving a meal card's current items as a reusable bundle (Nutrition.jsx's
 // clipboard button) and logging one back into the diary (FoodSearchSheet's search results).
-function saveMealTotals(items) {
+export function saveMealTotals(items) {
   return { kcal: items.reduce((n, it) => n + (it.kcal || 0), 0), count: items.length }
 }
-function logSavedMeal(dateIso, meal, savedMeal) {
+export function logSavedMeal(dateIso, meal, savedMeal) {
   const { user, S } = useStore.getState()
   if (lockedIds(S.savedMeals, user?.pro).has(savedMeal.id)) return toast(t('This meal is locked — go Pro to use it again.'))
   update(s => {
@@ -2770,91 +2626,6 @@ export const barcodeScanSheet = (dateIso, mealKey) => ui().openSheet(close => <B
 // just above: not locked, so Android back/Escape are always a working way out even if the
 // close button is ever slow to register a tap.
 export const playGame = slug => ui().openSheet(close => <GamePlayer slug={slug} close={close} />, { kind: 'fullscreen' })
-
-function FoodSearchSheet({ dateIso, mealKey, close }) {
-  const [q, setQ] = useState('')
-  const [source, setSource] = useState('all')
-  const [items, setItems] = useState(null)
-  const [communityItems, setCommunityItems] = useState([])
-  const [busy, setBusy] = useState(false)
-  // "Mis alimentos" (Settings → Nutrition) surfaces here too — reusing a food you defined
-  // once (see CustomFoodForm/CustomFoodDefForm) shouldn't mean retyping its macros every time.
-  const customFoods = useStore(s => s.S.customFoods)
-  const savedMeals = useStore(s => s.S.savedMeals)
-  const pro = useStore(s => s.user?.pro)
-  const lockedFoodIds = lockedIds(customFoods, pro)
-  const lockedMealIds = lockedIds(savedMeals, pro)
-  const myMatches = q.trim() ? customFoods.filter(f => f.name.toLowerCase().includes(q.trim().toLowerCase())) : []
-  const mealMatches = q.trim() ? savedMeals.filter(m => m.name.toLowerCase().includes(q.trim().toLowerCase())) : []
-  useEffect(() => {
-    const query = q.trim()
-    if (!query) { setItems(null); setCommunityItems([]); setBusy(false); return }
-    setBusy(true)
-    const h = setTimeout(() => {
-      // Same shape as a "Mis alimentos" match (rate + mode, not per-100g like Open Food
-      // Facts) — LogCustomFoodSheet already handles either source identically.
-      Promise.all([
-        foodSearch(query).catch(() => { toast(t('Search unavailable — try again')); return [] }),
-        publicFoodSearch(query).catch(() => []),
-      ]).then(([off, community]) => { setItems(off); setCommunityItems(community) }).finally(() => setBusy(false))
-    }, 350)
-    return () => clearTimeout(h)
-  }, [q])
-
-  const showMine = source === 'all' || source === 'mine'
-  const showCommunity = source === 'all' || source === 'community'
-  const showOff = source === 'all' || source === 'off'
-  const nothingShown = q.trim() && !busy && items
-    && !(showMine && myMatches.length) && !mealMatches.length
-    && !(showCommunity && communityItems.length) && !(showOff && items.length)
-
-  return <>
-    <h3>{t('Add food')}</h3>
-    <div className="search"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7" /><path d="m21 21-4.3-4.3" /></svg>
-      <input className="input" autoFocus placeholder={t('Search foods…')} value={q} onChange={e => setQ(e.target.value)} /></div>
-    <div style={{ height: 10 }} />
-    <Segmented options={FOOD_SOURCES()} value={source} onChange={setSource} />
-    <div style={{ height: 10 }} />
-    <div className="list">
-      {showMine && myMatches.map(f => {
-        const locked = lockedFoodIds.has(f.id)
-        return <div key={f.id} className="item" style={locked ? { opacity: .5 } : undefined}
-          onClick={() => { if (locked) return toast(t('This food is locked — go Pro to use it again.')); close(); logCustomFoodSheet(dateIso, mealKey, f) }}>
-          <div className="thumb thumb-x"><Icon name="sparkles" /></div>
-          <div className="grow"><div className="tt">{f.name}</div><div className="ss">{f.mode === 'weight' ? t('{0} kcal / 100g', f.kcal) : t('{0} kcal / unit', f.kcal)}</div></div>
-          <Icon name={locked ? 'lock' : 'chevronRight'} className={locked ? undefined : 'chev'} style={locked ? { color: 'var(--label-3)' } : undefined} />
-        </div>
-      })}
-      {mealMatches.map(m => {
-        const locked = lockedMealIds.has(m.id)
-        return <div key={m.id} className="item" style={locked ? { opacity: .5 } : undefined}
-          onClick={() => { if (locked) return toast(t('This meal is locked — go Pro to use it again.')); logSavedMeal(dateIso, mealKey, m); close() }}>
-          <div className="thumb thumb-x"><Icon name="clipboard" /></div>
-          <div className="grow"><div className="tt">{m.name}</div><div className="ss">{t('{0} items · {1} kcal', m.items.length, saveMealTotals(m.items).kcal)}</div></div>
-          <Icon name={locked ? 'lock' : 'chevronRight'} className={locked ? undefined : 'chev'} style={locked ? { color: 'var(--label-3)' } : undefined} />
-        </div>
-      })}
-      {/* Forvia's own community food database — anonymised by the server, so this row never
-          shows or knows who submitted it, same as anyone finding a food you shared. */}
-      {showCommunity && communityItems.map(f => (
-        <div key={f.id} className="item" onClick={() => { close(); logCustomFoodSheet(dateIso, mealKey, f) }}>
-          <div className="thumb thumb-x"><Icon name="globe" /></div>
-          <div className="grow"><div className="tt">{f.name}</div><div className="ss">{f.mode === 'weight' ? t('{0} kcal / 100g', f.kcal) : t('{0} kcal / unit', f.kcal)}</div></div>
-          <Icon name="chevronRight" className="chev" />
-        </div>
-      ))}
-      {nothingShown
-        ? <div className="empty">{t('No matches — try a different search or add it yourself.')}</div>
-        : showOff && (items || []).map((food, i) => (
-          <div key={food.code || i} className="item" onClick={() => { close(); logQuantitySheet(dateIso, mealKey, food) }}>
-            <div className="grow"><div className="tt">{food.name}</div><div className="ss">{t('{0} kcal / 100g', food.kcal100)}</div></div>
-            <Icon name="chevronRight" className="chev" />
-          </div>
-        ))}
-    </div>
-  </>
-}
-export const foodSearchSheet = (dateIso, mealKey) => ui().openSheet(close => <FoodSearchSheet dateIso={dateIso} mealKey={mealKey} close={close} />)
 
 // Water isn't itemized (Nutrition.jsx's waterLog is a plain per-day ml total), so this sheet
 // starts from whatever's already logged for the day (not 0 — the gauge is meant to read as

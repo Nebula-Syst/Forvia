@@ -4,7 +4,7 @@ import { t } from '../lib/i18n.js'
 import { MEALS } from '../lib/nutrition.js'
 import Icon from '../components/Icon.jsx'
 import { Section } from '../components/ui.jsx'
-import { foodSearchSheet, barcodeScanSheet, customFoodSheet, scanMacrosSheet, createMealSheet } from '../sheets.jsx'
+import { barcodeScanSheet, customFoodSheet, scanMacrosSheet, createMealSheet } from '../sheets.jsx'
 
 // Landing page for "Log it"/"Log more" — was a direct jump into the search sheet, which left
 // no room for the other ways to add a food (barcode, OCR) without burying them as rows inside
@@ -39,7 +39,7 @@ export default function NutritionLog() {
 
     <Section title={t('Search')}>
       <div className="method-grid">
-        <MethodCard icon="magnifier" label={t('Search')} onClick={() => foodSearchSheet(dateIso, mealKey)} />
+        <MethodCard icon="magnifier" label={t('Search')} onClick={() => nav('/nutrition/food-search?d=' + dateIso + '&m=' + mealKey)} />
         {canScan && <MethodCard icon="barcode" label={t('Scan barcode')} onClick={() => barcodeScanSheet(dateIso, mealKey)} />}
         <MethodCard icon="sparkles" label={t('Scan with AI')} sub={t('Coming soon')} disabled />
       </div>
