@@ -2395,67 +2395,6 @@ export const createMealSheet = () => {
   ui().openSheet(close => <CreateMealSheet close={close} />)
 }
 
-// Editing (and deleting) an already-logged item — reached from NutritionDiary.jsx's "See
-// all" list, the one place a food item renders as its own row rather than folded into a
-// meal's "X and N more" summary. Quantity is the only thing that's ever editable here —
-// never calories/macros directly — so an item with a `grams` or `units` quantity (a search
-// result, a barcode scan, or a weight/unit custom food — see CustomFoodForm) rescales
-// kcal/macros off its own current per-quantity ratio when you drag the amount. An item with
-// neither (only truly old data from before quantities existed) has no ratio to scale from,
-// so this only offers moving it to a different meal or deleting it.
-function EditFoodSheet({ dateIso, item, close }) {
-  const qtyKind = item.grams != null ? 'grams' : item.units != null ? 'units' : null
-  const initialQty = qtyKind ? item[qtyKind] : null
-  const ratio = qtyKind && initialQty ? { kcal: item.kcal / initialQty, carbs: item.carbsG / initialQty, fat: item.fatG / initialQty, protein: item.proteinG / initialQty } : null
-  const [qty, setQty] = useState(initialQty || 100)
-  const [meal, setMeal] = useState(item.meal)
-  const kcal = ratio ? Math.round(ratio.kcal * qty) : item.kcal
-  const carbs = ratio ? Math.round(ratio.carbs * qty) : item.carbsG
-  const fat = ratio ? Math.round(ratio.fat * qty) : item.fatG
-  const protein = ratio ? Math.round(ratio.protein * qty) : item.proteinG
-  const save = () => {
-    update(s => {
-      const it = (s.foodDiary[dateIso] || []).find(x => x.id === item.id)
-      if (!it) return
-      it.meal = meal
-      if (ratio) { it[qtyKind] = qty; it.kcal = kcal; it.carbsG = carbs; it.fatG = fat; it.proteinG = protein }
-    })
-    toast(t('Food updated'))
-    close()
-  }
-  const del = () => {
-    update(s => {
-      s.foodDiary[dateIso] = (s.foodDiary[dateIso] || []).filter(x => x.id !== item.id)
-      // Without this, a stale device merging this day back in (mergeFoodDiaryInto) can't tell
-      // "deleted on purpose" apart from "never synced yet" and would resurrect it — see
-      // deletedWorkoutIds in useStore.js for the same fix, first done for workouts.
-      s.deletedFoodEntryIds = [...(s.deletedFoodEntryIds || []), { id: item.id, at: Date.now() }]
-    })
-    toast(t('Food removed'))
-    close()
-  }
-  return <>
-    <h3>{item.name}</h3>
-    {ratio && <div className="unit-field" style={{ width: 140, margin: '14px 0' }}>
-      <NumberField value={qty} decimal={false} onChange={setQty} />
-      <span className="dim">{qtyKind === 'grams' ? t('grams') : t('units')}</span>
-    </div>}
-    <Segmented options={mealOptions()} value={meal} onChange={setMeal} />
-    {ratio && <>
-      <div style={{ height: 14 }} />
-      <div className="card" style={{ textAlign: 'center', padding: 14 }}>
-        <div style={{ fontSize: 22, fontWeight: 800 }}>{kcal} <span className="dim small" style={{ fontWeight: 500 }}>kcal</span></div>
-        <div className="dim small" style={{ marginTop: 4 }}>{carbs}g · {fat}g · {protein}g</div>
-      </div>
-    </>}
-    <div style={{ height: 14 }} />
-    <Button variant="primary" onClick={save}>{t('Save changes')}</Button>
-    <div style={{ height: 8 }} />
-    <Button variant="danger" onClick={del}>{t('Delete')}</Button>
-  </>
-}
-export const editFoodSheet = (dateIso, item) => ui().openSheet(close => <EditFoodSheet dateIso={dateIso} item={item} close={close} />)
-
 // Best-effort: the native BarcodeDetector only ships in Chromium-based browsers today, so
 // FoodSearchSheet below hides the "Scan barcode" row entirely rather than opening this to a
 // dead camera on Safari/Firefox. `stopped` guards every async continuation (the detect loop,

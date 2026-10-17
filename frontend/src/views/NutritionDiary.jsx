@@ -1,12 +1,13 @@
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useStore } from '../store/useStore.js'
+import { useUI } from '../store/useUI.js'
 import { todayISO } from '../lib/format.js'
 import { t } from '../lib/i18n.js'
 import { MEALS } from '../lib/nutrition.js'
 import Icon from '../components/Icon.jsx'
 import { Button } from '../components/ui.jsx'
 import AdUnit from '../components/AdUnit.jsx'
-import { mealFilterSheet, editFoodSheet } from '../sheets.jsx'
+import { mealFilterSheet } from '../sheets.jsx'
 
 // The full "everything logged today" list behind Nutrition.jsx's "See all" — a flat, ordered
 // view of every item for the day (or one meal of it), instead of the day view's per-meal
@@ -51,9 +52,21 @@ export default function NutritionDiary() {
   const nav = useNavigate()
   const [params, setParams] = useSearchParams()
   const S = useStore(s => s.S)
+  const toast = useUI(s => s.toast)
+  const setFoodClipboard = useUI(s => s.setFoodClipboard)
   const dateIso = params.get('d') || todayISO()
   const filter = params.get('m') || 'all'
   const setFilter = key => setParams({ d: dateIso, m: key }, { replace: true })
+  const openEdit = it => nav('/nutrition/food/' + dateIso + '/' + it.meal, { state: { editItem: it } })
+  // Strips id/meal so pasting (NutritionLog.jsx's Paste card) always creates fresh entries —
+  // same shape a single item's own Copy button (NutritionFoodDetail.jsx) produces, just with
+  // every item in the meal instead of one.
+  const copyMeal = (meal, items) => {
+    setFoodClipboard({ kind: 'meal', label: meal.name(), items: items.map(({ id, meal: _m, ...rest }) => rest) })
+    toast(items.length === 1
+      ? t('Copied {0} item — paste it from "Log more" on any day', items.length)
+      : t('Copied {0} items — paste them from "Log more" on any day', items.length))
+  }
 
   const all = S.foodDiary[dateIso] || []
   const shown = filter === 'all' ? all : all.filter(it => it.meal === filter)
@@ -114,11 +127,23 @@ export default function NutritionDiary() {
             <span className="lrow-i" style={{ width: 24, height: 24, borderRadius: 7, fontSize: 12, background: `color-mix(in srgb, ${meal.color} 20%, transparent)`, color: meal.color }}>
               <Icon name={meal.icon} />
             </span>
-            <span style={{ fontSize: 15, fontWeight: 700 }}>{meal.name()}</span>
+            <span style={{ fontSize: 15, fontWeight: 700, flex: 1 }}>{meal.name()}</span>
+            <button className="small" style={{ background: 'none', border: 'none', padding: 0, display: 'flex', alignItems: 'center', gap: 4, color: 'var(--label-2)', fontWeight: 600 }}
+              onClick={() => copyMeal(meal, items)} aria-label={t('Copy {0}', meal.name())}>
+              <Icon name="clipboard" style={{ fontSize: 14 }} />{t('Copy')}
+            </button>
           </div>}
+          {filter !== 'all' && items.length > 0 && (
+            <div style={{ display: 'flex', justifyContent: 'flex-end', margin: '0 2px 8px' }}>
+              <button className="small" style={{ background: 'none', border: 'none', padding: 0, display: 'flex', alignItems: 'center', gap: 4, color: 'var(--label-2)', fontWeight: 600 }}
+                onClick={() => copyMeal(meal, items)} aria-label={t('Copy {0}', meal.name())}>
+                <Icon name="clipboard" style={{ fontSize: 14 }} />{t('Copy')}
+              </button>
+            </div>
+          )}
           <div className="list">
             {items.map(it => (
-              <div key={it.id} className="item" onClick={() => editFoodSheet(dateIso, it)}>
+              <div key={it.id} className="item" onClick={() => openEdit(it)}>
                 <div className="grow">
                   <div className="tt">{it.name}</div>
                   {it.grams != null && <div className="ss">{it.grams + ' g'}</div>}

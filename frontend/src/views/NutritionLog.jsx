@@ -1,10 +1,11 @@
 import { useNavigate, useSearchParams } from 'react-router-dom'
+import { useUI } from '../store/useUI.js'
 import { todayISO } from '../lib/format.js'
 import { t } from '../lib/i18n.js'
 import { MEALS } from '../lib/nutrition.js'
 import Icon from '../components/Icon.jsx'
 import { Section } from '../components/ui.jsx'
-import { barcodeScanSheet, customFoodSheet, scanMacrosSheet, createMealSheet } from '../sheets.jsx'
+import { barcodeScanSheet, customFoodSheet, scanMacrosSheet, createMealSheet, logFoodItem } from '../sheets.jsx'
 
 // Landing page for "Log it"/"Log more" — was a direct jump into the search sheet, which left
 // no room for the other ways to add a food (barcode, OCR) without burying them as rows inside
@@ -24,6 +25,7 @@ function MethodCard({ icon, label, sub, onClick, disabled }) {
 
 export default function NutritionLog() {
   const nav = useNavigate()
+  const clipboard = useUI(s => s.foodClipboard)
   const [params] = useSearchParams()
   const dateIso = params.get('d') || todayISO()
   const mealKey = params.get('m') || MEALS[0].key
@@ -31,11 +33,29 @@ export default function NutritionLog() {
   // offering a card that can only ever fail on a browser with no BarcodeDetector.
   const canScan = typeof window !== 'undefined' && 'BarcodeDetector' in window
 
+  // The clipboard (NutritionDiary.jsx's per-meal Copy, NutritionFoodDetail.jsx's per-item
+  // Copy) isn't cleared on paste — same "copy once, paste into several days/meals" semantics
+  // as a real clipboard — so pasting here again, or on another day, keeps working.
+  const paste = () => {
+    clipboard.items.forEach(item => logFoodItem(dateIso, mealKey, item))
+    nav('/nutrition/diary?d=' + dateIso, { replace: true })
+  }
+
   return <div className="narrow">
     <div className="hdr">
       <button className="iconbtn" onClick={() => nav(-1)} aria-label={t('Back')}><Icon name="chevronLeft" /></button>
       <div style={{ flex: 1, marginLeft: 10 }}><h1>{t('Add food')}</h1></div>
     </div>
+
+    {clipboard && (
+      <Section title={t('Paste')}>
+        <div className="method-grid">
+          <MethodCard icon="clipboard" label={t('Paste')}
+            sub={clipboard.items.length === 1 ? t('{0} item from {1}', clipboard.items.length, clipboard.label) : t('{0} items from {1}', clipboard.items.length, clipboard.label)}
+            onClick={paste} />
+        </div>
+      </Section>
+    )}
 
     <Section title={t('Search')}>
       <div className="method-grid">

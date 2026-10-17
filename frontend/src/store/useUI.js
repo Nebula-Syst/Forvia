@@ -58,6 +58,14 @@ export const useUI = create((set, get) => ({
   toastMsg: '',
   timer: null,         // rest countdown between sets — { left, total, endsAt }
   work: null,          // work countdown DURING a timed set (issue #16) — { left, total, endsAt, label }
+  // Nutrition's copy/paste — { kind: 'item'|'meal', label, items: [{name,kcal,carbsG,fatG,
+  // proteinG,grams?,units?}] }, stripped of id/meal so pasting (NutritionLog.jsx's Paste
+  // card, logFoodItem) always creates fresh entries rather than reusing one. Deliberately not
+  // persisted/synced (ui state, not S) and not auto-cleared on paste — same "copy, paste as
+  // many times as you want" clipboard semantics as the OS's own, so one copy can seed several
+  // days/meals in a row.
+  foodClipboard: null,
+  setFoodClipboard(c) { set({ foodClipboard: c }) },
 
   openSheet(render, { kind = 'sheet', locked = false } = {}) {
     const id = uid()
