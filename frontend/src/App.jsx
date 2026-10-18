@@ -36,6 +36,8 @@ import NutritionDiary from './views/NutritionDiary.jsx'
 import NutritionLog from './views/NutritionLog.jsx'
 import NutritionFoodSearch from './views/NutritionFoodSearch.jsx'
 import NutritionFoodDetail from './views/NutritionFoodDetail.jsx'
+import NutritionFoodCreate from './views/NutritionFoodCreate.jsx'
+import NutritionMealCreate from './views/NutritionMealCreate.jsx'
 import Routines from './views/Routines.jsx'
 import RoutineEdit from './views/RoutineEdit.jsx'
 import Workout, { WorkoutStartActions } from './views/Workout.jsx'
@@ -245,6 +247,8 @@ function Shell() {
               <Route path="/nutrition/log" element={<NutritionLog />} />
               <Route path="/nutrition/food-search" element={<NutritionFoodSearch />} />
               <Route path="/nutrition/food/:date/:meal" element={<NutritionFoodDetail />} />
+              <Route path="/nutrition/food-create" element={<NutritionFoodCreate />} />
+              <Route path="/nutrition/meal-create" element={<NutritionMealCreate />} />
               <Route path="/routines" element={<Routines />} />
               <Route path="/routines/r/:id" element={<RoutineEdit />} />
               <Route path="/workout" element={<Workout />} />

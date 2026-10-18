@@ -3,11 +3,11 @@ import { useStore } from '../../store/useStore.js'
 import { t } from '../../lib/i18n.js'
 import Icon from '../../components/Icon.jsx'
 import { Button } from '../../components/ui.jsx'
-import { savedMealDetailSheet, createMealSheet } from '../../sheets.jsx'
+import { savedMealDetailSheet, startMealCreate } from '../../sheets.jsx'
 
 // "Mis comidas" — bundles of food items, either saved from a meal card's clipboard button
-// (Nutrition.jsx, from something already logged) or built here from scratch by searching
-// and combining several foods (createMealSheet) before ever logging anything.
+// (Nutrition.jsx, from something already logged) or built from scratch (NutritionMealCreate.jsx,
+// startMealCreate) by searching and combining several foods before ever logging anything.
 export default function SettingsNutritionMeals() {
   const nav = useNavigate()
   const meals = useStore(s => s.S.savedMeals)
@@ -39,6 +39,6 @@ export default function SettingsNutritionMeals() {
         ))}
       </div>}
 
-    <Button variant="primary" onClick={() => createMealSheet()}>{t('New meal')}</Button>
+    <Button variant="primary" onClick={() => startMealCreate('/settings/nutrition/meals')}>{t('New meal')}</Button>
   </div>
 }

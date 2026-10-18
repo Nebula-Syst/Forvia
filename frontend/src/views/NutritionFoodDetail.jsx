@@ -3,7 +3,7 @@ import { useNavigate, useParams, useLocation } from 'react-router-dom'
 import { useStore } from '../store/useStore.js'
 import { useUI } from '../store/useUI.js'
 import { t } from '../lib/i18n.js'
-import { StackedBar } from '../components/MacroBars.jsx'
+import { StackedBar, MacroRing } from '../components/MacroBars.jsx'
 import { Segmented, Stepper, Button } from '../components/ui.jsx'
 import Icon from '../components/Icon.jsx'
 import { lockedIds, logFoodItem, mealOptions, FOOD_QTY_MODES } from '../sheets.jsx'
@@ -22,9 +22,15 @@ export default function NutritionFoodDetail() {
   const location = useLocation()
   const toast = useUI(s => s.toast)
   const setFoodClipboard = useUI(s => s.setFoodClipboard)
+  const setMealDraft = useUI(s => s.addToMealDraft)
   const food = location.state?.food || null
   const kind = location.state?.kind || null   // 'off' (per-100g) | 'custom' (per-rate, mine/community)
   const editItem = location.state?.editItem || null
+  // Reached from NutritionMealCreate.jsx building a reusable meal rather than from a specific
+  // day's "Log more" — Save collects the item into that in-progress draft (useUI's mealDraft)
+  // and returns there instead of logging to dateIso/meal and going to the diary. Never true
+  // together with isEdit: you can't "build a meal" out of something already logged.
+  const forMeal = !!location.state?.forMeal
   const isEdit = !!editItem
   const isOff = !isEdit && kind === 'off'
 
@@ -93,10 +99,12 @@ export default function NutritionFoodDetail() {
     } else if (isOff) {
       if (qtyMode === 'weight') {
         if (!grams || grams <= 0) { toast(t('Enter a valid amount')); return }
-        logFoodItem(dateIso, meal, { name: food.name, grams, kcal, carbsG: carbs, fatG: fat, proteinG: protein })
+        const item = { name: food.name, grams, kcal, carbsG: carbs, fatG: fat, proteinG: protein }
+        forMeal ? setMealDraft(item) : logFoodItem(dateIso, meal, item)
       } else {
         if (!units || units <= 0 || !unitGrams || unitGrams <= 0) { toast(t('Enter a valid amount')); return }
-        logFoodItem(dateIso, meal, { name: food.name, units, kcal, carbsG: carbs, fatG: fat, proteinG: protein })
+        const item = { name: food.name, units, kcal, carbsG: carbs, fatG: fat, proteinG: protein }
+        forMeal ? setMealDraft(item) : logFoodItem(dateIso, meal, item)
       }
     } else {
       // Mirrors logCustomFoodSheet's own re-check — a lock can lapse between opening the
@@ -107,9 +115,9 @@ export default function NutritionFoodDetail() {
       if (!customQty || customQty <= 0) { toast(t('Enter a valid amount')); return }
       const item = { name: food.name, kcal, carbsG: carbs, fatG: fat, proteinG: protein }
       if (food.mode === 'weight') item.grams = customQty; else item.units = customQty
-      logFoodItem(dateIso, meal, item)
+      forMeal ? setMealDraft(item) : logFoodItem(dateIso, meal, item)
     }
-    nav('/nutrition/diary?d=' + dateIso, { replace: true })
+    nav(forMeal ? '/nutrition/meal-create' : '/nutrition/diary?d=' + dateIso, { replace: true })
   }
 
   const del = () => {
@@ -132,12 +140,6 @@ export default function NutritionFoodDetail() {
     toast(t('Copied — paste it from "Log more" on any day'))
   }
 
-  // Calorie contribution per macro (carbs/protein 4 kcal/g, fat 9) rather than splitting the
-  // ring by gram weight — a gram of fat isn't worth the same ring real estate as a gram of
-  // carbs, and this is the same arithmetic `kcal` itself already comes from.
-  const carbsKcal = carbs * 4, fatKcal = fat * 9, proteinKcal = protein * 4
-  const macroTotal = carbsKcal + fatKcal + proteinKcal
-
   return <div className="narrow food-detail-view">
     <div className="hdr">
       <button className="iconbtn" onClick={() => nav(-1)} aria-label={t('Back')}><Icon name="chevronLeft" /></button>
@@ -145,30 +147,7 @@ export default function NutritionFoodDetail() {
       {isEdit && <button className="iconbtn" onClick={copyItem} aria-label={t('Copy')}><Icon name="clipboard" /></button>}
     </div>
 
-    <div className="food-detail-ring">
-      <svg width="148" height="148" viewBox="0 0 148 148">
-        <circle cx="74" cy="74" r="60" fill="none" stroke="var(--glass-border)" strokeWidth="14" />
-        {macroTotal > 0 && [
-          { v: carbsKcal, color: 'var(--orange)' },
-          { v: fatKcal, color: 'var(--indigo)' },
-          { v: proteinKcal, color: 'var(--blue)' },
-        ].reduce((acc, seg) => {
-          const frac = seg.v / macroTotal
-          const C = 2 * Math.PI * 60
-          if (seg.v > 0) acc.arcs.push(
-            <circle key={seg.color} cx="74" cy="74" r="60" fill="none" stroke={seg.color} strokeWidth="14"
-              strokeDasharray={`${frac * C} ${C - frac * C}`} strokeDashoffset={-acc.cum * C}
-              transform="rotate(-90 74 74)" />
-          )
-          acc.cum += frac
-          return acc
-        }, { arcs: [], cum: 0 }).arcs}
-      </svg>
-      <div className="food-detail-ring-label">
-        <span className="n">{kcal}</span>
-        <span className="u">{t('kcal')}</span>
-      </div>
-    </div>
+    <MacroRing kcal={kcal} carbs={carbs} fat={fat} protein={protein} />
 
     <div className="food-detail-qty">
       {isEdit
@@ -190,8 +169,10 @@ export default function NutritionFoodDetail() {
     </div>
 
     <div style={{ height: 18 }} />
-    <Segmented options={mealOptions()} value={meal} onChange={setMeal} />
-    <div style={{ height: 18 }} />
+    {!forMeal && <>
+      <Segmented options={mealOptions()} value={meal} onChange={setMeal} />
+      <div style={{ height: 18 }} />
+    </>}
 
     <div className="row between" style={{ marginBottom: 4 }}>
       <span className="small" style={{ fontWeight: 600 }}>{t('Calories')}</span>
@@ -234,7 +215,7 @@ export default function NutritionFoodDetail() {
     </>}
 
     <div className="food-detail-actions">
-      <Button variant="primary" size="lg" onClick={save}>{isEdit ? t('Save changes') : t('Log food')}</Button>
+      <Button variant="primary" size="lg" onClick={save}>{isEdit ? t('Save changes') : forMeal ? t('Add to meal') : t('Log food')}</Button>
       {isEdit && <>
         <div style={{ height: 10 }} />
         <Button variant="danger" size="lg" onClick={del}>{t('Delete')}</Button>

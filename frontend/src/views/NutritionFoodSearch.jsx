@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { useNavigate, useSearchParams } from 'react-router-dom'
+import { useNavigate, useSearchParams, useLocation } from 'react-router-dom'
 import { useStore } from '../store/useStore.js'
 import { useUI } from '../store/useUI.js'
 import { t } from '../lib/i18n.js'
@@ -19,6 +19,8 @@ import { Segmented } from '../components/ui.jsx'
 export default function NutritionFoodSearch() {
   const nav = useNavigate()
   const toast = useUI(s => s.toast)
+  const location = useLocation()
+  const forMeal = !!location.state?.forMeal
   const [params, setParams] = useSearchParams()
   const dateIso = params.get('d') || todayISO()
   const mealKey = params.get('m') || MEALS[0].key
@@ -34,17 +36,21 @@ export default function NutritionFoodSearch() {
   const lockedFoodIds = lockedIds(customFoods, pro)
   const lockedMealIds = lockedIds(savedMeals, pro)
   const myMatches = q.trim() ? customFoods.filter(f => f.name.toLowerCase().includes(q.trim().toLowerCase())) : []
-  const mealMatches = q.trim() ? savedMeals.filter(m => m.name.toLowerCase().includes(q.trim().toLowerCase())) : []
+  // A meal can't contain another meal — no saved-meal matches while building one.
+  const mealMatches = q.trim() && !forMeal ? savedMeals.filter(m => m.name.toLowerCase().includes(q.trim().toLowerCase())) : []
 
   // `q` rides along in the URL (?q=) so landing back here via the browser/back-button from
   // the detail view restores the query — a real navigation unmounts this screen, unlike the
-  // old sheet, which just sat underneath untouched.
+  // old sheet, which just sat underneath untouched. `state: location.state` carries `forMeal`
+  // through this self-navigation too — setSearchParams's own replace otherwise drops whatever
+  // state got us here, which silently broke the meal-builder's "add to draft, not the diary"
+  // mode the moment you typed anything (found testing it, not just a theoretical gap).
   useEffect(() => {
     setParams(prev => {
       const next = new URLSearchParams(prev)
       if (q.trim()) next.set('q', q); else next.delete('q')
       return next
-    }, { replace: true })
+    }, { replace: true, state: location.state })
     const query = q.trim()
     if (!query) { setItems(null); setCommunityItems([]); setBusy(false); return }
     setBusy(true)
@@ -65,7 +71,7 @@ export default function NutritionFoodSearch() {
     && !(showMine && myMatches.length) && !mealMatches.length
     && !(showCommunity && communityItems.length) && !(showOff && items.length)
 
-  const openDetail = (food, kind) => nav('/nutrition/food/' + dateIso + '/' + mealKey, { state: { food, kind } })
+  const openDetail = (food, kind) => nav('/nutrition/food/' + dateIso + '/' + mealKey, { state: { food, kind, forMeal } })
   const logMeal = m => {
     if (lockedMealIds.has(m.id)) return toast(t('This meal is locked — go Pro to use it again.'))
     logSavedMeal(dateIso, mealKey, m)

@@ -67,6 +67,23 @@ export const useUI = create((set, get) => ({
   foodClipboard: null,
   setFoodClipboard(c) { set({ foodClipboard: c }) },
 
+  // NutritionMealCreate.jsx's in-progress "build a reusable meal" draft — survives the
+  // search/scan/create-food sub-flows it navigates out to and back from (each of those is its
+  // own route, so component state alone wouldn't), same ephemeral/never-synced posture as
+  // foodClipboard above. null when no meal is being built. `returnTo` rides along here too
+  // (not location.state) for the same reason: nav(-1) after bouncing through those sub-flows
+  // (some pushed, some replaced) lands somewhere unpredictable, not necessarily back at
+  // whichever screen's own "Create meal" button started this.
+  mealDraft: null,
+  startMealDraft(returnTo) { if (!get().mealDraft) set({ mealDraft: { name: '', items: [], returnTo: returnTo || '/nutrition/log' } }) },
+  setMealDraftName(name) { set(s => ({ mealDraft: s.mealDraft ? { ...s.mealDraft, name } : s.mealDraft })) },
+  // Also used as the collector a sub-flow hands a freshly-built item to (NutritionFoodDetail.jsx/
+  // NutritionFoodCreate.jsx's forMeal mode) — starts a draft itself if one was somehow missing
+  // (shouldn't happen, NutritionMealCreate.jsx always starts one on mount) rather than drop the item.
+  addToMealDraft(item) { set(s => ({ mealDraft: { name: s.mealDraft?.name || '', items: [...(s.mealDraft?.items || []), item] } })) },
+  removeFromMealDraft(index) { set(s => ({ mealDraft: s.mealDraft ? { ...s.mealDraft, items: s.mealDraft.items.filter((_, i) => i !== index) } : s.mealDraft })) },
+  clearMealDraft() { set({ mealDraft: null }) },
+
   openSheet(render, { kind = 'sheet', locked = false } = {}) {
     const id = uid()
     set(s => ({ sheets: [...s.sheets, { id, render, kind, locked }] }))

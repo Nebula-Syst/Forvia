@@ -325,3 +325,16 @@ export function Button({ variant = 'plain', size, icon, trailingIcon, children, 
     </button>
   )
 }
+
+// One tile in a "pick how" grid — NutritionLog.jsx's add-food methods, NutritionMealCreate.jsx's
+// add-ingredient methods. Shared rather than duplicated now that two screens use the same shape.
+export function MethodCard({ icon, label, sub, onClick, disabled }) {
+  return (
+    <button type="button" className={'method-card' + (disabled ? ' disabled' : ' tappable')}
+      onClick={disabled ? undefined : onClick} disabled={disabled}>
+      <span className="icn"><Icon name={icon} /></span>
+      <span className="lbl">{label}</span>
+      {sub && <span className="sub">{sub}</span>}
+    </button>
+  )
+}

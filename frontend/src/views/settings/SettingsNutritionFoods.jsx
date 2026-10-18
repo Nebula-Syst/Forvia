@@ -15,7 +15,7 @@ export default function SettingsNutritionFoods() {
   const pro = useStore(s => s.user?.pro)
   // A downgrade from Pro can leave more than 5 around — the extras (oldest 5 stay unlocked)
   // still show here and can still be edited/deleted, just can't be logged until back on Pro
-  // (enforced in sheets.jsx's logCustomFoodSheet/IngredientSearch/FoodSearchSheet).
+  // (enforced in sheets.jsx's logCustomFoodSheet and NutritionFoodSearch.jsx/NutritionFoodDetail.jsx).
   const lockedIds = new Set(pro ? [] : foods.slice(5).map(f => f.id))
 
   return <div className="narrow settings-page">

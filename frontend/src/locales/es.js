@@ -1424,7 +1424,7 @@ export default {
   "From their workout history — add or remove days below": "Calculado a partir de sus entrenamientos — suma o resta días abajo",
 
   // --- Nutrition (phase 1 shell, added 2026-09-04) ---
-  "Log food": "Registrar alimento", "Nutrition": "Nutrición", "Nutrition goals": "Objetivos de nutrición",
+  "Log food": "Registrar alimento", "Add to meal": "Añadir a la comida", "Nutrition": "Nutrición", "Nutrition goals": "Objetivos de nutrición",
   "Workout options": "Opciones de entrenamiento", "Close": "Cerrar",
   "Add food": "Añadir alimento", "No items logged yet": "Todavía no hay nada registrado",
   "Log it": "Regístralo", "{0} and {1} more": "{0} y {1} más", "{0} kcal": "{0} kcal",
