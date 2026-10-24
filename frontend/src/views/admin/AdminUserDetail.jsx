@@ -57,6 +57,11 @@ export default function AdminUserDetail() {
   const toast = useUI(s => s.toast)
   const [d, setD] = useState(null)
   const [busy, setBusy] = useState(false)
+  // Hooks must run on every render regardless of the loading early-return below — these two
+  // were originally declared after it, which crashed the whole page (different hook count on
+  // the loading render vs. the loaded one).
+  const [proMonths, setProMonths] = useState('')
+  const [aiEuros, setAiEuros] = useState('')
 
   // Two backend services answer this drill-down — forvia-core owns identity/training data
   // (GET /api/admin/user), Nebula's own half (rank/perks/badges/pro/streakBonus/bio/public)
@@ -100,7 +105,6 @@ export default function AdminUserDetail() {
   // No real billing yet — this is the only way an account becomes Pro for now, including a
   // user paying manually (cash/transfer): the admin picks however many months that covers,
   // or makes it permanent outright, same options the UI below exposes.
-  const [proMonths, setProMonths] = useState('')
   const revokePro = () => { setBusy(true); adminUserProRevoke(u.id).then(load).catch(e => toast(e.message)).finally(() => setBusy(false)) }
   const makeProPermanent = () => { setBusy(true); adminUserProPermanent(u.id).then(load).catch(e => toast(e.message)).finally(() => setBusy(false)) }
   const grantProMonths = () => {
@@ -111,7 +115,6 @@ export default function AdminUserDetail() {
   }
   // Cash handed over in person, converted to credits server-side at the same price the Stripe
   // packs use — the only way to grant AI scan credits on an instance that never sets up Stripe.
-  const [aiEuros, setAiEuros] = useState('')
   const addAiCredits = () => {
     const eur = Number(aiEuros)
     if (!eur || eur <= 0) { toast(t('Enter a positive amount')); return }
