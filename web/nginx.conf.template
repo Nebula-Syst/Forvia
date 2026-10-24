@@ -8,7 +8,7 @@
 # NOT listed here still falls through to the general /api/ catch-all at the bottom, unchanged.
 # A handful of paths share a PREFIX across the two services (POST /api/account/badges lives on
 # ${BACKEND}, everything else under /api/account/ is forvia-core's; POST /api/admin/user/
-# {level,prestige,pro,streak,profile} and GET /api/admin/user/nebula live on ${BACKEND}, GET
+# {level,prestige,pro,streak,profile,ai-credits} and GET /api/admin/user/nebula live on ${BACKEND}, GET
 # /api/admin/user(s) and POST .../create|disable|delete|restore|edit|employee-types are
 # forvia-core's) — nginx's exact-match (`=`) locations for that minority are what carve them
 # back out; without them the broader forvia-core prefix below would silently swallow them (this
@@ -54,6 +54,7 @@ server {
     location = /api/admin/user/streak { proxy_pass $api_up; }
     location = /api/admin/user/nebula { proxy_pass $api_up; }
     location = /api/admin/user/profile { proxy_pass $api_up; }
+    location = /api/admin/user/ai-credits { proxy_pass $api_up; }
 
     location /api/login { client_max_body_size 9m; proxy_pass $core_up; }
     location /api/register { client_max_body_size 9m; proxy_pass $core_up; }
