@@ -55,6 +55,7 @@ import SettingsNutritionMeals from './views/settings/SettingsNutritionMeals.jsx'
 import SettingsAppearance from './views/settings/SettingsAppearance.jsx'
 import SettingsSubscription from './views/settings/SettingsSubscription.jsx'
 import SettingsAds from './views/settings/SettingsAds.jsx'
+import SettingsAiCredits from './views/settings/SettingsAiCredits.jsx'
 import SettingsNotifications from './views/settings/SettingsNotifications.jsx'
 import SettingsData from './views/settings/SettingsData.jsx'
 import SettingsFairPlay from './views/settings/SettingsFairPlay.jsx'
@@ -266,6 +267,7 @@ function Shell() {
               <Route path="/settings/appearance" element={<SettingsAppearance />} />
               <Route path="/settings/subscription" element={<SettingsSubscription />} />
               <Route path="/settings/ads" element={<SettingsAds />} />
+              <Route path="/settings/ai-credits" element={<SettingsAiCredits />} />
               <Route path="/settings/notifications" element={<SettingsNotifications />} />
               <Route path="/settings/data" element={<SettingsData />} />
               <Route path="/settings/fair-play" element={<SettingsFairPlay />} />

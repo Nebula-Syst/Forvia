@@ -12,6 +12,7 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { WebSocketServer } from 'ws';
+import Stripe from 'stripe';
 import { ensureSchema, loadAll, saveAll, appendAudit, auditAll, auditDeleteIds } from './db.js';
 
 const PORT = +(process.env.PORT || 3000);
@@ -290,6 +291,22 @@ function readBody(req) {
     req.on('error', reject);
   });
 }
+// Stripe's webhook signature is computed over the exact raw bytes — readBody() above always
+// JSON.parses, which wouldn't reproduce them byte-for-byte. readBody() is only ever called from
+// inside a handler (never centrally before dispatch — see main()'s http.createServer further
+// down), so the webhook handler just reads the stream itself instead; nothing else changes.
+function readRawBody(req) {
+  return new Promise((resolve, reject) => {
+    let size = 0; const chunks = [];
+    req.on('data', d => {
+      size += d.length;
+      if (size > MAX_BODY) { reject(new Error('body too large')); req.destroy(); return; }
+      chunks.push(d);
+    });
+    req.on('end', () => resolve(Buffer.concat(chunks)));
+    req.on('error', reject);
+  });
+}
 
 /* ---------- audit log ---------- */
 // Same file/table-backed audit trail as forvia-core's own — a separate log, not a shared one
@@ -442,6 +459,54 @@ const AD_REWARD_COINS_DEFAULT = 10;
 // Forvia Coin redemption prices — Forvia's own price list, independent of whatever
 // reward_amount ends up configured on the AdMob side (that's Google's number per video).
 const COIN_COST_PRO_DAY = 50, COIN_COST_STREAK_SAVE = 30, COIN_COST_MINIGAME_TIME = 10;
+
+// AI food scan ("Scan with AI" — a photo of a plate, estimated by OpenAI's vision API, not the
+// label OCR "Scan macros" already does for free). Real money only, deliberately never Forvia
+// Coin — coins are ad-earned play money, and the whole point here is 100% pay-per-use against a
+// real OpenAI bill. Same "optional, degrades to disabled" posture as GOOGLE_MAPS_API_KEY: unset
+// on this instance just means the card stays exactly as it is today ("Coming soon").
+const OPENAI_API_KEY = process.env.OPENAI_API_KEY || '';
+const OPENAI_MODEL = process.env.OPENAI_MODEL || 'gpt-4o-mini';
+// A safety net against a single compromised/scripted account burning through a large prepaid
+// balance (and real OpenAI spend) in one sitting — same shape/reasoning as AD_REWARDS_PER_DAY,
+// just a much higher ceiling since this one's gated by a real balance already.
+const AI_SCANS_PER_DAY = +(process.env.AI_SCANS_PER_DAY || 20);
+
+// Known OpenAI per-token prices (USD per 1M tokens, treated as ≈EUR here — close enough for an
+// internal cost estimate, not for real accounting). Lets each successful scan record roughly
+// what it actually billed (see costCentsEst below) so the margin below can be checked against
+// reality instead of staying a guess forever. An OPENAI_MODEL not listed here just skips that
+// field — never blocks the scan itself.
+const OPENAI_PRICING = {
+  'gpt-4o-mini': { inPerM: 15, outPerM: 60 },
+  'gpt-4o': { inPerM: 250, outPerM: 1000 },
+};
+
+// Prepaid credit packs only — never a card charged per scan (rejected: SCA/3-D Secure failures
+// mid-flow in the EU). Priced cost-plus, not as flat numbers picked out of the air:
+// AI_SCAN_COST_CENTS is the operator's own estimate of what one scan actually costs on OpenAI's
+// side (check real usage against the costCentsEst recorded on each aiScans row and tune this),
+// times AI_SCAN_MARGIN_MULTIPLIER to land on the sale price — "2" means charging double what it
+// costs, same ratio language the user asked for ("si cuesta 1, que sea a 2"). Self-hosted
+// project, so packs are priced with inline Stripe price_data at Checkout-creation time, not a
+// pre-created Dashboard Product/Price — nothing to set up in Stripe beyond the one secret key.
+const AI_SCAN_COST_CENTS = +(process.env.AI_SCAN_COST_CENTS || 10);
+const AI_SCAN_MARGIN_MULTIPLIER = +(process.env.AI_SCAN_MARGIN_MULTIPLIER || 2);
+const AI_CREDIT_PRICE_CENTS = AI_SCAN_COST_CENTS * AI_SCAN_MARGIN_MULTIPLIER;
+const AI_CREDIT_PACKS = [10, 30, 100].map(credits => ({
+  id: 'pack' + credits,
+  credits,
+  // Stripe refuses charges much below ~€0.50 — the floor wins over the formula for a pack that
+  // would otherwise land below it.
+  amountCents: Math.max(50, Math.round(credits * AI_CREDIT_PRICE_CENTS)),
+  currency: 'eur',
+}));
+const STRIPE_SECRET_KEY = process.env.STRIPE_SECRET_KEY || '';
+const STRIPE_WEBHOOK_SECRET = process.env.STRIPE_WEBHOOK_SECRET || '';
+// Used only to build the Checkout success/cancel redirect targets — forvia-core already reads
+// this exact same env var the exact same way, for its own absolute-URL needs (email links).
+const ORIGIN = process.env.ORIGIN || 'http://localhost:8080';
+const stripe = STRIPE_SECRET_KEY ? new Stripe(STRIPE_SECRET_KEY) : null;
 // A workout's XP scales with what was actually done, not just that it happened — sets and
 // exercises are the load-independent baseline (rewards showing up and covering the body, and
 // keeps a bodyweight-only session from scoring near zero just because it has no weight to its
@@ -833,10 +898,14 @@ const nebulaMe = user => {
     coach: !!user.coach, coachVisible: !!user.coachVisible, hourlyRate: user.hourlyRate ?? null,
     coachLocation: user.coachLocation || null,
     pro: isProActive(user),
+    // Raw, not derived like `pro` above — lets the admin panel show *why* (permanent vs. a
+    // specific expiry) without recomputing isProActive's own logic client-side.
+    proUntil: user.proUntil || null,
     public: !!user.public, bio: user.bio || '',
     pinnedWorkoutIds: user.pinnedWorkoutIds || [], pinnedPR: user.pinnedPR || null,
     streakBonus: user.streakBonus || 0,
     coins: user.coins || 0,
+    aiScanCredits: user.aiScanCredits || 0,
   };
 };
 // A user's social presence to OTHER users — never leaks the auth-only fields above. Perks ride
@@ -1612,17 +1681,33 @@ const routes = {
   // adminXpAdjust/streakBonus above.
 
 
+  // Three admin actions, same route: revoke, grant permanently (no proUntil at all, same as
+  // before), or grant a specific number of months — for a user paying manually in cash/transfer
+  // rather than through a card. A months-grant extends whatever's left rather than overwriting
+  // it (same "stack, don't reset" rule the coin-redeemed Pro day already uses below), so a
+  // second manual payment next month just adds on top instead of losing unused time.
   'POST /api/admin/user/pro': async (req, res) => {
     const admin = requireAdmin(req, res); if (!admin) return;
     const body = await readBody(req);
     const u = await findOrFetchUser(body.id);
     if (!u) return json(res, 404, { error: 'no such user' });
-    const pro = !u.pro;
-    // An admin grant is permanent by design — clear any leftover proUntil from a prior
-    // coin-redeemed (expiring) grant so it can't fight this one.
-    await patchUser(u.id, { pro, proUntil: pro ? null : u.proUntil });
-    audit(req, 'admin.user.pro', { user: admin, target: u, msg: String(pro) });
-    json(res, 200, { pro });
+    if (body.revoke) {
+      await patchUser(u.id, { pro: false, proUntil: null });
+      audit(req, 'admin.user.pro', { user: admin, target: u, msg: 'revoked' });
+      return json(res, 200, { pro: false, proUntil: null });
+    }
+    if (body.permanent) {
+      await patchUser(u.id, { pro: true, proUntil: null });
+      audit(req, 'admin.user.pro', { user: admin, target: u, msg: 'permanent' });
+      return json(res, 200, { pro: true, proUntil: null });
+    }
+    const months = Math.round(Number(body.months));
+    if (!Number.isFinite(months) || months <= 0) return json(res, 400, { error: 'choose permanent or a positive number of months' });
+    const base = Math.max(Date.now(), u.pro ? (u.proUntil || 0) : 0);
+    const proUntil = base + months * 30 * 24 * 60 * 60 * 1000;
+    await patchUser(u.id, { pro: true, proUntil });
+    audit(req, 'admin.user.pro', { user: admin, target: u, msg: `+${months}mo -> ${new Date(proUntil).toISOString()}` });
+    json(res, 200, { pro: true, proUntil });
   },
 
   // bio/public still live on forvia-core's own users row (see publicUser()/this file's own
@@ -1640,6 +1725,33 @@ const routes = {
     await patchUser(u.id, patch);
     audit(req, 'admin.user.profile', { user: admin, target: u, msg: Object.keys(patch).join(',') });
     json(res, 200, { ok: true, ...patch });
+  },
+
+  // Cash handed over in person (or anything else outside Stripe) → credited manually here, at
+  // the same AI_CREDIT_PRICE_CENTS the Stripe packs themselves use, so a manual top-up is worth
+  // exactly what a real purchase of the same amount would be. Never needs stripe configured at
+  // all — this is the one way to grant AI scan credits on an instance that never sets up Stripe.
+  'POST /api/admin/user/ai-credits': async (req, res) => {
+    const admin = requireAdmin(req, res); if (!admin) return;
+    const body = await readBody(req);
+    const u = await findOrFetchUser(body.id);
+    if (!u) return json(res, 404, { error: 'no such user' });
+    const amountCents = Math.round(Number(body.amountCents));
+    if (!Number.isFinite(amountCents) || amountCents <= 0) return json(res, 400, { error: 'enter a positive amount' });
+    const credits = Math.floor(amountCents / AI_CREDIT_PRICE_CENTS);
+    if (credits < 1) return json(res, 400, { error: 'too little for even 1 credit at the current price' });
+    const total = (u.aiScanCredits || 0) + credits;
+    await patchUser(u.id, { aiScanCredits: total });
+    // Same shape a real Stripe purchase gets in db.aiCreditPurchases, just with no
+    // stripeSessionId — one place to see "where did this balance come from" either way.
+    db.aiCreditPurchases.push({
+      id: crypto.randomBytes(8).toString('base64url'), userId: u.id, packId: 'manual', credits,
+      amountCents, currency: 'eur', stripeSessionId: null, manualBy: admin.id, created: new Date().toISOString(),
+    });
+    saveDb();
+    audit(req, 'admin.user.ai-credits', { user: admin, target: u, msg: `+${credits} credits for ${(amountCents / 100).toFixed(2)}€` });
+    wsSend(u.id, { type: 'rank:changed' });
+    json(res, 200, { credits, totalCredits: total });
   },
 
 
@@ -1968,6 +2080,168 @@ const routes = {
     audit(req, 'ads.redeem', { user, msg: item });
     wsSend(user.id, { type: 'rank:changed' });
     json(res, 200, { user: nebulaMe(fresh) });
+  },
+
+  /* ---------- AI food scan (pay-per-use, OpenAI vision) + its Stripe credit packs ----------
+     Two independent halves, both optional/disabled by default: scanning needs OPENAI_API_KEY,
+     buying more credits needs STRIPE_SECRET_KEY+STRIPE_WEBHOOK_SECRET. Credits are a real-money-
+     only balance (aiScanCredits on the user row, same freeform patchUser() field as coins) —
+     deliberately never Forvia Coin, see the AI_CREDIT_PACKS comment above for why. */
+
+  // What NutritionLog.jsx/NutritionMealCreate.jsx read before showing the card at all.
+  'GET /api/ai-scan/status': async (req, res) => {
+    const user = readSession(req);
+    if (!user) return json(res, 401, { error: 'not signed in' });
+    const today = isoOf(new Date());
+    const usedToday = db.aiScans.filter(s => s.userId === user.id && s.date === today).length;
+    json(res, 200, {
+      enabled: !!OPENAI_API_KEY, credits: user.aiScanCredits || 0,
+      usedToday, dailyCap: AI_SCANS_PER_DAY, pro: isProActive(user),
+    });
+  },
+
+  // A photo of a plate (not a label — "Scan macros" already covers labels, free, on-device).
+  // Debits a credit BEFORE calling OpenAI, refunds it if OpenAI itself fails — the attempt is
+  // what costs real money either way, but a user should never lose a credit to OUR failure.
+  'POST /api/ai-scan/analyze': async (req, res) => {
+    const user = readSession(req);
+    if (!user) return json(res, 401, { error: 'not signed in' });
+    if (!OPENAI_API_KEY) return json(res, 503, { error: 'AI scan is not configured on this instance' });
+    const today = isoOf(new Date());
+    // Counts both successes and failures below — each is a real, billed OpenAI call regardless
+    // of outcome, so both count toward this abuse/cost ceiling the same way.
+    const usedToday = db.aiScans.filter(s => s.userId === user.id && s.date === today).length;
+    if (usedToday >= AI_SCANS_PER_DAY) return json(res, 429, { error: 'daily AI scan limit reached' });
+    if ((user.aiScanCredits || 0) < 1) return json(res, 402, { error: 'not enough AI scan credits' });
+    const body = await readBody(req);
+    const m = /^data:(image\/(?:jpeg|png|webp));base64,([a-zA-Z0-9+/=]+)$/.exec(String(body.dataUrl || ''));
+    if (!m) return json(res, 400, { error: 'unsupported image' });
+    const buf = Buffer.from(m[2], 'base64');
+    if (buf.length > MAX_IMAGE_BYTES) return json(res, 413, { error: 'image too large' });
+
+    await patchUser(user.id, { aiScanCredits: (user.aiScanCredits || 0) - 1 });
+    try {
+      const r = await fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${OPENAI_API_KEY}` },
+        body: JSON.stringify({
+          model: OPENAI_MODEL,
+          messages: [{
+            role: 'user',
+            content: [
+              { type: 'text', text: 'Estimate the total calories and macros (grams) for the single serving of food shown in this photo. Respond with your best estimate even if uncertain.' },
+              { type: 'image_url', image_url: { url: `data:${m[1]};base64,${m[2]}` } },
+            ],
+          }],
+          response_format: { type: 'json_schema', json_schema: {
+            name: 'macro_estimate', strict: true,
+            schema: {
+              type: 'object',
+              properties: { kcal: { type: 'number' }, carbs: { type: 'number' }, fat: { type: 'number' }, protein: { type: 'number' } },
+              required: ['kcal', 'carbs', 'fat', 'protein'], additionalProperties: false,
+            },
+          } },
+        }),
+        signal: AbortSignal.timeout(30000),
+      });
+      if (!r.ok) throw new Error('openai http ' + r.status);
+      const data = await r.json();
+      const raw = JSON.parse(data.choices[0].message.content);
+      // Same sanity-clamp philosophy as lib/ocr-nutrition.js's clamp() — an implausible number
+      // is noise, not ground truth — but scaled for a whole photographed serving, not a
+      // per-100g label rate.
+      const clampMacro = v => { const n = Number(v); return Number.isFinite(n) && n >= 0 ? Math.min(Math.round(n), 300) : 0; };
+      const carbs = clampMacro(raw.carbs), fat = clampMacro(raw.fat), protein = clampMacro(raw.protein);
+      const implied = carbs * 4 + protein * 4 + fat * 9;
+      let kcal = Number.isFinite(Number(raw.kcal)) && Number(raw.kcal) >= 0 ? Math.min(Math.round(Number(raw.kcal)), 3000) : 0;
+      if (implied > 0 && kcal < implied * 0.6) kcal = Math.round(implied);
+
+      // What this one call actually billed, not the flat AI_SCAN_COST_CENTS guess above — lets
+      // the real margin be checked later instead of trusting the estimate forever.
+      const usage = data.usage || {};
+      const pricing = OPENAI_PRICING[OPENAI_MODEL];
+      const costCentsEst = pricing
+        ? +(((usage.prompt_tokens || 0) * pricing.inPerM + (usage.completion_tokens || 0) * pricing.outPerM) / 1e6).toFixed(4)
+        : null;
+
+      db.aiScans.push({ id: crypto.randomBytes(8).toString('base64url'), userId: user.id, date: today, ok: true, costCentsEst, created: new Date().toISOString() });
+      saveDb();
+      audit(req, 'ai-scan.analyze', { user, msg: 'ok' });
+      const fresh = db.users.find(u => u.id === user.id);
+      json(res, 200, { kcal, carbs, fat, protein, creditsRemaining: fresh?.aiScanCredits || 0 });
+    } catch (e) {
+      // Refund off the LIVE value, not the snapshot taken before the debit above — another
+      // request (or a credit-pack purchase landing via the webhook) could have changed it since.
+      const live = db.users.find(u => u.id === user.id);
+      await patchUser(user.id, { aiScanCredits: (live?.aiScanCredits || 0) + 1 });
+      db.aiScans.push({ id: crypto.randomBytes(8).toString('base64url'), userId: user.id, date: today, ok: false, created: new Date().toISOString() });
+      saveDb();
+      audit(req, 'ai-scan.analyze', { user, ok: false, msg: e.message });
+      json(res, 502, { error: 'could not analyze that photo — try again' });
+    }
+  },
+
+  // Real EUR amounts live ONLY here, never duplicated client-side (unlike Forvia Coin's costs,
+  // which rarely change and aren't actual money) — the frontend always reads the current price.
+  'GET /api/ai-credits/packs': async (req, res) => {
+    const user = readSession(req);
+    if (!user) return json(res, 401, { error: 'not signed in' });
+    json(res, 200, { packs: AI_CREDIT_PACKS, enabled: !!stripe });
+  },
+
+  'POST /api/ai-credits/checkout': async (req, res) => {
+    const user = readSession(req);
+    if (!user) return json(res, 401, { error: 'not signed in' });
+    if (!stripe) return json(res, 503, { error: 'credit purchases are not configured on this instance' });
+    const body = await readBody(req);
+    const pack = AI_CREDIT_PACKS.find(p => p.id === String(body.packId || ''));
+    if (!pack) return json(res, 400, { error: 'unknown pack' });
+    const session = await stripe.checkout.sessions.create({
+      mode: 'payment',
+      line_items: [{
+        quantity: 1,
+        price_data: {
+          currency: pack.currency, unit_amount: pack.amountCents,
+          product_data: { name: `Forvia — ${pack.credits} AI scan credits` },
+        },
+      }],
+      metadata: { uid: user.id, packId: pack.id, credits: String(pack.credits) },
+      success_url: `${ORIGIN}/settings/ai-credits?checkout=success`,
+      cancel_url: `${ORIGIN}/settings/ai-credits?checkout=cancel`,
+    });
+    json(res, 200, { url: session.url });
+  },
+
+  // Stripe calls this directly from the public internet — never through forvia-core's
+  // /internal/* (no session, no cookie to resolve). Must read the RAW body (see readRawBody's
+  // own comment) — readBody() above would JSON.parse it first and break signature verification.
+  'POST /api/ai-credits/webhook': async (req, res) => {
+    if (!stripe) return json(res, 503, { error: 'not configured' });
+    let event;
+    try {
+      const raw = await readRawBody(req);
+      event = stripe.webhooks.constructEvent(raw, req.headers['stripe-signature'], STRIPE_WEBHOOK_SECRET);
+    } catch (e) {
+      return json(res, 400, { error: 'invalid signature' });
+    }
+    if (event.type === 'checkout.session.completed') {
+      const session = event.data.object;
+      const uid = session.metadata?.uid;
+      const credits = +(session.metadata?.credits || 0);
+      if (uid && credits > 0 && !db.aiCreditPurchases.some(p => p.stripeSessionId === session.id)) {
+        const live = db.users.find(u => u.id === uid);
+        await patchUser(uid, { aiScanCredits: (live?.aiScanCredits || 0) + credits });
+        db.aiCreditPurchases.push({
+          id: crypto.randomBytes(8).toString('base64url'), userId: uid, packId: session.metadata?.packId || '',
+          credits, amountCents: session.amount_total || 0, currency: session.currency || 'eur',
+          stripeSessionId: session.id, created: new Date().toISOString(),
+        });
+        saveDb();
+        audit(req, 'ai-credits.purchase', { uid, name: '', msg: session.metadata?.packId || '' });
+        wsSend(uid, { type: 'rank:changed' });
+      }
+    }
+    json(res, 200, { received: true });
   },
 
   /* ---------- social ---------- */

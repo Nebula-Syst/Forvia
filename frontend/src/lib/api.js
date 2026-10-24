@@ -102,7 +102,11 @@ export const adminSetEmployeeTypes = (id, employeeTypes) => api('/api/admin/user
 export const adminUserLevel = (id, delta) => api('/api/admin/user/level', { method: 'POST', body: JSON.stringify({ id, delta }) }).then(r => r.rank)
 export const adminUserPrestige = (id, delta) => api('/api/admin/user/prestige', { method: 'POST', body: JSON.stringify({ id, delta }) }).then(r => r.rank)
 export const adminUserStreak = (id, delta) => api('/api/admin/user/streak', { method: 'POST', body: JSON.stringify({ id, delta }) }).then(r => r.streakBonus)
-export const adminUserPro = id => api('/api/admin/user/pro', { method: 'POST', body: JSON.stringify({ id }) }).then(r => r.pro)
+export const adminUserProRevoke = id => api('/api/admin/user/pro', { method: 'POST', body: JSON.stringify({ id, revoke: true }) })
+export const adminUserProPermanent = id => api('/api/admin/user/pro', { method: 'POST', body: JSON.stringify({ id, permanent: true }) })
+export const adminUserProMonths = (id, months) => api('/api/admin/user/pro', { method: 'POST', body: JSON.stringify({ id, months }) })
+// amountEur is what the admin typed (cash handed over); priced at the same AI_CREDIT_PRICE_CENTS the Stripe packs use.
+export const adminUserAiCredits = (id, amountEur) => api('/api/admin/user/ai-credits', { method: 'POST', body: JSON.stringify({ id, amountCents: Math.round(amountEur * 100) }) })
 export const adminUserEdit = (id, patch) => api('/api/admin/user/edit', { method: 'POST', body: JSON.stringify({ id, ...patch }) }).then(r => r.user)
 export const adminUserProfile = (id, patch) => api('/api/admin/user/profile', { method: 'POST', body: JSON.stringify({ id, ...patch }) })
 export const adminUserDelete = id => api('/api/admin/user/delete', { method: 'POST', body: JSON.stringify({ id }) })
@@ -138,6 +142,12 @@ export const foodByBarcode = code => api('/api/nutrition/barcode?code=' + encode
 // only ever happens when the submitter picked "Public" — see CustomFoodForm.
 export const publicFoodSearch = q => api('/api/nutrition/foods/search?q=' + encodeURIComponent(q)).then(r => r.items)
 export const createPublicFood = food => api('/api/nutrition/foods', { method: 'POST', body: JSON.stringify(food) })
+
+/* ---------- AI food scan (pay-per-use, OpenAI) + its Stripe credit packs ---------- */
+export const aiScanStatus = () => api('/api/ai-scan/status')
+export const aiScanAnalyze = dataUrl => api('/api/ai-scan/analyze', { method: 'POST', body: JSON.stringify({ dataUrl }) })
+export const aiCreditPacks = () => api('/api/ai-credits/packs')
+export const aiCreditsCheckout = packId => api('/api/ai-credits/checkout', { method: 'POST', body: JSON.stringify({ packId }) }).then(r => r.url)
 
 /* ---------- bug reports ---------- */
 export const reportBug = (message, page) => api('/api/bugs', { method: 'POST', body: JSON.stringify({ message, page }) })

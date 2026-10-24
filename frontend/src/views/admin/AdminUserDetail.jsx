@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useUI } from '../../store/useUI.js'
-import { api, adminSetEmployeeTypes, adminUserLevel, adminUserPrestige, adminUserStreak, adminUserPro, adminUserEdit, adminUserProfile, adminUserDelete, adminUserRestore, adminUserResetPassword } from '../../lib/api.js'
+import { api, adminSetEmployeeTypes, adminUserLevel, adminUserPrestige, adminUserStreak, adminUserProRevoke, adminUserProPermanent, adminUserProMonths, adminUserAiCredits, adminUserEdit, adminUserProfile, adminUserDelete, adminUserRestore, adminUserResetPassword } from '../../lib/api.js'
 import { fmtDate, fmtVol, fmtDur } from '../../lib/format.js'
 import { workoutVolume, setsDone, streakDays } from '../../lib/history.js'
 import { confirmSheet } from '../../sheets.jsx'
@@ -97,8 +97,29 @@ export default function AdminUserDetail() {
   // Unlike level/prestige there's no real "streak" stored anywhere to nudge — it's always
   // recomputed client-side from workout history. This adjusts streakBonus on top of that.
   const nudgeStreak = delta => { setBusy(true); adminUserStreak(u.id, delta).then(load).catch(e => toast(e.message)).finally(() => setBusy(false)) }
-  // No billing yet — this is the only way an account becomes Pro for now.
-  const togglePro = () => { setBusy(true); adminUserPro(u.id).then(load).catch(e => toast(e.message)).finally(() => setBusy(false)) }
+  // No real billing yet — this is the only way an account becomes Pro for now, including a
+  // user paying manually (cash/transfer): the admin picks however many months that covers,
+  // or makes it permanent outright, same options the UI below exposes.
+  const [proMonths, setProMonths] = useState('')
+  const revokePro = () => { setBusy(true); adminUserProRevoke(u.id).then(load).catch(e => toast(e.message)).finally(() => setBusy(false)) }
+  const makeProPermanent = () => { setBusy(true); adminUserProPermanent(u.id).then(load).catch(e => toast(e.message)).finally(() => setBusy(false)) }
+  const grantProMonths = () => {
+    const months = Number(proMonths)
+    if (!months || months <= 0) { toast(t('Enter a positive number of months')); return }
+    setBusy(true)
+    adminUserProMonths(u.id, months).then(() => { setProMonths(''); load() }).catch(e => toast(e.message)).finally(() => setBusy(false))
+  }
+  // Cash handed over in person, converted to credits server-side at the same price the Stripe
+  // packs use — the only way to grant AI scan credits on an instance that never sets up Stripe.
+  const [aiEuros, setAiEuros] = useState('')
+  const addAiCredits = () => {
+    const eur = Number(aiEuros)
+    if (!eur || eur <= 0) { toast(t('Enter a positive amount')); return }
+    setBusy(true)
+    adminUserAiCredits(u.id, eur)
+      .then(r => { toast(t('+{0} credits added', r.credits)); setAiEuros(''); load() })
+      .catch(e => toast(e.message)).finally(() => setBusy(false))
+  }
   const editField = patch => adminUserEdit(u.id, patch).then(load)
   const editProfile = patch => adminUserProfile(u.id, patch).then(load).catch(e => toast(e.message))
 
@@ -226,9 +247,33 @@ export default function AdminUserDetail() {
     {/* admin & access */}
     <div className="card" style={{ marginTop: 14 }}>
       <h3 style={{ margin: '0 0 12px', fontSize: '.95rem' }}>{t('Admin & access')}</h3>
-      <div className="row between" style={{ marginBottom: 12, padding: '8px 10px', background: 'var(--surface-2)', borderRadius: 12 }}>
-        <span className="small" style={{ fontWeight: 600 }}>{t('Pro subscription')}</span>
-        <button className={'chip' + (u.pro ? ' on' : '')} disabled={busy} onClick={togglePro}>{u.pro ? t('Pro') : t('Free')}</button>
+      <div style={{ marginBottom: 12, padding: '10px', background: 'var(--surface-2)', borderRadius: 12 }}>
+        <div className="row between" style={{ marginBottom: 10 }}>
+          <span className="small" style={{ fontWeight: 600 }}>{t('Pro subscription')}</span>
+          <span className="small dim">
+            {!u.pro ? t('Free')
+              : !u.proUntil ? t('Pro (permanent)')
+              : t('Pro until {0}', fmtDate(new Date(u.proUntil).toISOString().slice(0, 10)))}
+          </span>
+        </div>
+        <div className="row" style={{ gap: 6, flexWrap: 'wrap' }}>
+          <input className="input" type="number" min="1" step="1" placeholder={t('Months')} value={proMonths}
+            onChange={e => setProMonths(e.target.value)} style={{ width: 90 }} />
+          <button className="btn sm" disabled={busy || !proMonths} onClick={grantProMonths}>{t('Activate')}</button>
+          <button className="btn sm" disabled={busy} onClick={makeProPermanent}>{t('Make permanent')}</button>
+          {u.pro && <button className="btn danger sm" disabled={busy} onClick={revokePro}>{t('Revoke')}</button>}
+        </div>
+      </div>
+      <div className="row between" style={{ marginBottom: 12, padding: '8px 10px', background: 'var(--surface-2)', borderRadius: 12, gap: 10, flexWrap: 'wrap' }}>
+        <div>
+          <span className="small" style={{ fontWeight: 600 }}>{t('AI scan credits')}</span>
+          <div className="dim small">{t('{0} left', u.aiScanCredits || 0)}</div>
+        </div>
+        <div className="row" style={{ gap: 6 }}>
+          <input className="input" type="number" min="0" step="0.01" placeholder="€" value={aiEuros}
+            onChange={e => setAiEuros(e.target.value)} style={{ width: 80 }} />
+          <button className="btn sm" disabled={busy || !aiEuros} onClick={addAiCredits}>{t('Add')}</button>
+        </div>
       </div>
       <div className="tiles" style={{ textAlign: 'left', marginBottom: 12 }}>
         <div className="tile"><div className="l">{t('Custom foods')}</div><div className="v" style={{ fontSize: '1.1rem' }}>{d.customFoodsCount}{!u.pro ? '/5' : ''}</div></div>

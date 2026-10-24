@@ -34,17 +34,26 @@ export default function NutritionFoodCreate() {
   // food into that draft (and still remembers it in "Mis alimentos", same as logging one
   // normally does) instead of logging it to a specific day/meal.
   const forMeal = !!location.state?.forMeal
+  // "Scan with AI" hands over a TOTAL for the one photographed serving (mode:'unit', qty:1 in
+  // location.state), not a per-100g rate like a label (OCR) or a database search result — the
+  // default weight/100g below is wrong for this case, so it's overridable from here.
+  const fromAiScan = !!location.state?.aiScan
+  const pro = useStore(s => s.user?.pro)
+  // Free account, AI-scanned: saves public with no choice (server already enforces nothing here
+  // either way — this is the one place the rule actually lives, same as every other visibility
+  // choice today). Pro keeps the normal free choice regardless of source.
+  const aiForcedPublic = fromAiScan && !pro
   const canGoPublic = !useStore(s => s.isGuest())
 
   const [name, setName] = useState('')
-  const [mode, setMode] = useState('weight')
+  const [mode, setMode] = useState(location.state?.mode || 'weight')
   const [kcalRate, setKcalRate] = useState(initial?.kcal || 0)
   const [carbsRate, setCarbsRate] = useState(initial?.carbs || 0)
   const [fatRate, setFatRate] = useState(initial?.fat || 0)
   const [proteinRate, setProteinRate] = useState(initial?.protein || 0)
-  const [qty, setQty] = useState(100)
+  const [qty, setQty] = useState(location.state?.qty || 100)
   const [meal, setMeal] = useState(mealParam)
-  const [visibility, setVisibility] = useState('private')
+  const [visibility, setVisibility] = useState(aiForcedPublic ? 'public' : 'private')
 
   const switchMode = m => { setMode(m); setQty(m === 'weight' ? 100 : 1) }
   const factor = mode === 'weight' ? (qty || 0) / 100 : (qty || 0)
@@ -83,9 +92,11 @@ export default function NutritionFoodCreate() {
       <div style={{ flex: 1, marginLeft: 10 }}><h1 className="hdr-sub">{screenTitle || t('Create custom food')}</h1></div>
     </div>
 
-    {/* A scanned label's numbers came from OCR reading a photo, not a database — worth a
-        beat of "double-check this before you trust it", not just quietly pre-filled. */}
-    {initial && <p className="dim small" style={{ margin: '0 0 14px' }}>{t('Check the values read from the label before saving.')}</p>}
+    {/* A scanned (label OCR or AI photo) reading, not a database — worth a beat of
+        "double-check this before you trust it", not just quietly pre-filled. */}
+    {initial && <p className="dim small" style={{ margin: '0 0 14px' }}>
+      {fromAiScan ? t('AI estimates can be off — double-check before saving.') : t('Check the values read from the label before saving.')}
+    </p>}
 
     <MacroRing kcal={kcal} carbs={carbs} fat={fat} protein={protein} />
 
@@ -110,13 +121,17 @@ export default function NutritionFoodCreate() {
       <Segmented options={mealOptions()} value={meal} onChange={setMeal} />
     </>}
 
-    {canGoPublic && <>
+    {canGoPublic && (aiForcedPublic ? (
+      <p className="dim small" style={{ margin: '18px 2px 0' }}>
+        {t('Scanned with AI — saved publicly on a Free account. Go Pro to keep AI-scanned foods private.')}
+      </p>
+    ) : <>
       <div className="dim small" style={{ margin: '18px 0 6px' }}>{t('Visibility')}</div>
       <Segmented options={FOOD_VISIBILITY()} value={visibility} onChange={setVisibility} />
       <div className="dim small" style={{ margin: '6px 2px 0' }}>
         {visibility === 'public' ? t('Anyone can find and use this food when searching — never with your name on it.') : t('Only you can see and use this food.')}
       </div>
-    </>}
+    </>)}
 
     <div className="food-detail-actions">
       <Button variant="primary" size="lg" onClick={save}>{forMeal ? t('Add to meal') : t('Log food')}</Button>

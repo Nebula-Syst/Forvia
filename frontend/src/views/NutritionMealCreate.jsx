@@ -1,14 +1,15 @@
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useStore } from '../store/useStore.js'
 import { useUI } from '../store/useUI.js'
 import { t } from '../lib/i18n.js'
 import { todayISO, uid } from '../lib/format.js'
 import { MEALS } from '../lib/nutrition.js'
+import { aiScanStatus } from '../lib/api.js'
 import { MacroRing } from '../components/MacroBars.jsx'
 import { TextField, Button, Section, MethodCard } from '../components/ui.jsx'
 import Icon from '../components/Icon.jsx'
-import { barcodeScanSheet } from '../sheets.jsx'
+import { barcodeScanSheet, aiScanSheet } from '../sheets.jsx'
 
 // Was CreateMealSheet, a bottom sheet with its own cramped, search-only "add ingredient" step
 // (IngredientSearch/IngredientQtyForm, now gone) — building a reusable meal (recipe) out of
@@ -26,6 +27,8 @@ export default function NutritionMealCreate() {
   const removeFromMealDraft = useUI(s => s.removeFromMealDraft)
   const clearMealDraft = useUI(s => s.clearMealDraft)
   const canScan = typeof window !== 'undefined' && 'BarcodeDetector' in window
+  const [aiEnabled, setAiEnabled] = useState(false)
+  useEffect(() => { aiScanStatus().then(s => setAiEnabled(!!s.enabled)).catch(() => {}) }, [])
 
   // Landing here fresh (not back from a sub-flow that already filled one in) needs a draft to
   // bind the name field and item list to.
@@ -43,6 +46,7 @@ export default function NutritionMealCreate() {
   const addFood = () => nav('/nutrition/food-search?d=' + placeholderDate + '&m=' + placeholderMeal, { state: { forMeal: true } })
   const createFood = () => nav('/nutrition/food-create?d=' + placeholderDate + '&m=' + placeholderMeal, { state: { forMeal: true } })
   const scanBarcode = () => barcodeScanSheet(placeholderDate, placeholderMeal, { forMeal: true })
+  const scanAi = () => aiScanSheet(placeholderDate, placeholderMeal, { forMeal: true })
 
   // nav(-1) would be one step back in *browser* history, which the add-ingredient sub-flows
   // (some pushed, some replaced underneath) leave in an unpredictable shape — returnTo (set
@@ -89,6 +93,7 @@ export default function NutritionMealCreate() {
         <MethodCard icon="magnifier" label={t('Search')} onClick={addFood} />
         {canScan && <MethodCard icon="barcode" label={t('Scan barcode')} onClick={scanBarcode} />}
         <MethodCard icon="pencil" label={t('Create manually')} onClick={createFood} />
+        {aiEnabled && <MethodCard icon="sparkles" label={t('Scan with AI')} onClick={scanAi} />}
       </div>
     </Section>
 

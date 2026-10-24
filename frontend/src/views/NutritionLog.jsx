@@ -1,17 +1,18 @@
+import { useEffect, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useUI } from '../store/useUI.js'
 import { todayISO } from '../lib/format.js'
 import { t } from '../lib/i18n.js'
 import { MEALS } from '../lib/nutrition.js'
+import { aiScanStatus } from '../lib/api.js'
 import Icon from '../components/Icon.jsx'
 import { Section, MethodCard } from '../components/ui.jsx'
-import { barcodeScanSheet, scanMacrosSheet, startMealCreate, logFoodItem } from '../sheets.jsx'
+import { barcodeScanSheet, scanMacrosSheet, aiScanSheet, startMealCreate, logFoodItem } from '../sheets.jsx'
 
 // Landing page for "Log it"/"Log more" — was a direct jump into the search sheet, which left
 // no room for the other ways to add a food (barcode, OCR) without burying them as rows inside
 // that same sheet. Now a real page: one section per family of methods, each method its own
-// small card so a future one (AI scan is wired up disabled, ready for when it lands) just
-// slots in without restructuring anything.
+// small card.
 
 export default function NutritionLog() {
   const nav = useNavigate()
@@ -22,6 +23,10 @@ export default function NutritionLog() {
   // Same feature check FoodSearchSheet used to gate its own barcode row on — no point
   // offering a card that can only ever fail on a browser with no BarcodeDetector.
   const canScan = typeof window !== 'undefined' && 'BarcodeDetector' in window
+  // Off entirely on an instance with no OPENAI_API_KEY set — stays exactly like the old
+  // hardcoded-disabled placeholder until then.
+  const [aiStatus, setAiStatus] = useState(null)
+  useEffect(() => { aiScanStatus().then(setAiStatus).catch(() => setAiStatus(null)) }, [])
 
   // The clipboard (NutritionDiary.jsx's per-meal Copy, NutritionFoodDetail.jsx's per-item
   // Copy) isn't cleared on paste — same "copy once, paste into several days/meals" semantics
@@ -51,7 +56,11 @@ export default function NutritionLog() {
       <div className="method-grid">
         <MethodCard icon="magnifier" label={t('Search')} onClick={() => nav('/nutrition/food-search?d=' + dateIso + '&m=' + mealKey)} />
         {canScan && <MethodCard icon="barcode" label={t('Scan barcode')} onClick={() => barcodeScanSheet(dateIso, mealKey)} />}
-        <MethodCard icon="sparkles" label={t('Scan with AI')} sub={t('Coming soon')} disabled />
+        {aiStatus?.enabled
+          ? <MethodCard icon="sparkles" label={t('Scan with AI')}
+              sub={aiStatus.credits > 0 ? t('{0} credits left', aiStatus.credits) : t('Buy credits')}
+              onClick={() => aiStatus.credits > 0 ? aiScanSheet(dateIso, mealKey) : nav('/settings/ai-credits')} />
+          : <MethodCard icon="sparkles" label={t('Scan with AI')} sub={t('Coming soon')} disabled />}
       </div>
     </Section>
 

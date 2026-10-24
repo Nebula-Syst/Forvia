@@ -33,7 +33,7 @@ import { parseNutritionLabelText } from './lib/ocr-nutrition.js'
 import { unzipSync, strFromU8 } from 'fflate'
 import LocationPicker from './components/LocationPicker.jsx'
 import LiquidFillGauge from 'react-liquid-gauge'
-import { passwordLogin, passwordRegister, setPassword, deleteAccount, socialComments, socialComment, socialCommentRemove, socialUpload, pinWorkout, unpinWorkout, pinPR, reportBug, foodByBarcode, createPublicFood, coachAssignRoutine, coachRequestBox, coachAssignPlan } from './lib/api.js'
+import { passwordLogin, passwordRegister, setPassword, deleteAccount, socialComments, socialComment, socialCommentRemove, socialUpload, pinWorkout, unpinWorkout, pinPR, reportBug, foodByBarcode, createPublicFood, coachAssignRoutine, coachRequestBox, coachAssignPlan, aiScanAnalyze } from './lib/api.js'
 
 const S = () => useStore.getState().S
 const update = (...a) => useStore.getState().update(...a)
@@ -2010,6 +2010,82 @@ function ScanMacrosSheet({ dateIso, mealKey, close }) {
   </>
 }
 export const scanMacrosSheet = (dateIso, mealKey) => ui().openSheet(close => <ScanMacrosSheet dateIso={dateIso} mealKey={mealKey} close={close} />)
+
+// A photo of an actual plate of food, estimated by OpenAI's vision API — not a label (that's
+// "Scan macros" above, free, on-device OCR). Real money per scan, so this has real failure
+// modes "Scan macros" never needs: no credits left, the daily cap, a network/OpenAI error — each
+// its own short phase rather than one generic "error" bucket. forMeal threads through exactly
+// like BarcodeScanSheet's own, and mode:'unit'/qty:1 (not the default weight/100g) tell
+// NutritionFoodCreate.jsx the numbers are a total for THIS one photographed serving.
+function AiScanSheet({ dateIso, mealKey, close, forMeal }) {
+  const [phase, setPhase] = useState('capture') // capture -> uploading -> review | error | no-credits | daily-cap
+  const [result, setResult] = useState(null)
+  const inputRef = useRef(null)
+
+  const onFile = async e => {
+    const file = e.target.files?.[0]
+    e.target.value = ''
+    if (!file) return
+    setPhase('uploading')
+    try {
+      const dataUrl = await new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result); r.onerror = rej; r.readAsDataURL(file) })
+      const r = await aiScanAnalyze(dataUrl)
+      setResult(r)
+      setPhase('review')
+    } catch (err) {
+      setPhase(err.status === 402 ? 'no-credits' : err.status === 429 ? 'daily-cap' : 'error')
+    }
+  }
+
+  useEffect(() => {
+    if (phase === 'review' && result) {
+      close()
+      nav('/nutrition/food-create?d=' + dateIso + '&m=' + mealKey,
+        { state: { initial: result, title: t('Scan with AI'), forMeal, aiScan: true, mode: 'unit', qty: 1 } })
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phase, result])
+  if (phase === 'review') return null
+
+  return <>
+    <div className="row" style={{ gap: 8, marginBottom: phase === 'capture' ? 4 : 14 }}>
+      <h3 style={{ margin: 0 }}>{t('Scan with AI')}</h3>
+      <span className="chip-pill" style={{ '--tint': 'var(--acc)', marginTop: 0 }}>{t('1 credit')}</span>
+    </div>
+    {phase === 'capture' && <>
+      <p className="dim small">{t('Take a photo of your plate — AI estimates the calories and macros for you. Costs 1 AI scan credit.')}</p>
+      <div style={{ height: 10 }} />
+      <Button variant="primary" onClick={() => inputRef.current?.click()}>{t('Take photo')}</Button>
+      <div style={{ height: 8 }} />
+      <Button variant="ghost" className="dim" onClick={close}>{t('Cancel')}</Button>
+    </>}
+    {phase === 'uploading' && <div className="empty">{t('Analyzing…')}</div>}
+    {phase === 'no-credits' && <>
+      <div className="empty">{t("You're out of AI scan credits for now.")}</div>
+      <div style={{ height: 10 }} />
+      <Button variant="primary" onClick={() => { close(); nav('/settings/ai-credits') }}>{t('Buy credits')}</Button>
+      <div style={{ height: 8 }} />
+      <Button variant="ghost" className="dim" onClick={close}>{t('Cancel')}</Button>
+    </>}
+    {phase === 'daily-cap' && <>
+      {/* Buying more credits wouldn't help here — the limit is per-day regardless of balance,
+          a cost/abuse safety net, not a "you ran out" state. */}
+      <div className="empty">{t("You've reached today's AI scan limit — try again tomorrow.")}</div>
+      <div style={{ height: 10 }} />
+      <Button variant="ghost" className="dim" onClick={close}>{t('Cancel')}</Button>
+    </>}
+    {phase === 'error' && <>
+      <div className="empty">{t('Could not analyze that photo — try again.')}</div>
+      <div style={{ height: 10 }} />
+      <Button variant="primary" onClick={() => setPhase('capture')}>{t('Try again')}</Button>
+      <div style={{ height: 8 }} />
+      <Button variant="ghost" className="dim" onClick={close}>{t('Cancel')}</Button>
+    </>}
+    <input ref={inputRef} type="file" accept="image/*" capture="environment" style={{ display: 'none' }} onChange={onFile} />
+  </>
+}
+export const aiScanSheet = (dateIso, mealKey, { forMeal = false } = {}) =>
+  ui().openSheet(close => <AiScanSheet dateIso={dateIso} mealKey={mealKey} close={close} forMeal={forMeal} />)
 
 // Creating or editing a "Mis alimentos" definition itself (Settings → Nutrition → My foods)
 // — just the rate, no quantity or meal, since those only make sense at logging time.

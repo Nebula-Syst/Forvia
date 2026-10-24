@@ -24,6 +24,10 @@ const COLLECTIONS = [
   'classPenalties', 'liveClasses', 'publicFoods', 'boxPlans', 'coachClients',
   // One row per granted ad-watch reward (ads plan, phase 1) — see POST /internal/ad-grant.
   'adRewards',
+  // AI food scan (pay-per-use, OpenAI vision) — one row per scan attempt, success or failure
+  // (AI_SCANS_PER_DAY counts both, since both cost real OpenAI spend), and one row per credited
+  // Stripe Checkout purchase (dedupes a retried webhook delivery by session id).
+  'aiScans', 'aiCreditPurchases',
 ];
 const tableFor = name => 'kv_' + name.replace(/[A-Z]/g, c => '_' + c.toLowerCase());
 

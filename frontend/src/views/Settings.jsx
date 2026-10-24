@@ -1,9 +1,11 @@
+import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useStore } from '../store/useStore.js'
 import { t } from '../lib/i18n.js'
 import { DEMO } from '../lib/demo.js'
 import { MOBILE } from '../lib/mobile.js'
 import { reportBugSheet } from '../sheets.jsx'
+import { aiScanStatus } from '../lib/api.js'
 import Icon from '../components/Icon.jsx'
 
 // A map of categories, not a single long scroll — each tile opens its own focused
@@ -32,6 +34,11 @@ export default function Settings() {
   // web only) — SettingsAds.jsx itself hides whichever half doesn't apply.
   const config = useStore(s => s.config)
   const showAds = user && ((MOBILE && !!config?.admob_rewarded_unit_id) || !!config?.adsense_client_id)
+  // Same "hide the tile rather than show a dead one" rule as Ads — this instance's own
+  // OPENAI_API_KEY/Stripe status isn't part of the general config fetched at boot, so it's a
+  // small fetch of its own here, exactly like SettingsAds.jsx's showRewards does for its half.
+  const [aiEnabled, setAiEnabled] = useState(false)
+  useEffect(() => { if (user) aiScanStatus().then(s => setAiEnabled(!!s.enabled)).catch(() => {}) }, [user])
 
   return <div className="narrow settings-home">
     {/* Three named clusters instead of one flat grid — same h4.sec label already used for
@@ -51,6 +58,10 @@ export default function Settings() {
         {showAds && (
           <Tile icon="sparkles" tint="var(--acc)" title={t('Ads')} subtitle={t('Optional, your choice')}
             onClick={() => nav('/settings/ads')} />
+        )}
+        {user && aiEnabled && (
+          <Tile icon="coin" tint="var(--acc)" title={t('AI scan credits')} subtitle={t('Buy more, check balance')}
+            onClick={() => nav('/settings/ai-credits')} />
         )}
         {showProfile && (
           <Tile icon="sparkles" tint="var(--purple)" title={t('Profile')} subtitle={t('Bio, badges')}
