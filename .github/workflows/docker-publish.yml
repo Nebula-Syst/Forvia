@@ -86,7 +86,7 @@ jobs:
   # Runs only for a real release (never a plain push to main), and only after both images
   # (api, web) are already pushed to GHCR — so there's never a window where this pulls a tag
   # that isn't there yet. `runs-on: forvia-deploy` targets the self-hosted runner in
-  # ~/Proyectos/forvia-deploy on the production host (see its docker-compose.yml for what it
+  # /home/server/services/forvia-prod/deploy on the production host (see its docker-compose.yml for what it
   # can and can't do) — nothing here reaches the server over the network, the job just *is*
   # a process running on it.
   deploy:
@@ -107,7 +107,7 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Pull ${{ github.ref_name }} and redeploy
-        working-directory: /home/josemgl/Proyectos/forvia-prod
+        working-directory: /home/server/services/forvia-prod
         run: |
           sed -i "s/^FORVIA_VERSION=.*/FORVIA_VERSION=${{ github.ref_name }}/" .env
           # core-api (github.com/Nebula-Syst/forvia-core) is a separate product with its own
@@ -115,13 +115,15 @@ jobs:
           # untouched by this sed. Always pulled here regardless, so a plain Forvia release
           # also picks up whatever CORE_VERSION already points at.
           docker compose pull api web core-api
-          docker compose up -d
+          # Only this repo's services: the same stack also holds the landing, which
+          # forvia-landing's own workflow deploys — a bare `up -d` would touch it too.
+          docker compose up -d api web core-api
 
       # The runner container has its own network namespace, so "localhost:$WEB_PORT" from
       # inside it is not the host — check container health straight off the socket instead
       # of trying to reach the published port over the network.
       - name: Wait for api + web + core-api to report healthy
-        working-directory: /home/josemgl/Proyectos/forvia-prod
+        working-directory: /home/server/services/forvia-prod
         run: |
           for i in $(seq 1 20); do
             api=$(docker inspect -f '{{.State.Health.Status}}' forvia-prod-api-1 2>/dev/null)
