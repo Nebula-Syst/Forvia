@@ -15,12 +15,12 @@ ARG BUILD_DATE=unknown
 
 # Runtime dependencies only, installed exactly as locked (npm ci fails on a stale lockfile
 # instead of silently resolving something else).
-FROM node:22-alpine AS api-deps
+FROM node:25-alpine AS api-deps
 WORKDIR /app
 COPY api/package.json api/package-lock.json ./
 RUN npm ci --omit=dev && npm cache clean --force
 
-FROM node:22-alpine AS api
+FROM node:25-alpine AS api
 
 ARG VERSION
 ARG VCS_REF
@@ -71,7 +71,7 @@ HEALTHCHECK --start-period=10s \
 # QEMU — and QEMU-emulated npm installs are known to corrupt esbuild/rollup's platform-
 # specific native binaries, which is what breaks `vite build` with unrelated-looking
 # module-resolution errors.
-FROM --platform=$BUILDPLATFORM node:22-alpine AS web-build
+FROM --platform=$BUILDPLATFORM node:25-alpine AS web-build
 WORKDIR /app
 COPY frontend/package.json frontend/package-lock.json ./
 # Exactly as locked — npm ci fails on a stale lockfile instead of silently resolving something else.
