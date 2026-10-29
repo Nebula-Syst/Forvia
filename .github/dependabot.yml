@@ -58,9 +58,10 @@ updates:
         patterns: ['*']
         update-types: ['major']
 
-  # Base images — api/Dockerfile (node:22-alpine)
+  # Base images — docker/prod/Dockerfile (node:22-alpine for the api target and the web build
+  # stage, nginx:alpine for the web target)
   - package-ecosystem: docker
-    directory: /api
+    directory: /docker/prod
     schedule:
       interval: monthly
     open-pull-requests-limit: 1
@@ -69,16 +70,6 @@ updates:
       # six months. Dependabot's first run offered 22 → 25, which for something other people
       # self-host is a stability downgrade for nothing. Even majors (22 → 24 → 26) still get
       # proposed, which is the move actually worth reviewing.
-      - dependency-name: node
-        versions: ['25.x', '27.x', '29.x', '31.x', '33.x']
-
-  # Base images — web/Dockerfile (node:22-alpine build stage + nginx:alpine)
-  - package-ecosystem: docker
-    directory: /web
-    schedule:
-      interval: monthly
-    open-pull-requests-limit: 1
-    ignore:
       - dependency-name: node
         versions: ['25.x', '27.x', '29.x', '31.x', '33.x']
 

@@ -1,3 +1,13 @@
+# Local dev stack for Forvia: api + web (+ the one-time media download), built from this checkout.
+#
+# Needs forvia-core's dev stack running first (github.com/Nebula-Syst/forvia-core,
+# docker/dev/run.sh there): it owns Postgres (`db`), `core-api`, the shared `forvia` network and
+# the shared `forvia-data` volume. This stack joins them, so `db`/`core-api` resolve by name just
+# as in a single compose file. Production brings everything up together from the forvia-prod repo.
+#
+#   docker/dev/run.sh            # checks core is up, builds, starts, follows logs
+#
+# Paths are relative to this file; .env (optional) lives at the repo root.
 name: forvia-dev
 
 services:
@@ -9,8 +19,8 @@ services:
   media:
     image: alpine/git
     volumes:
-      - ./media/img:/out/img
-      - ./media/gif:/out/gif
+      - ../../media/img:/out/img
+      - ../../media/gif:/out/gif
     entrypoint: ["/bin/sh", "-c"]
     command:
       - |
@@ -32,62 +42,21 @@ services:
         fi
     restart: "no"
 
-  # PostgreSQL — users, workout history, social graph, tasks, activity log. See api/db.js.
-  # Only ./data/secret (session HMAC key), ./data/vapid.json (push keys) and uploaded photos
-  # stay on the bind mount below; everything else that used to be db.json/state-*.json/
-  # audit.log now lives here instead.
-  db:
-    image: postgres:16-alpine
-    restart: unless-stopped
-    environment:
-      - POSTGRES_USER=${POSTGRES_USER:-forvia}
-      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-forvia}
-      - POSTGRES_DB=${POSTGRES_DB:-forvia}
-    volumes:
-      - pgdata:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-forvia} -d ${POSTGRES_DB:-forvia}"]
-      interval: 5s
-      timeout: 5s
-      retries: 10
-
-  # forvia-core (github.com/Nebula-Syst/forvia-core) — the openGym-derived half: auth, sessions,
-  # account management, workout/routine/bodyweight/nutrition-diary sync, base admin, the
-  # exercise-name-override catalog, invites, bug reports, push. Its own repo/image/license (AGPL)
-  # — unlike `api` below, there's no `build:` override here, since its source doesn't live in
-  # this repo (`docker compose pull core-api`, or build it yourself from a checkout and tag it
-  # ghcr.io/nebula-syst/forvia-core:latest before `docker compose up`).
-  core-api:
-    image: ghcr.io/nebula-syst/forvia-core:latest
-    restart: unless-stopped
-    env_file: .env
-    depends_on:
-      db:
-        condition: service_healthy
-    environment:
-      - PORT=${CORE_PORT:-3000}
-      - DATA_DIR=/data
-      - DATABASE_URL=postgres://${POSTGRES_USER:-forvia}:${POSTGRES_PASSWORD:-forvia}@db:5432/${POSTGRES_DB:-forvia}
-      - NEBULA_URL=http://api:${PORT:-3000}
-      - INTERNAL_SECRET=${INTERNAL_SECRET:-dev-only-insecure-secret-change-me}
-    volumes:
-      - ./data:/data         # session secret, VAPID push keys, uploaded photos — BACK THIS UP
-
   # Nebula's own half: level/XP/prestige/streaks, anti-cheat, daily tasks, the social feed, and
   # the whole coach/box system — Forvia's own original work, its own license. Talks to core-api
   # over the internal API (shared INTERNAL_SECRET) instead of touching auth/sessions/user_state
   # directly. Shares core-api's own /data/uploads (avatars vs. social photos/box images/coach
   # documents land in the same per-account folder either way).
   api:
-    image: ghcr.io/nebula-syst/forvia-api:latest
-    build: ./api
+    image: forvia-api:dev
+    build:
+      context: ../..
+      dockerfile: docker/prod/Dockerfile
+      target: api
     restart: unless-stopped
-    env_file: .env
-    depends_on:
-      db:
-        condition: service_healthy
-      core-api:
-        condition: service_started
+    env_file:
+      - path: ../../.env
+        required: false
     environment:
       # The port the API listens on. web proxies to this same value, so the two
       # cannot drift — change it in .env and both follow.
@@ -97,22 +66,22 @@ services:
       - CORE_URL=http://core-api:${CORE_PORT:-3000}
       - INTERNAL_SECRET=${INTERNAL_SECRET:-dev-only-insecure-secret-change-me}
     volumes:
-      - ./data:/data         # session secret, VAPID push keys, uploaded photos — BACK THIS UP
+      - forvia-data:/data    # shared with core-api (forvia-core repo)
+    networks: [forvia]
 
   # Builds the React frontend (multi-stage) and serves it, proxying /api → api/core-api
   # and the exercise media from the shared volume. Single origin for passkeys.
   web:
-    image: ghcr.io/nebula-syst/forvia-web:latest
+    image: forvia-web:dev
     build:
-      context: .
-      dockerfile: web/Dockerfile
+      context: ../..
+      dockerfile: docker/prod/Dockerfile
+      target: web
     restart: unless-stopped
     depends_on:
       media:
         condition: service_completed_successfully
       api:
-        condition: service_started
-      core-api:
         condition: service_started
     ports:
       - "${WEB_PORT:-8080}:${NGINX_PORT:-80}"
@@ -126,8 +95,17 @@ services:
       - CORE_BACKEND=${CORE_BACKEND:-core-api}
       - CORE_PORT=${CORE_PORT:-3000}
     volumes:
-      - ./media/img:/usr/share/nginx/html/img:ro
-      - ./media/gif:/usr/share/nginx/html/gif:ro
+      - ../../media/img:/usr/share/nginx/html/img:ro
+      - ../../media/gif:/usr/share/nginx/html/gif:ro
+    networks: [forvia]
+
+# Both created by forvia-core's dev stack.
+networks:
+  forvia:
+    name: forvia
+    external: true
 
 volumes:
-  pgdata:
+  forvia-data:
+    name: forvia-data
+    external: true

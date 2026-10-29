@@ -52,7 +52,7 @@
       "groupName": "api-major"
     },
     {
-      "description": "Base images in api/Dockerfile and web/Dockerfile.",
+      "description": "Base images in docker/prod/Dockerfile (api and web targets).",
       "matchManagers": ["dockerfile"],
       "groupName": "base images"
     },

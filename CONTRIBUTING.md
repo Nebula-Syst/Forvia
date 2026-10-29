@@ -8,7 +8,8 @@ to keep it that way — easy to read, easy to self-host.
 ```
 frontend/  React + Vite app (src/views, src/components, src/store, src/lib). Builds to static files.
 api/       backend — server.js (Node, no framework), one dependency (@simplewebauthn/server).
-web/       multi-stage Dockerfile (builds frontend → nginx) + nginx.conf (serves app, proxies /api).
+web/       nginx.conf.template (serves app, proxies /api to api/core-api).
+docker/    dev/ local compose + run.sh · prod/ the Dockerfiles published to GHCR.
 media/     exercise img/gif (gitignored, fetched at runtime).
 docs/      self-hosting guide.
 ```
@@ -16,8 +17,10 @@ docs/      self-hosting guide.
 ## Running for development
 
 ```bash
-cp .env.example .env
-docker compose up -d --build      # api + web + media on :8080
+# 1. forvia-core first (separate repo): db + core-api + the shared `forvia` network/volume
+../forvia-core/docker/dev/run.sh up -d --build
+# 2. then this repo: api + web + media on :8080 (.env optional — defaults work)
+docker/dev/run.sh
 # frontend hot reload:
 cd frontend && npm install && npm run dev
 # training logic (progression rules, 1RM, how a session is read back):
