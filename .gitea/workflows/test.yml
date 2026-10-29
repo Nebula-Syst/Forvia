@@ -3,19 +3,16 @@
 # actually gates contributions today.
 name: Tests
 
+# No path filters: these are the required checks dependency PRs auto-merge through
+# (dependabot-automerge.yml), and a required check that never runs leaves a PR waiting forever.
 on:
   pull_request:
-    paths:
-      - 'frontend/**'
-      - 'mcp/**'
-      - '.gitea/workflows/test.yml'
   push:
     branches: [main]
-    paths:
-      - 'frontend/**'
-      - 'mcp/**'
-      - '.gitea/workflows/test.yml'
   workflow_dispatch:
+
+permissions:
+  contents: read
 
 concurrency:
   group: test-${{ github.ref }}
@@ -34,5 +31,87 @@ jobs:
           cache-dependency-path: frontend/package-lock.json
       - run: npm ci
         working-directory: frontend
+      # Unit tests, plus src/App.routes.test.jsx: every route of the app rendered, so a React /
+      # Router / Zustand / Lexical update that breaks rendering fails here, not in production.
       - run: npm test
         working-directory: frontend
+      # A broken import or bad JSX fails the build long before any test covers it.
+      - run: npm run build
+        working-directory: frontend
+      - run: node scripts/check-locales.mjs
+        working-directory: frontend
+      # check-locales compares the packs to each other, so a key missing from ALL of them is
+      # invisible to it. This walks src/ instead. Report-only for now: there is a known
+      # backlog of untranslated demo-view strings to clear before it can fail the build.
+      - run: node scripts/check-source-strings.mjs
+        working-directory: frontend
+      # The fatigue model must never read higher after a rest day than before it.
+      # Property probe over ~108k comparisons; too slow for the unit suite, cheap here.
+      - run: npm run test:fatigue-probe
+        working-directory: frontend
+
+  # The api's own suite: the real server.js against a real Postgres, a fake forvia-core
+  # (api/test/fake-core.mjs) and real WebSocket/Stripe-signature traffic.
+  api:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        # Same major as the bundled db service (docker/dev in forvia-core, forvia-prod).
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: forvia
+          POSTGRES_PASSWORD: forvia
+          POSTGRES_DB: forvia
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U forvia" --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      TEST_DATABASE_URL: postgres://forvia:forvia@127.0.0.1:5432/forvia
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: api/package-lock.json
+      - run: npm ci
+        working-directory: api
+      - run: npm test
+        working-directory: api
+
+  # A base-image bump (node, nginx, alpine) only shows up here: both images are built exactly as
+  # published and have to boot and report healthy.
+  image:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: forvia
+          POSTGRES_PASSWORD: forvia
+          POSTGRES_DB: forvia
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U forvia" --health-interval 5s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build -f docker/prod/Dockerfile --target api -t forvia-api:ci .
+      - run: docker build -f docker/prod/Dockerfile --target web -t forvia-web:ci .
+      # api boots without forvia-core (its mirror sync just logs and retries); web's nginx only
+      # resolves its upstreams per request, so it serves the app without them.
+      - name: Boot both images and wait for them to report healthy
+        run: |
+          docker run -d --name api --network host \
+            -e PORT=3100 -e DATABASE_URL=postgres://forvia:forvia@127.0.0.1:5432/forvia \
+            -e CORE_URL=http://127.0.0.1:9 -e INTERNAL_SECRET=ci forvia-api:ci
+          docker run -d --name web -p 8080:80 forvia-web:ci
+          for i in $(seq 1 30); do
+            api=$(docker inspect -f '{{.State.Health.Status}}' api)
+            web=$(docker inspect -f '{{.State.Health.Status}}' web)
+            echo "api=$api web=$web"
+            [ "$api" = "healthy" ] && [ "$web" = "healthy" ] && break
+            sleep 2
+          done
+          [ "$api" = "healthy" ] && [ "$web" = "healthy" ] || { docker logs api; docker logs web; exit 1; }
+          # The built app is actually what nginx serves.
+          curl -fsS http://127.0.0.1:8080/ | grep -q '<div id="root"'
