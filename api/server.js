@@ -227,19 +227,65 @@ function writeState(uid, state) {
     body: JSON.stringify({ uid, state }),
   }).catch(e => console.error('writeState (push to core) failed:', uid, e.message));
 }
-async function refreshUsersMirror() {
+// Both return whether the mirror was actually loaded, so boot can retry while forvia-core is still
+// starting (see main()). An HTTP error from core counts as a failure — destructuring an error body
+// would otherwise "succeed" with an empty mirror. `quiet` skips the log line during boot retries.
+async function refreshUsersMirror({ quiet = false } = {}) {
   try {
     const r = await fetch(`${CORE_URL}/internal/users`, { headers: { 'X-Internal-Secret': INTERNAL_SECRET }, signal: AbortSignal.timeout(10000) });
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
     const { users } = await r.json();
-    if (Array.isArray(users)) db.users = users;
-  } catch (e) { console.error('refreshUsersMirror failed:', e.message); }
+    if (!Array.isArray(users)) throw new Error('no users in response');
+    db.users = users;
+    return true;
+  } catch (e) { if (!quiet) console.error('refreshUsersMirror failed:', e.message); return false; }
 }
-async function loadStateMirror() {
+// `onlyMissing`: a late load (after the server is already serving) must not overwrite a state
+// /internal/scan-data or writeState() has set since boot — those are newer than this snapshot.
+async function loadStateMirror({ quiet = false, onlyMissing = false } = {}) {
   try {
     const r = await fetch(`${CORE_URL}/internal/states`, { headers: { 'X-Internal-Secret': INTERNAL_SECRET }, signal: AbortSignal.timeout(20000) });
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
     const { states } = await r.json();
-    for (const [uid, state] of Object.entries(states || {})) stateCache.set(uid, state);
-  } catch (e) { console.error('loadStateMirror failed:', e.message); }
+    if (!states || typeof states !== 'object') throw new Error('no states in response');
+    for (const [uid, state] of Object.entries(states)) {
+      if (!onlyMissing || !stateCache.has(uid)) stateCache.set(uid, state);
+    }
+    return true;
+  } catch (e) { if (!quiet) console.error('loadStateMirror failed:', e.message); return false; }
+}
+// forvia-core can still be starting when this service boots: compose only waits for its container
+// to exist, and a host reboot restarts every container at once regardless of depends_on. So boot
+// retries both mirrors for a while before serving; past that it serves anyway (users refresh every
+// 20 s regardless) and keeps retrying the state mirror in the background until it lands — it has
+// no periodic refresh of its own, so without this a failed boot load stayed empty until restart.
+// (Env overrides exist for the tests, which can't wait 30 s per case.)
+const BOOT_MIRROR_WAIT_MS = Number(process.env.BOOT_MIRROR_WAIT_MS) || 30000;
+const BOOT_MIRROR_RETRY_MS = Number(process.env.BOOT_MIRROR_RETRY_MS) || 1000;
+const LATE_STATE_RETRY_MS = Number(process.env.LATE_STATE_RETRY_MS) || 10000;
+async function loadMirrorsAtBoot() {
+  const started = Date.now();
+  let usersOk = await refreshUsersMirror({ quiet: true });
+  let statesOk = await loadStateMirror({ quiet: true });
+  if (!usersOk || !statesOk) console.error('forvia-core not reachable yet — retrying the users/state mirrors');
+  while ((!usersOk || !statesOk) && Date.now() - started < BOOT_MIRROR_WAIT_MS) {
+    await new Promise(resolve => setTimeout(resolve, BOOT_MIRROR_RETRY_MS));
+    if (!usersOk) usersOk = await refreshUsersMirror({ quiet: true });
+    if (!statesOk) statesOk = await loadStateMirror({ quiet: true });
+  }
+  if (usersOk && statesOk) {
+    if (Date.now() - started > BOOT_MIRROR_RETRY_MS) console.log(`users/state mirrors loaded after ${Math.round((Date.now() - started) / 1000)}s`);
+    return;
+  }
+  if (!usersOk) console.error(`users mirror still empty after ${BOOT_MIRROR_WAIT_MS / 1000}s — the 20s refresh keeps trying`);
+  if (!statesOk) {
+    console.error(`state mirror still empty after ${BOOT_MIRROR_WAIT_MS / 1000}s — retrying every ${LATE_STATE_RETRY_MS / 1000}s`);
+    const retry = async () => {
+      if (await loadStateMirror({ onlyMissing: true })) console.log('state mirror loaded (late)');
+      else setTimeout(retry, LATE_STATE_RETRY_MS).unref();
+    };
+    setTimeout(retry, LATE_STATE_RETRY_MS).unref();
+  }
 }
 
 /* ---------- workout photos / social photos / box images / coach documents ---------- */
@@ -4146,8 +4192,7 @@ const internalRoutes = {
 async function main() {
   await ensureSchema();
   db = { ...db, ...(await loadAll()) };   // loadAll() only knows this service's own COLLECTIONS (db.js) — users/subs stay whatever refreshUsersMirror sets below
-  await refreshUsersMirror();
-  await loadStateMirror();
+  await loadMirrorsAtBoot();
   if (AUDIT_ON) {
     auditCache = await auditAll();
     auditSeq = auditCache.length ? auditCache[auditCache.length - 1].id : 0;
