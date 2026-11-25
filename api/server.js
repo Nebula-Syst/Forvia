@@ -1221,10 +1221,20 @@ const routes = {
       // world.openfoodfacts.org app server as of this writing, this one lives on its own
       // subdomain and answered fine) — same fields as the barcode lookup below except
       // `brands` comes back as an array here, not a comma string.
+      //
+      // The kcal clause filters server-side instead of only in the .filter() below: for common
+      // single words ("Pollo", "Pan") the top hits are near-empty products named exactly that,
+      // with no nutriments at all, so the first page could be 20 hits and 0 usable items. The
+      // user's text is stripped of Lucene syntax characters so it can't break the query.
+      const terms = q.replace(/[()[\]{}:"'\\/^~*?!+\-&|<>=]/g, ' ').replace(/\s+/g, ' ').trim()
+        .replace(/\b(AND|OR|NOT|TO)\b/g, w => w.toLowerCase());   // lowercase = plain words, not operators
+      if (!terms) return json(res, 200, { items: [] });
       const url = 'https://search.openfoodfacts.org/search?' + new URLSearchParams({
-        q, page_size: '20', fields: 'code,product_name,brands,nutriments',
+        q: `(${terms}) AND nutriments.energy-kcal_100g:>=0`,
+        page_size: '20', fields: 'code,product_name,brands,nutriments',
       });
       const r = await fetch(url, { headers: { 'User-Agent': 'Forvia (self-hosted gym tracker) - github.com/Nebula-Syst/Forvia' }, signal: AbortSignal.timeout(8000) });
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
       const data = await r.json();
       const items = (data.hits || [])
         .filter(p => p.product_name && p.nutriments && p.nutriments['energy-kcal_100g'] != null)
@@ -1240,6 +1250,7 @@ const routes = {
         .slice(0, 20);
       json(res, 200, { items });
     } catch (e) {
+      console.error('nutrition search failed:', e.message);
       json(res, 200, { items: [], error: 'search unavailable' });
     }
   },
