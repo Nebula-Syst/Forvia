@@ -14,7 +14,11 @@ export async function startFakeCore() {
   const states = new Map();
   const calls = [];
 
+  // `down`: core still starting — every request is dropped without an answer, the same `fetch
+  // failed` the api sees when core-api's container exists but isn't listening yet.
+  const ctl = { down: false };
   const server = http.createServer((req, res) => {
+    if (ctl.down) { req.socket.destroy(); return; }
     const chunks = [];
     req.on('data', c => chunks.push(c));
     req.on('end', () => {
@@ -61,6 +65,8 @@ export async function startFakeCore() {
   return {
     url: `http://127.0.0.1:${server.address().port}`,
     users, states, calls,
+    get down() { return ctl.down; },
+    set down(v) { ctl.down = v; },
     // An account as forvia-core would hold it (no credentials — those never leave core), plus a
     // session cookie that resolves to it.
     addUser(fields = {}) {
